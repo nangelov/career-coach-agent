@@ -68,7 +68,7 @@ pip install -r requirements.txt
    
    e. Place the downloaded `credentials.json` in the project root directory
 
-5. (Optional) Set up Hugging Face token:
+5. (Required) Set up Hugging Face token:
 ```bash
 export HF_READ_TOKEN=your_token_here
 ```
