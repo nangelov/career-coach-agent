@@ -162,67 +162,17 @@ def stream_to_gradio(
 class AgentUI:
     """A Gradio interface that serves as a frontend for the agent API"""
 
-    def __init__(self, agent=None, file_upload_folder: str = None, api_url: str = "http://localhost:8000"):
-        if not _is_package_available("gradio"):
-            raise ModuleNotFoundError(
-                "Please install 'gradio' extra to use the AgentUI: `pip install 'smolagents[gradio]'`"
-            )
+    def __init__(self, agent=None, file_upload_folder: str = None, api_url: str = "http://localhost:8080"):
         self.agent = agent
         self.file_upload_folder = file_upload_folder
         self.api_url = api_url
+        self.thread_id = None
         
         if self.file_upload_folder is not None:
             if not os.path.exists(file_upload_folder):
                 os.makedirs(file_upload_folder, exist_ok=True)
         
         self.chat_history = []
-        
-    def open_api_docs(self):
-        """Handler for the 'API Documentation' button that opens docs directly"""
-        # This opens the URL in a new tab using JavaScript
-        return """
-        <script>
-        window.open('http://localhost:8000/docs', '_blank');
-        document.getElementById('result').innerHTML = 'Documentation opened in new tab';
-        </script>
-        Opening documentation...
-        """
-       
-    def connect_google_account(self):
-        """Handler for the 'Connect your Google account' button"""
-           
-        # Check if credentials file exists
-        check_credentials_file()
-        
-        # Check if token file exists and load credentials
-        if os.path.exists('token.pickle'):
-            with open('token.pickle', 'rb') as token:
-                creds = pickle.load(token)
-        
-        # Check if credentials are valid
-        if not creds or not creds.valid:
-            # If credentials expired but have refresh token, refresh them
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                # If no valid credentials, trigger OAuth flow
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    'credentials.json',  # Make sure this file exists with your Google API credentials
-                    SCOPES,
-                    redirect_uri='urn:ietf:wg:oauth:2.0:oob'  # This forces a pop-up authorization
-                )
-                
-                # Run the local server auth flow - this opens a browser window
-                creds = flow.run_local_server(port=0)
-                
-                # Save the credentials for next run
-                with open('token.pickle', 'wb') as token:
-                    pickle.dump(creds, token)
-        return "Please check your browser to complete Google authentication"
-    
-    def example_button(self):
-        """Handler for the 'Example 1' button that does nothing for now"""
-        return "Example button clicked"
     
     def query_agent(self, message: str, history: List[List[str]]):
         """Send a query to the agent API and return the response"""
@@ -230,21 +180,38 @@ class AgentUI:
             return "", history
         
         try:
+            # Prepare request payload matching QueryRequest model
+            payload = {
+                "query": message,
+                "thread_id": self.thread_id,
+                "context": {}
+            }
+            
             response = requests.post(
                 f"{self.api_url}/agent/query",
-                json={"query": message, "reset_memory": False}
+                json=payload
             )
             
             if response.status_code == 200:
                 data = response.json()
+                # Update thread_id from response
+                self.thread_id = data.get("thread_id")
                 return "", history + [[message, data["response"]]]
             else:
                 return "", history + [[message, f"Error: {response.status_code}"]]
         except Exception as e:
             return "", history + [[message, f"Error: {str(e)}"]]
     
-    def launch(self, server_name: str = "0.0.0.0", server_port: int = 7860, **kwargs):
+    def reset_conversation(self):
+        """Reset the conversation state"""
+        self.thread_id = None
+        self.chat_history = []
+        return "Started new conversation"
+    
+    def launch(self, server_name: str = "0.0.0.0", server_port: int = 8000, **kwargs):
         """Launch the Gradio interface"""
+        api_port = int(self.api_url.split(":")[-1])
+        
         with gr.Blocks(css="""
             #main-container {
                 display: flex;
@@ -264,20 +231,16 @@ class AgentUI:
             with gr.Row(elem_id="main-container"):
                 # Left menu strip (1/4 width)
                 with gr.Column(scale=1, elem_id="menu-column"):
-                    gr.Markdown("# Menu\n\nClick [here](http://localhost:8000/docs) to view API documentation.")
+                    gr.Markdown(f"# Menu\n\nClick [here](http://localhost:{api_port}/docs) to view API documentation.")
                     with gr.Group(elem_classes="button-container"):
-                        google_btn = gr.Button("Connect your Google account", variant="primary")
-                        
-                        # Replace the button with a direct link
-                        docs_btn = gr.HTML("""
-                            <button onclick="window.open('http://localhost:8000/docs', '_blank')" 
+                        docs_btn = gr.HTML(f"""
+                            <button onclick="window.open('http://localhost:{api_port}/docs', '_blank')" 
                                     style="width: 100%; padding: 10px; background-color: #f0f0f0; 
                                            border: none; border-radius: 4px; cursor: pointer;">
                                 API Documentation
                             </button>
                         """)
-                        
-                        example_btn = gr.Button("Example 1")
+                        new_chat_btn = gr.Button("New Chat", variant="primary")
                     
                     # Output area for button actions
                     menu_output = gr.HTML(label="Action Result")
@@ -296,12 +259,15 @@ class AgentUI:
             # Set up event handlers
             msg.submit(self.query_agent, [msg, chatbot], [msg, chatbot])
             clear.click(lambda: ([], None), outputs=[chatbot, menu_output])
-            google_btn.click(self.connect_google_account, outputs=menu_output)
+            new_chat_btn.click(
+                fn=self.reset_conversation,
+                inputs=[],
+                outputs=[menu_output]
+            )
             docs_btn.click(
-                lambda: gr.update(value=f"<script>window.open('http://localhost:8000/docs', '_blank');</script>Opening documentation..."), 
+                lambda: gr.update(value=f"<script>window.open('http://localhost:{api_port}/docs', '_blank');</script>Opening documentation..."), 
                 outputs=menu_output
             )
-            example_btn.click(self.example_button, outputs=menu_output)
         
         # Launch the interface
         interface.launch(server_name=server_name, server_port=server_port, **kwargs)

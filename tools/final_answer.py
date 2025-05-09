@@ -1,14 +1,14 @@
-from typing import Any, Optional
-from smolagents.tools import Tool
+from langchain_core.tools import tool
+from typing import Any
 
-class FinalAnswerTool(Tool):
-    name = "final_answer"
-    description = "Provides a final answer to the given problem."
-    inputs = {'answer': {'type': 'any', 'description': 'The final answer to the problem'}}
-    output_type = "any"
-
-    def forward(self, answer: Any) -> Any:
-        return answer
-
-    def __init__(self, *args, **kwargs):
-        self.is_initialized = False
+@tool
+def final_answer(answer: Any) -> Any:
+    """Provides a final answer to the given problem.
+    
+    Args:
+        answer: The final answer to the problem
+        
+    Returns:
+        The final answer unchanged
+    """
+    return answer
