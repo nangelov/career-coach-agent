@@ -1,33 +1,33 @@
 # Career Coach Agent 🤖
 
-An AI-powered career coaching assistant built with FastAPI, Gradio UI, and the SmolaGents framework. This application provides an interactive interface for career guidance through both a REST API and a web-based UI.
+An AI-powered career coaching assistant built with FastAPI, Gradio UI, LangChain, and SmolaGents. This application provides an interactive interface for career guidance through both a REST API and a web-based UI.
 
 ## 🚀 Features
 
 - **Dual Interface**: REST API (FastAPI) and Web UI (Gradio)
-- **Google Calendar Integration**: Create and manage calendar events
-- **AI-Powered Responses**: Utilizing Qwen2.5-Coder-32B-Instruct model
+- **AI-Powered Responses**: Utilizing Mixtral-8x7B-Instruct-v0.1 model
 - **Interactive Chat Interface**: Real-time conversation with the AI agent
-- **Multi-tool Integration**: Including webpage visits, time zone conversions, and calendar management
+- **Multi-tool Integration**: Including webpage visits and time zone conversions
+- **ReAct Agent Pattern**: Step-by-step reasoning and tool usage
 
 ## 🛠️ Technical Stack
 
 - **Backend Framework**: FastAPI
-- **UI Framework**: Gradio
-- **AI Framework**: SmolaGents
-- **ML Models**: Transformers (Qwen2.5-Coder-32B-Instruct)
-- **Authentication**: Google OAuth2 for Calendar integration
+- **UI Framework**: Gradio with SmolaGents
+- **AI Framework**: 
+  - LangChain ReAct Agent (Backend) - For structured reasoning and tool usage
+  - SmolaGents (UI) - For enhanced agent interactions and chat interface
+- **ML Models**: Hugging Face (Mixtral-8x7B-Instruct-v0.1)
 - **Additional Key Libraries**:
-  - `google-auth` & `google-auth-oauthlib`: Google Calendar integration
   - `uvicorn`: ASGI server
   - `torch` & `accelerate`: ML model support
-  - `pandas`: Data handling
-  - `duckduckgo_search`: Web search capabilities
+  - `markdownify`: Web content processing
+  - `langchain`: AI framework and tools
+  - `smolagents`: UI agent framework
 
 ## 📋 Prerequisites
 
 - Python 3.8+
-- Google Cloud Console account
 - Hugging Face account (for model access)
 
 ## ⚙️ Installation
@@ -49,28 +49,9 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. Set up Google Cloud Project and Credentials:
-   
-   a. Go to [Google Cloud Console](https://console.cloud.google.com/)
-   b. Create a new project or select an existing one
-   c. Enable the Google Calendar API:
-      - Go to "APIs & Services" > "Library"
-      - Search for "Google Calendar API"
-      - Click "Enable"
-   
-   d. Create OAuth 2.0 credentials:
-      - Go to "APIs & Services" > "Credentials"
-      - Click "Create Credentials" > "OAuth client ID"
-      - Select "Desktop app" as application type
-      - Give it a name (e.g., "Career Coach Agent")
-      - Click "Create"
-      - Download the credentials (this will be your `credentials.json`)
-   
-   e. Place the downloaded `credentials.json` in the project root directory
-
-5. (Required) Set up Hugging Face token:
+4. (Required) Set up Hugging Face token:
 ```bash
-export HF_READ_TOKEN=your_token_here
+export HUGGINGFACEHUB_API_TOKEN=your_token_here
 ```
 
 ## 🚀 Running the Application
@@ -99,26 +80,30 @@ Once the server is running, access the API documentation at:
 ## 🔑 Key Endpoints
 
 - `POST /agent/query`: Send queries to the AI agent
-- `POST /calendar/create-event`: Create Google Calendar events
-- `POST /google/connect`: Connect Google account
 - `GET /`: Redirects to Gradio UI
 
-## 🔐 First-Time Google Calendar Setup
+## 🔍 How It Works
 
-When you first run the application and try to use Google Calendar features:
+The application uses a ReAct (Reasoning and Acting) agent pattern, which follows this structure:
+1. **Thought**: The agent reasons about what to do
+2. **Action**: The agent decides which tool to use
+3. **Observation**: The tool returns a result
+4. **Thought**: The agent reasons about the observation
+5. **Action**: The agent either uses another tool or provides a final answer
 
-1. The application will prompt you to authenticate
-2. A browser window will open asking you to sign in to your Google account
-3. You may see a warning that the app is "unverified" - click "Advanced" and "Go to [Your App Name] (unsafe)"
-4. Grant the requested Calendar permissions
-5. The application will save the authentication token locally as `token.pickle` for future use
+This pattern allows the agent to:
+- Use tools in a structured way
+- Reason step-by-step about complex problems
+- Provide transparent decision-making
+- Handle multiple tool interactions
 
 ## ⚠️ Important Notes
 
 - The application requires active internet connection for AI model access
-- Some features may require Hugging Face API token for full functionality
-- Google Calendar integration will work in "unverified app" mode for development
-- For production use, you should verify your app with Google
+- Hugging Face API token is required for model access
+- The application uses the Mixtral-8x7B-Instruct-v0.1 model for generating responses
+- The UI is built using SmolaGents framework for enhanced agent interactions
+- The backend uses LangChain's ReAct agent for structured reasoning and tool usage
 
 ## 🤝 Contributing
 
