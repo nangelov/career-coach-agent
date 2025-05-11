@@ -39,7 +39,7 @@ An AI-powered career coaching assistant built with FastAPI, Gradio UI, LangChain
 - **ML Models**: Hugging Face (Mixtral-8x7B-Instruct-v0.1)
 - **Additional Key Libraries**:
   - `uvicorn`: ASGI server
-  - `torch` & `accelerate`: ML model support
+  - `accelerate`: ML model support
   - `markdownify`: Web content processing
   - `langchain`: AI framework and tools
   - `smolagents`: UI agent framework
@@ -73,21 +73,9 @@ pip install -r requirements.txt
 export HUGGINGFACEHUB_API_TOKEN=your_token_here
 ```
 
-## 🚀 Running the Application
-
-### Option 1: Complete Application (API + UI)
-Run both the FastAPI backend and Gradio UI:
+5. Run the application:
 ```bash
 python main.py
-```
-This will start:
-- FastAPI server on http://localhost:8000
-- Gradio UI on http://localhost:7860
-
-### Option 2: API Only
-Run just the FastAPI backend:
-```bash
-uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
 ## 📚 API Documentation

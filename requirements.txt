@@ -4,8 +4,6 @@ requests>=2.31.0
 fastapi>=0.104.1
 uvicorn[standard]>=0.24.0
 gradio>=4.7.1
-transformers
-torch
 accelerate>=0.26.0
 langchain>=0.1.0
 langchain-core>=0.1.0
@@ -17,4 +15,3 @@ python-dateutil>=2.8.2
 huggingface-hub>=0.19.4
 python-multipart>=0.0.6
 aiohttp>=3.9.0
-langgraph
