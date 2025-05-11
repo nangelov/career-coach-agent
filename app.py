@@ -3,7 +3,6 @@ from langchain_huggingface import HuggingFaceEndpoint
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain_core.prompts import PromptTemplate
 
-from tools.final_answer import final_answer
 from tools.visit_webpage import visit_webpage
 
 import gradio as gr
@@ -16,9 +15,9 @@ import uuid
 from typing import Optional, Type, Dict, Any, List
 from pydantic import BaseModel, Field
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 import requests
 
 # Initialize FastAPI app
@@ -81,7 +80,7 @@ with open("prompts.yaml", 'r') as stream:
 prompt = PromptTemplate.from_template(prompt_templates["template"])
 
 # Create the agent
-tools = [get_current_time, visit_webpage]  # Removed final_answer as it's handled by ReAct format
+tools = [get_current_time, visit_webpage]  
 agent = create_react_agent(
     llm=llm,
     tools=tools,
