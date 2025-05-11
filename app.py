@@ -105,8 +105,12 @@ class QueryRequest(BaseModel):
 @app.get("/")
 async def root():
     """Redirect to the Gradio UI"""
-    return RedirectResponse(url="http://localhost:8000")
+    return RedirectResponse(url="http://localhost:7860")
 
+@app.get("/docs")
+async def redirect_to_docs():
+    """Redirect to the Gradio UI"""
+    return RedirectResponse(url="http://localhost:8000/docs")
 
 @app.post("/agent/query")
 async def query_agent(request: QueryRequest):

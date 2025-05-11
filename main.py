@@ -9,8 +9,8 @@ def main():
     Run both FastAPI and Gradio UI together
     """
     # Configuration
-    api_port = 8080
-    ui_port = 8000
+    api_port = 8000
+    ui_port = 7860
     
     # Start FastAPI in a background thread
     def run_fastapi():

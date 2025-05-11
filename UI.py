@@ -208,7 +208,7 @@ class AgentUI:
         self.chat_history = []
         return "Started new conversation"
     
-    def launch(self, server_name: str = "0.0.0.0", server_port: int = 8000, **kwargs):
+    def launch(self, server_name: str = "0.0.0.0", server_port: int = 7860, **kwargs):
         """Launch the Gradio interface"""
         api_port = int(self.api_url.split(":")[-1])
         
