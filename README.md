@@ -23,7 +23,7 @@ An AI-powered career coaching assistant built with FastAPI, Gradio UI, LangChain
 
 ## 🚀 Features
 
-- **Dual Interface**: REST API (FastAPI) and Web UI (Gradio)
+- **Unified Interface**: Combined FastAPI and Gradio UI on a single port (7860)
 - **AI-Powered Responses**: Utilizing Mixtral-8x7B-Instruct-v0.1 model
 - **Interactive Chat Interface**: Real-time conversation with the AI agent
 - **Multi-tool Integration**: Including webpage visits and time zone conversions
@@ -31,7 +31,7 @@ An AI-powered career coaching assistant built with FastAPI, Gradio UI, LangChain
 
 ## 🛠️ Technical Stack
 
-- **Backend Framework**: FastAPI
+- **Backend Framework**: FastAPI (mounted with Gradio)
 - **UI Framework**: Gradio with SmolaGents
 - **AI Framework**: 
   - LangChain ReAct Agent (Backend) - For structured reasoning and tool usage
@@ -39,7 +39,6 @@ An AI-powered career coaching assistant built with FastAPI, Gradio UI, LangChain
 - **ML Models**: Hugging Face (Mixtral-8x7B-Instruct-v0.1)
 - **Additional Key Libraries**:
   - `uvicorn`: ASGI server
-  - `accelerate`: ML model support
   - `markdownify`: Web content processing
   - `langchain`: AI framework and tools
   - `smolagents`: UI agent framework
@@ -78,16 +77,28 @@ export HUGGINGFACEHUB_API_TOKEN=your_token_here
 python main.py
 ```
 
+The application will be available at:
+- Main UI: http://localhost:7860
+- API Documentation: http://localhost:7860/docs/
+
+## 🌐 Hugging Face Spaces Deployment
+
+This application is specifically designed to work with Hugging Face Spaces:
+- Uses a single port (7860) as required by Spaces
+- Combines FastAPI and Gradio on the same port
+- API documentation is accessible at `/docs/` on the same port
+- All functionality works within Spaces' constraints
+
 ## 📚 API Documentation
 
-Once the server is running, access the API documentation at:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
+The API documentation is available at `/docs/` on the same port as the main application (7860). This unified setup ensures compatibility with Hugging Face Spaces while maintaining all functionality.
 
 ## 🔑 Key Endpoints
 
-- `POST /agent/query`: Send queries to the AI agent
-- `GET /`: Redirects to Gradio UI
+All endpoints are available on port 7860:
+- `/`: Main Gradio UI
+- `/docs/`: API Documentation
+- `/agent/query`: Send queries to the AI agent
 
 ## 🔍 How It Works
 
@@ -98,19 +109,12 @@ The application uses a ReAct (Reasoning and Acting) agent pattern, which follows
 4. **Thought**: The agent reasons about the observation
 5. **Action**: The agent either uses another tool or provides a final answer
 
-This pattern allows the agent to:
-- Use tools in a structured way
-- Reason step-by-step about complex problems
-- Provide transparent decision-making
-- Handle multiple tool interactions
-
 ## ⚠️ Important Notes
 
 - The application requires active internet connection for AI model access
 - Hugging Face API token is required for model access
-- The application uses the Mixtral-8x7B-Instruct-v0.1 model for generating responses
-- The UI is built using SmolaGents framework for enhanced agent interactions
-- The backend uses LangChain's ReAct agent for structured reasoning and tool usage
+- All services run on port 7860 to comply with Hugging Face Spaces requirements
+- The UI and API are served from the same port for better integration
 
 ## 🤝 Contributing
 

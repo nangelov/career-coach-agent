@@ -4,6 +4,7 @@ from langchain.agents import AgentExecutor, create_react_agent
 from langchain_core.prompts import PromptTemplate
 
 from tools.visit_webpage import visit_webpage
+from tools.final_answer import final_answer
 
 import gradio as gr
 import datetime 
@@ -62,16 +63,6 @@ def get_current_time(timezone: str = "UTC") -> str:
     except Exception as e:
         return f"Error: {str(e)}"
 
-@tool
-def visit_webpage(url: str) -> str:
-    """Visit a webpage and return its content as markdown."""
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        return f"Successfully visited {url}. Content length: {len(response.text)} characters"
-    except Exception as e:
-        return f"Error visiting webpage: {str(e)}"
-
 # Load system prompt and template
 with open("prompts.yaml", 'r') as stream:
     prompt_templates = yaml.safe_load(stream)
@@ -80,7 +71,7 @@ with open("prompts.yaml", 'r') as stream:
 prompt = PromptTemplate.from_template(prompt_templates["template"])
 
 # Create the agent
-tools = [get_current_time, visit_webpage]  
+tools = [get_current_time]  
 agent = create_react_agent(
     llm=llm,
     tools=tools,
@@ -104,10 +95,9 @@ class QueryRequest(BaseModel):
 async def root():
     return HTMLResponse("<h2>Welcome! Please use the Gradio UI above.</h2>")
 
-@app.get("/docs")
+@app.get("/docs", include_in_schema=False)
 async def redirect_to_docs():
-    base_url = app.url_path_for('root').replace('/docs', '')
-    return RedirectResponse(url=f"{base_url}:8000/docs")
+    return RedirectResponse(url="/docs/")
 
 @app.post("/agent/query")
 async def query_agent(request: QueryRequest):

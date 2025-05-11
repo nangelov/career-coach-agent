@@ -17,4 +17,8 @@ COPY --chown=user requirements.txt requirements.txt
 RUN pip install --no-cache-dir --upgrade -r requirements.txt
 
 COPY --chown=user . /app
+
+# Expose Gradio port (used by Hugging Face Spaces)
+EXPOSE 7860
+
 CMD ["python", "main.py"]

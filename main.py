@@ -1,36 +1,24 @@
-import threading
-import time
 import uvicorn
 from app import app, agent
 from UI import AgentUI
 
 def main():
     """
-    Run both FastAPI and Gradio UI together
+    Run FastAPI and Gradio UI on the same port
     """
     # Configuration
-    api_port = 8000
-    ui_port = 7860
+    port = 7860
     
-    # Start FastAPI in a background thread
-    def run_fastapi():
-        uvicorn.run(app, host="0.0.0.0", port=api_port)
-    
-    api_thread = threading.Thread(target=run_fastapi)
-    api_thread.daemon = True
-    api_thread.start()
-    
-    # Give FastAPI time to start
-    print(f"Starting FastAPI server on port {api_port}...")
-    time.sleep(1)
-    
-    # Start Gradio UI in the main thread
-    print(f"Starting Gradio UI on port {ui_port}...")
+    # Create and mount Gradio app
     gradio_ui = AgentUI(
         agent=agent,
-        api_url=f"http://localhost:{api_port}"
+        api_url=f"http://localhost:{port}"
     )
-    gradio_ui.launch(server_port=ui_port)
+    app.mount("/", gradio_ui.get_gradio_app())
+    
+    # Start the combined app
+    print(f"Starting combined server on port {port}...")
+    uvicorn.run(app, host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
     main() 

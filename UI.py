@@ -1,7 +1,5 @@
-import mimetypes
 import os
 import re
-import shutil
 from typing import Optional, List, Dict, Any, Callable
 
 from smolagents.agent_types import AgentAudio, AgentImage, AgentText, handle_agent_output_types
@@ -208,8 +206,8 @@ class AgentUI:
         self.chat_history = []
         return "Started new conversation"
     
-    def launch(self, server_name: str = "0.0.0.0", server_port: int = 7860, **kwargs):
-        """Launch the Gradio interface"""
+    def get_gradio_app(self):
+        """Get the Gradio app for mounting in FastAPI"""
         api_port = int(self.api_url.split(":")[-1])
         
         with gr.Blocks(css="""
@@ -265,12 +263,16 @@ class AgentUI:
                 outputs=[chatbot, menu_output]
             )
             docs_btn.click(
-                fn=lambda: f"<script>window.open('{self.api_url.split(':')[0]}:8000/docs', '_blank')</script>",
+                fn=lambda: f"<script>window.open('/docs', '_blank')</script>",
                 inputs=[],
                 outputs=[menu_output]
             )
         
-        # Launch the interface
+        return interface
+
+    def launch(self, server_name: str = "0.0.0.0", server_port: int = 7860, **kwargs):
+        """Launch the Gradio interface standalone (for development)"""
+        interface = self.get_gradio_app()
         interface.launch(server_name=server_name, server_port=server_port, **kwargs)
 
 __all__ = ["stream_to_gradio", "AgentUI"]
