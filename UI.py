@@ -265,10 +265,10 @@ class AgentUI:
                 outputs=[chatbot, menu_output]
             )
             docs_btn.click(
-                None,
-                None,
-                None,
-                _js=f"window.open('http://localhost:{api_port}/docs', '_blank')"
+                fn=lambda: None,
+                inputs=[],
+                outputs=[],
+                _js="() => window.open('http://localhost:' + window.location.port.replace('7860', '8000') + '/docs', '_blank')"
             )
         
         # Launch the interface
