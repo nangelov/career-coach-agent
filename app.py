@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, HTMLResponse
 import requests
 
 # Initialize FastAPI app
@@ -102,13 +102,11 @@ class QueryRequest(BaseModel):
 # API Routes
 @app.get("/")
 async def root():
-    """Redirect to the Gradio UI"""
-    return RedirectResponse(url="http://localhost:7860")
+    return HTMLResponse("<h2>Welcome! Please use the Gradio UI above.</h2>")
 
 @app.get("/docs")
 async def redirect_to_docs():
-    """Redirect to the Gradio UI"""
-    return RedirectResponse(url="http://localhost:8000/docs")
+    return HTMLResponse("<h2>API docs are only available locally on port 8000.</h2>")
 
 @app.post("/agent/query")
 async def query_agent(request: QueryRequest):
