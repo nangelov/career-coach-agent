@@ -6,7 +6,7 @@ colorTo: indigo
 sdk: docker
 app_port: 7860
 python_version: 3.12.3
-short_description: "AI-powered career coaching assistant with FastAPI, Gradio, LangChain, and SmolaGents."
+short_description: "AI career coaching assistant with FastAPI, Gradio, LangChain, and SmolaGents."
 tags:
   - career
   - ai
