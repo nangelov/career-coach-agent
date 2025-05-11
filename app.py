@@ -106,7 +106,8 @@ async def root():
 
 @app.get("/docs")
 async def redirect_to_docs():
-    return RedirectResponse(url=f"{app.url_path_for('root')}:8000/docs")
+    base_url = app.url_path_for('root').replace('/docs', '')
+    return RedirectResponse(url=f"{base_url}:8000/docs")
 
 @app.post("/agent/query")
 async def query_agent(request: QueryRequest):

@@ -265,7 +265,7 @@ class AgentUI:
                 outputs=[chatbot, menu_output]
             )
             docs_btn.click(
-                fn=lambda: requests.get(f"{self.api_url.split(':')[0]}:8000/docs", allow_redirects=True).text,
+                fn=lambda: f"<script>window.open('{self.api_url.split(':')[0]}:8000/docs', '_blank')</script>",
                 inputs=[],
                 outputs=[menu_output]
             )
