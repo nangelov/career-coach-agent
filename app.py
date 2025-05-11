@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 import requests
 
 # Initialize FastAPI app
@@ -106,7 +106,7 @@ async def root():
 
 @app.get("/docs")
 async def redirect_to_docs():
-    return HTMLResponse("<h2>API docs are only available locally on port 8000.</h2>")
+    return RedirectResponse(url=f"{app.url_path_for('root')}:8000/docs")
 
 @app.post("/agent/query")
 async def query_agent(request: QueryRequest):

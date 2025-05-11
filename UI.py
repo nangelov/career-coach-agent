@@ -265,18 +265,12 @@ class AgentUI:
                 outputs=[chatbot, menu_output]
             )
             docs_btn.click(
-                fn=lambda: None,
+                fn=lambda: requests.get(f"{self.api_url.split(':')[0]}:8000/docs", allow_redirects=True).text,
                 inputs=[],
-                outputs=[],
-                _js="() => window.open('http://localhost:' + window.location.port.replace('7860', '8000') + '/docs', '_blank')"
+                outputs=[menu_output]
             )
         
         # Launch the interface
         interface.launch(server_name=server_name, server_port=server_port, **kwargs)
-
-# For standalone use
-if __name__ == "__main__":
-    ui = AgentUI()
-    ui.launch()
 
 __all__ = ["stream_to_gradio", "AgentUI"]
