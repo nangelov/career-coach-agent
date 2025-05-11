@@ -231,12 +231,12 @@ class AgentUI:
             with gr.Row(elem_id="main-container"):
                 # Left menu strip (1/4 width)
                 with gr.Column(scale=1, elem_id="menu-column"):
-                    gr.Markdown(f"# Menu\n\nClick [here](http://localhost:{api_port}/docs) to view API documentation.")
+                    gr.Markdown("# Menu")
                     with gr.Group(elem_classes="button-container"):
                         docs_btn = gr.HTML(f"""
-                            <button onclick="window.open('http://localhost:{api_port}/docs', '_blank')" 
-                                    style="width: 100%; padding: 10px; background-color: #f0f0f0; 
-                                           border: none; border-radius: 4px; cursor: pointer;">
+                            <button onclick=\"window.open('http://localhost:{api_port}/docs', '_blank')\" 
+                                    style=\"width: 100%; padding: 10px; background-color: #f0f0f0; 
+                                           border: none; border-radius: 4px; cursor: pointer;\">
                                 API Documentation
                             </button>
                         """)
@@ -260,9 +260,9 @@ class AgentUI:
             msg.submit(self.query_agent, [msg, chatbot], [msg, chatbot])
             clear.click(lambda: ([], None), outputs=[chatbot, menu_output])
             new_chat_btn.click(
-                fn=self.reset_conversation,
+                fn=lambda: ([], self.reset_conversation()),
                 inputs=[],
-                outputs=[menu_output]
+                outputs=[chatbot, menu_output]
             )
             docs_btn.click(
                 lambda: gr.update(value=f"<script>window.open('http://localhost:{api_port}/docs', '_blank');</script>Opening documentation..."), 
