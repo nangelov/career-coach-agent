@@ -4,22 +4,19 @@ from langchain.agents import AgentExecutor, create_react_agent
 from langchain_core.prompts import PromptTemplate
 
 from tools.visit_webpage import visit_webpage
-from tools.final_answer import final_answer
+from tools.time_tools import get_current_time
 
-import gradio as gr
-import datetime 
-import pytz
 import os
 import yaml
-import json
 import uuid
-from typing import Optional, Type, Dict, Any, List
+from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, RedirectResponse
-import requests
+import gradio as gr
+
+from Gradio_UI import GradioUI
 
 # Initialize FastAPI app
 app = FastAPI(title="AI Assistant", description="AI Assistant with LangChain and Gradio")
@@ -48,30 +45,22 @@ llm = HuggingFaceEndpoint(
     do_sample=True,
     return_full_text=False,
     model_kwargs={
-        "stop": ["Human:", "Assistant:", "Observation:"]  # Reduced to 3 stop sequences
+        "stop": ["Human:", "Assistant:", "Observation:"]
     }
 )
-
-# Define tools
-@tool
-def get_current_time(timezone: str = "UTC") -> str:
-    """Get the current time in the specified timezone."""
-    try:
-        tz = pytz.timezone(timezone)
-        current_time = datetime.datetime.now(tz)
-        return current_time.strftime("%Y-%m-%d %H:%M:%S %Z")
-    except Exception as e:
-        return f"Error: {str(e)}"
 
 # Load system prompt and template
 with open("prompts.yaml", 'r') as stream:
     prompt_templates = yaml.safe_load(stream)
 
-# Create the ReAct prompt template
-prompt = PromptTemplate.from_template(prompt_templates["template"])
+# Create the ReAct prompt template with system prompt as a partial variable
+prompt = PromptTemplate.from_template(
+    template=prompt_templates["template"],
+    partial_variables={"system_prompt": prompt_templates["system_prompt"]}
+)
 
 # Create the agent
-tools = [get_current_time]  
+tools = [get_current_time, visit_webpage]  
 agent = create_react_agent(
     llm=llm,
     tools=tools,
@@ -91,26 +80,13 @@ class QueryRequest(BaseModel):
     context: Dict[str, Any] = Field(default_factory=dict)
 
 # API Routes
-@app.get("/")
-async def root():
-    return HTMLResponse("<h2>Welcome! Please use the Gradio UI above.</h2>")
-
-@app.get("/docs", include_in_schema=False)
-async def redirect_to_docs():
-    return RedirectResponse(url="/docs/")
-
 @app.post("/agent/query")
 async def query_agent(request: QueryRequest):
     try:
-        # Generate thread_id if not provided
         thread_id = request.thread_id or str(uuid.uuid4())
-        
-        # Execute the agent
         response = agent_executor.invoke({
-            "input": request.query,
-            "system_prompt": prompt_templates["system_prompt"]
+            "input": request.query
         })
-        
         return {
             "status": "success",
             "thread_id": thread_id,
@@ -119,3 +95,7 @@ async def query_agent(request: QueryRequest):
     except Exception as e:
         print(e)
         raise HTTPException(status_code=500, detail=str(e))
+
+# Create and mount the Gradio interface
+gradio_ui = GradioUI(agent=agent_executor)
+app = gr.mount_gradio_app(app, gradio_ui.create_interface(), path="")

@@ -17,109 +17,118 @@ tags:
   - coaching
 ---
 
-# Career Coach Agent 🤖
+# Career Coach AI Assistant
 
-An AI-powered career coaching assistant built with FastAPI, Gradio UI, LangChain, and SmolaGents. This application provides an interactive interface for career guidance through both a REST API and a web-based UI.
+A FastAPI and Gradio-based AI assistant that helps users with career development, powered by Mixtral-8x7B-Instruct and LangChain.
 
-## 🚀 Features
+## Features
 
-- **Unified Interface**: Combined FastAPI and Gradio UI on a single port (7860)
-- **AI-Powered Responses**: Utilizing Mixtral-8x7B-Instruct-v0.1 model
-- **Interactive Chat Interface**: Real-time conversation with the AI agent
-- **Multi-tool Integration**: Including webpage visits and time zone conversions
-- **ReAct Agent Pattern**: Step-by-step reasoning and tool usage
+- Interactive chat interface built with Gradio
+- Career-focused AI assistant using Mixtral-8x7B-Instruct model
+- FastAPI backend with RESTful endpoints
+- LangChain integration for advanced prompt handling and tool usage
+- System prompts and templates managed through YAML configuration
 
-## 🛠️ Technical Stack
+## Project Structure
 
-- **Backend Framework**: FastAPI (mounted with Gradio)
-- **UI Framework**: Gradio with SmolaGents
-- **AI Framework**: 
-  - LangChain ReAct Agent (Backend) - For structured reasoning and tool usage
-  - SmolaGents (UI) - For enhanced agent interactions and chat interface
-- **ML Models**: Hugging Face (Mixtral-8x7B-Instruct-v0.1)
-- **Additional Key Libraries**:
-  - `uvicorn`: ASGI server
-  - `markdownify`: Web content processing
-  - `langchain`: AI framework and tools
-  - `smolagents`: UI agent framework
+```
+career-coach-agent/
+├── app.py              # Main FastAPI application with agent setup
+├── Gradio_UI.py        # Gradio interface implementation
+├── prompts.yaml        # System prompts and templates
+├── main.py            # Application entry point
+└── README.md          # This file
+```
 
-## 📋 Prerequisites
+## Requirements
 
-- Python 3.8+
-- Hugging Face account (for model access)
+- Python 3.12+
+- FastAPI
+- Gradio
+- LangChain
+- Hugging Face Hub API token
 
-## ⚙️ Installation
+## Environment Variables
+
+Required environment variables:
+```bash
+HUGGINGFACEHUB_API_TOKEN=your_huggingface_token
+```
+
+## Installation
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/nangelov/career-coach-agent.git
+git clone <repository-url>
 cd career-coach-agent
 ```
 
-2. Create and activate a virtual environment:
+2. Install dependencies:
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install fastapi gradio langchain langchain_huggingface pydantic python-multipart uvicorn
 ```
 
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+3. Set up your Hugging Face API token as an environment variable.
 
-4. (Required) Set up Hugging Face token:
-```bash
-export HUGGINGFACEHUB_API_TOKEN=your_token_here
-```
+## Running the Application
 
-5. Run the application:
+Start the application:
 ```bash
-python main.py
+uvicorn main:app --reload
 ```
 
 The application will be available at:
-- Main UI: http://localhost:7860
-- API Documentation: http://localhost:7860/docs/
+- Web Interface: http://localhost:8000
+- API Documentation: http://localhost:8000/docs
+- Alternative API Documentation: http://localhost:8000/redoc
 
-## 🌐 Hugging Face Spaces Deployment
+## API Endpoints
 
-This application is specifically designed to work with Hugging Face Spaces:
-- Uses a single port (7860) as required by Spaces
-- Combines FastAPI and Gradio on the same port
-- API documentation is accessible at `/docs/` on the same port
-- All functionality works within Spaces' constraints
+### `/agent/query` (POST)
+Submit queries to the AI assistant.
 
-## 📚 API Documentation
+Request body:
+```json
+{
+    "query": "string",
+    "thread_id": "string (optional)",
+    "context": {} (optional)
+}
+```
 
-The API documentation is available at `/docs/` on the same port as the main application (7860). This unified setup ensures compatibility with Hugging Face Spaces while maintaining all functionality.
+## Features
 
-## 🔑 Key Endpoints
+### AI Assistant
+- Career planning and goal setting
+- Professional development advice
+- Job search strategies
+- Skill development recommendations
+- Industry insights and trends
 
-All endpoints are available on port 7860:
-- `/`: Main Gradio UI
-- `/docs/`: API Documentation
-- `/agent/query`: Send queries to the AI agent
+### Technical Features
+- Real-time chat interface
+- Timezone-aware responses
+- Session management
+- Error handling
+- CORS support
+- Interactive documentation
 
-## 🔍 How It Works
+## Architecture
 
-The application uses a ReAct (Reasoning and Acting) agent pattern, which follows this structure:
-1. **Thought**: The agent reasons about what to do
-2. **Action**: The agent decides which tool to use
-3. **Observation**: The tool returns a result
-4. **Thought**: The agent reasons about the observation
-5. **Action**: The agent either uses another tool or provides a final answer
+- **FastAPI**: Handles HTTP requests and API endpoints
+- **Gradio**: Provides the web interface
+- **LangChain**: Manages the AI agent and tools
+- **Mixtral-8x7B-Instruct**: Powers the AI responses
+- **YAML Configuration**: Manages system prompts and templates
 
-## ⚠️ Important Notes
+## Contributing
 
-- The application requires active internet connection for AI model access
-- Hugging Face API token is required for model access
-- All services run on port 7860 to comply with Hugging Face Spaces requirements
-- The UI and API are served from the same port for better integration
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
-## 🤝 Contributing
+## License
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+[Add your license here]
