@@ -7,7 +7,7 @@ WORKDIR /app
 
 # Install system packages as root
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends wget && \
+    apt-get install -y --no-install-recommends wget git && \
     rm -rf /var/lib/apt/lists/*
 
 # Switch to non-root user for the rest of the build

@@ -227,19 +227,19 @@ class AgentUI:
             .button-container {
                 padding: 10px;
             }
+            .gr-button.green-btn {
+                background-color: #22c55e !important;
+                color: white !important;
+                border: none !important;
+                font-weight: bold;
+            }
         """) as interface:
             with gr.Row(elem_id="main-container"):
                 # Left menu strip (1/4 width)
                 with gr.Column(scale=1, elem_id="menu-column"):
                     gr.Markdown("# Menu")
                     with gr.Group(elem_classes="button-container"):
-                        docs_btn = gr.HTML(f"""
-                            <button onclick=\"window.open('http://localhost:{api_port}/docs', '_blank')\" 
-                                    style=\"width: 100%; padding: 10px; background-color: #f0f0f0; 
-                                           border: none; border-radius: 4px; cursor: pointer;\">
-                                API Documentation
-                            </button>
-                        """)
+                        docs_btn = gr.Button("API Documentation", variant="secondary", elem_classes=["green-btn"])
                         new_chat_btn = gr.Button("New Chat", variant="primary")
                     
                     # Output area for button actions
@@ -265,8 +265,10 @@ class AgentUI:
                 outputs=[chatbot, menu_output]
             )
             docs_btn.click(
-                lambda: gr.update(value=f"<script>window.open('http://localhost:{api_port}/docs', '_blank');</script>Opening documentation..."), 
-                outputs=menu_output
+                None,
+                None,
+                None,
+                _js=f"window.open('http://localhost:{api_port}/docs', '_blank')"
             )
         
         # Launch the interface
