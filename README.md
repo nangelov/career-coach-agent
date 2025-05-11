@@ -1,3 +1,22 @@
+---
+title: Career Coach Agent
+emoji: 🧑‍💼
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+python_version: 3.12.3
+short_description: "AI-powered career coaching assistant with FastAPI, Gradio, LangChain, and SmolaGents."
+tags:
+  - career
+  - ai
+  - langchain
+  - gradio
+  - smolagents
+  - fastapi
+  - coaching
+---
+
 # Career Coach Agent 🤖
 
 An AI-powered career coaching assistant built with FastAPI, Gradio UI, LangChain, and SmolaGents. This application provides an interactive interface for career guidance through both a REST API and a web-based UI.
