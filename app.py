@@ -16,9 +16,8 @@ from pydantic import BaseModel, Field
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import gradio as gr
-
-from Gradio_UI import GradioUI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 # Initialize FastAPI app
 app = FastAPI(title="AI Assistant", description="AI Assistant with LangChain and Gradio")
@@ -35,21 +34,18 @@ app.add_middleware(
 if not os.getenv('HUGGINGFACEHUB_API_TOKEN'):
     raise ValueError("Please set HUGGINGFACEHUB_API_TOKEN environment variable")
 
-# Initialize the HuggingFace pipeline
+# Initialize the HuggingFace pipeline with more strict parameters
 llm = HuggingFaceEndpoint(
     repo_id="meta-llama/Llama-3.3-70B-Instruct",
     huggingfacehub_api_token=os.getenv('HUGGINGFACEHUB_API_TOKEN'),
     provider="hf-inference",
     task="text-generation",
-    temperature=0.1,
-    max_new_tokens=1024,
+    temperature=0.1,  # Keep low for more deterministic responses
+    max_new_tokens=2048,  # Increase token limit
     top_p=0.95,
-    repetition_penalty=1.1,
+    repetition_penalty=1.2,  # Slightly increase to prevent repetition
     do_sample=True,
     return_full_text=False,
-    model_kwargs={
-        "stop": ["Human:", "Assistant:", "Observation:"]
-    }
 )
 
 # Load system prompt and template
@@ -62,29 +58,28 @@ prompt = PromptTemplate.from_template(
     partial_variables={"system_prompt": prompt_templates["system_prompt"]}
 )
 
-# Create the agent with stop sequences
 tools = [visit_webpage, wikipedia_search, run_python_code, internet_search]
+# Create the agent with more explicit instructions
 agent = create_react_agent(
     llm=llm,
     tools=tools,
     prompt=prompt
 )
 
-# Set up memory and agent executor
-memory = ConversationBufferMemory(return_messages=True)
+# Set up agent executor with better error handling
 agent_executor = AgentExecutor(
     agent=agent,
     tools=tools,
-    memory=memory,
     verbose=True,
     handle_parsing_errors=True,
-    # Add stop sequences here for the executor
-    stop=["Human:", "Assistant:", "Observation:"]
+    max_iterations=5,  # Increased to give more chances
+    return_intermediate_steps=True,  # Return thought process
+    early_stopping_method="force",  # Force stop after max iterations
+    stop=["Human:", "Assistant:"]
 )
-
 # API Models
 class QueryRequest(BaseModel):
-    query: str
+    query: str  # This matches the "query" field sent by Gradio
     thread_id: Optional[str] = None
     context: Dict[str, Any] = Field(default_factory=dict)
 
@@ -94,19 +89,54 @@ async def query_agent(request: QueryRequest):
     print("Received query:", request.query)
     try:
         thread_id = request.thread_id or str(uuid.uuid4())
+
+        # Preprocess the query to help guide the agent
+        query = request.query
+
+        # Check if this is likely a factual question
+        factual_indicators = ["who is", "what is", "when did", "where is", "why did", "how does"]
+        is_likely_factual = any(query.lower().startswith(indicator) for indicator in factual_indicators)
+
+        # Add a hint for factual questions
+        if is_likely_factual:
+            query = f"{query} (Please use your tools to find accurate information about this.)"
+
         response = agent_executor.invoke({
-            "input": request.query
+            "input": query
         })
+
+        print("full_thought_process: ", response.get("intermediate_steps", "No thought process generated"))
+
+        # Clean up the response if needed
+        output = response.get("output", "No response generated")
+        if "<|eot_id|>" in output:
+            output = output.split("<|eot_id|>")[0]
+
         return {
             "status": "success",
             "thread_id": thread_id,
-            "response": response.get("output", "No response generated"),
-            "full_thought_process": response.get("full_thought_process", "No thought process generated")
+            "response": output,
+            "full_thought_process": str(response.get("intermediate_steps", "No thought process generated"))
         }
     except Exception as e:
         print(e)
         raise HTTPException(status_code=500, detail=str(e))
 
-# Create and mount the Gradio interface
-gradio_ui = GradioUI(agent=agent_executor)
-app = gr.mount_gradio_app(app, gradio_ui.create_interface(), path="")
+# Check if the frontend build directory exists
+if os.path.exists("frontend/build"):
+    # Serve static files from React build
+    app.mount("/static", StaticFiles(directory="frontend/build/static"), name="static")
+
+    # Serve other static files from the build directory
+    if os.path.exists("frontend/build/assets"):
+        app.mount("/assets", StaticFiles(directory="frontend/build/assets"), name="assets")
+
+    # Serve React app for all other routes that don't match API endpoints
+    @app.get("/{full_path:path}")
+    async def serve_react_app(full_path: str):
+        # Skip API routes
+        if full_path.startswith("agent/"):
+            raise HTTPException(status_code=404, detail="Not found")
+
+        # For all other routes, serve the React app
+        return FileResponse("frontend/build/index.html")

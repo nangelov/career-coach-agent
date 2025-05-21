@@ -1,9 +1,11 @@
-# docker-compose.yml
-version: '3'
 services:
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "7860:7860"
-    env_file:
-      - .env
+    environment:
+      - HUGGINGFACEHUB_API_TOKEN=${HUGGINGFACEHUB_API_TOKEN}
+    # Remove the volumes section that's causing issues
+    restart: unless-stopped

@@ -1,24 +1,42 @@
 FROM python:3.12-slim
 
-RUN useradd -m -u 1000 user
-ENV PATH="/home/user/.local/bin:$PATH"
-
 WORKDIR /app
 
 # Install system packages as root
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends wget git && \
+    apt-get install -y --no-install-recommends wget git curl && \
+    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-# Switch to non-root user for the rest of the build
+# Create logs directory as root and set permissions
+RUN mkdir -p logs
+
+# Create a non-root user and set permissions
+RUN useradd -m -u 1000 user && \
+    chown -R user:user /app
+
+# Switch to non-root user
 USER user
+ENV PATH="/home/user/.local/bin:$PATH"
 
-COPY --chown=user requirements.txt requirements.txt
-RUN pip install --upgrade -r requirements.txt
+# Copy Python requirements and install
+COPY --chown=user requirements.txt .
+RUN pip install --user --no-cache-dir -r requirements.txt
 
-COPY --chown=user . /app
+# Copy the entire project
+COPY --chown=user . .
 
-# Expose Gradio port (used by Hugging Face Spaces)
+# Set up React frontend
+WORKDIR /app/frontend
+
+# Install dependencies and build
+RUN npm install && npm run build
+
+# Back to main app directory
+WORKDIR /app
+
+# Expose port (used by FastAPI)
 EXPOSE 7860
 
 CMD ["python", "main.py"]
