@@ -4,7 +4,6 @@ from langchain_core.prompts import PromptTemplate
 from langchain.memory import ConversationBufferMemory
 
 from tools.visit_webpage import visit_webpage
-from tools.time_tools import get_current_time
 from tools.wikipedia_tool import wikipedia_search
 from tools.python_repl import run_python_code
 from tools.internet_search import internet_search
@@ -63,7 +62,7 @@ prompt = PromptTemplate.from_template(
 )
 
 # Create the agent
-tools = [get_current_time, visit_webpage, wikipedia_search, run_python_code, internet_search]  
+tools = [visit_webpage, wikipedia_search, run_python_code, internet_search]  
 agent = create_react_agent(
     llm=llm,
     tools=tools,
