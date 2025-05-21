@@ -1,4 +1,4 @@
-from langchain_huggingface import HuggingFacePipeline
+from langchain_huggingface import HuggingFaceEndpoint
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain_core.prompts import PromptTemplate
 from langchain.memory import ConversationBufferMemory
@@ -19,7 +19,6 @@ from fastapi.middleware.cors import CORSMiddleware
 import gradio as gr
 
 from Gradio_UI import GradioUI
-from huggingface_hub import login
 
 # Initialize FastAPI app
 app = FastAPI(title="AI Assistant", description="AI Assistant with LangChain and Gradio")
@@ -35,36 +34,23 @@ app.add_middleware(
 # Token authentication for Hugging Face
 if not os.getenv('HUGGINGFACEHUB_API_TOKEN'):
     raise ValueError("Please set HUGGINGFACEHUB_API_TOKEN environment variable")
-login(token=os.getenv('HUGGINGFACEHUB_API_TOKEN'))
-
-llm = HuggingFacePipeline.from_model_id(
-    model_id="Qwen/Qwen1.5-7B-Chat",
-    task="text-generation",
-    pipeline_kwargs={
-        "temperature": 0.0,
-        "max_new_tokens": 1024,
-        "top_p": 0.95,
-        "repetition_penalty": 1.1,
-        "do_sample": True,
-        "return_full_text": False,
-    }
-)
 
 # Initialize the HuggingFace pipeline
-# llm = HuggingFaceEndpoint(
-#     endpoint_url="https://api-inference.huggingface.co/models/Qwen/Qwen1.5-7B-Chat",
-#     huggingfacehub_api_token=os.getenv('HUGGINGFACEHUB_API_TOKEN'),
-#     task="text-generation",
-#     temperature=0.1,
-#     max_new_tokens=1024,
-#     top_p=0.95,
-#     repetition_penalty=1.1,
-#     do_sample=True,
-#     return_full_text=False,
-#     model_kwargs={
-#         "stop": ["Human:", "Assistant:", "Observation:"]
-#     }
-# )
+llm = HuggingFaceEndpoint(
+    repo_id="meta-llama/Llama-3.3-70B-Instruct",
+    huggingfacehub_api_token=os.getenv('HUGGINGFACEHUB_API_TOKEN'),
+    provider="hf-inference",
+    task="text-generation",
+    temperature=0.1,
+    max_new_tokens=1024,
+    top_p=0.95,
+    repetition_penalty=1.1,
+    do_sample=True,
+    return_full_text=False,
+    model_kwargs={
+        "stop": ["Human:", "Assistant:", "Observation:"]
+    }
+)
 
 # Load system prompt and template
 with open("prompts.yaml", 'r') as stream:
