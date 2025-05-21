@@ -40,7 +40,7 @@ login(token=os.getenv('HUGGINGFACEHUB_API_TOKEN'))
 
 # Initialize the HuggingFace pipeline
 llm = HuggingFacePipeline.from_model_id(
-    model_id="meta-llama/Meta-Llama-3-70B-Instruct",
+    model_id="meta-llama/Meta-Llama-3-8B-Instruct",
     task="text-generation",
     pipeline_kwargs={
         "temperature": 0.0,
