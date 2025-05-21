@@ -1,4 +1,4 @@
-from langchain_huggingface import HuggingFaceEndpoint
+from langchain_huggingface import HuggingFacePipeline
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain_core.prompts import PromptTemplate
 from langchain.memory import ConversationBufferMemory
@@ -18,6 +18,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import gradio as gr
 
+from huggingface_hub import login
+
 from Gradio_UI import GradioUI
 
 # Initialize FastAPI app
@@ -34,20 +36,19 @@ app.add_middleware(
 # Token authentication for Hugging Face
 if not os.getenv('HUGGINGFACEHUB_API_TOKEN'):
     raise ValueError("Please set HUGGINGFACEHUB_API_TOKEN environment variable")
+login(token=os.getenv('HUGGINGFACEHUB_API_TOKEN'))
 
-# Initialize the HuggingFace endpoint
-llm = HuggingFaceEndpoint(
-    endpoint_url="https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3-70B-Instruct",
-    huggingfacehub_api_token=os.getenv('HUGGINGFACEHUB_API_TOKEN'),
+# Initialize the HuggingFace pipeline
+llm = HuggingFacePipeline.from_model_id(
+    model_id="meta-llama/Meta-Llama-3-70B-Instruct",
     task="text-generation",
-    temperature=0.1,
-    max_new_tokens=1024,
-    top_p=0.95,
-    repetition_penalty=1.1,
-    do_sample=True,
-    return_full_text=False,
-    model_kwargs={
-        "stop": ["Human:", "Assistant:", "Observation:"]
+    pipeline_kwargs={
+        "temperature": 0.0,
+        "max_new_tokens": 1024,
+        "top_p": 0.95,
+        "repetition_penalty": 1.1,
+        "do_sample": True,
+        "return_full_text": False,
     }
 )
 
@@ -61,21 +62,24 @@ prompt = PromptTemplate.from_template(
     partial_variables={"system_prompt": prompt_templates["system_prompt"]}
 )
 
-# Create the agent
-tools = [visit_webpage, wikipedia_search, run_python_code, internet_search]  
+# Create the agent with stop sequences
+tools = [visit_webpage, wikipedia_search, run_python_code, internet_search]
 agent = create_react_agent(
     llm=llm,
     tools=tools,
     prompt=prompt
 )
 
+# Set up memory and agent executor
 memory = ConversationBufferMemory(return_messages=True)
 agent_executor = AgentExecutor(
     agent=agent,
     tools=tools,
     memory=memory,
     verbose=True,
-    handle_parsing_errors=True
+    handle_parsing_errors=True,
+    # Add stop sequences here for the executor
+    stop=["Human:", "Assistant:", "Observation:"]
 )
 
 # API Models

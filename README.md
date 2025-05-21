@@ -12,7 +12,6 @@ tags:
   - ai
   - langchain
   - gradio
-  - smolagents
   - fastapi
   - coaching
 ---
