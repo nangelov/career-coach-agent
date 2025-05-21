@@ -4,7 +4,8 @@ import pytz
 
 @tool
 def get_current_time(timezone: str = "UTC") -> str:
-    """Get the current time in the specified timezone."""
+    """Get the current time in the specified timezone.
+    """
     try:
         tz = pytz.timezone(timezone)
         current_time = datetime.datetime.now(tz)

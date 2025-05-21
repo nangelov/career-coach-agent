@@ -1,10 +1,13 @@
-from langchain_core.tools import tool
 from langchain_huggingface import HuggingFaceEndpoint
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain_core.prompts import PromptTemplate
+from langchain.memory import ConversationBufferMemory
 
 from tools.visit_webpage import visit_webpage
 from tools.time_tools import get_current_time
+from tools.wikipedia_tool import wikipedia_search
+from tools.python_repl import run_python_code
+from tools.internet_search import internet_search
 
 import os
 import yaml
@@ -35,10 +38,10 @@ if not os.getenv('HUGGINGFACEHUB_API_TOKEN'):
 
 # Initialize the HuggingFace endpoint
 llm = HuggingFaceEndpoint(
-    endpoint_url="https://api-inference.huggingface.co/models/mistralai/Mixtral-8x7B-Instruct-v0.1",
+    endpoint_url="https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3-70B-Instruct",
     huggingfacehub_api_token=os.getenv('HUGGINGFACEHUB_API_TOKEN'),
     task="text-generation",
-    temperature=0.7,
+    temperature=0.1,
     max_new_tokens=1024,
     top_p=0.95,
     repetition_penalty=1.1,
@@ -60,15 +63,18 @@ prompt = PromptTemplate.from_template(
 )
 
 # Create the agent
-tools = [get_current_time, visit_webpage]  
+tools = [get_current_time, visit_webpage, wikipedia_search, run_python_code, internet_search]  
 agent = create_react_agent(
     llm=llm,
     tools=tools,
     prompt=prompt
 )
+
+memory = ConversationBufferMemory(return_messages=True)
 agent_executor = AgentExecutor(
     agent=agent,
     tools=tools,
+    memory=memory,
     verbose=True,
     handle_parsing_errors=True
 )
@@ -82,6 +88,7 @@ class QueryRequest(BaseModel):
 # API Routes
 @app.post("/agent/query")
 async def query_agent(request: QueryRequest):
+    print("Received query:", request.query)
     try:
         thread_id = request.thread_id or str(uuid.uuid4())
         response = agent_executor.invoke({
@@ -90,7 +97,8 @@ async def query_agent(request: QueryRequest):
         return {
             "status": "success",
             "thread_id": thread_id,
-            "response": response["output"] if "output" in response else "No response generated"
+            "response": response.get("output", "No response generated"),
+            "full_thought_process": response.get("full_thought_process", "No thought process generated")
         }
     except Exception as e:
         print(e)

@@ -60,18 +60,25 @@ class GradioUI:
                 return None, "Started new conversation"
 
             def user_input(message, history):
+                # Show user message immediately
+                history = history + [{"role": "user", "content": message}]
+                yield "", history  # This updates the UI right away
+
                 try:
                     response = self.agent.invoke({
                         "input": message
                     })
-                    # Update to new message format
-                    history.append({"role": "user", "content": message})
-                    history.append({"role": "assistant", "content": response["output"]})
-                    return "", history
+                    final_answer = response.get("output", "No response generated")
+                    thought_process = response.get("full_thought_process") or response.get("intermediate_steps") or ""
+                    if thought_process and thought_process != final_answer:
+                        assistant_message = f"**Final Answer:** {final_answer}\n\n**Thought Process:**\n{thought_process}"
+                    else:
+                        assistant_message = final_answer
+                    history = history + [{"role": "assistant", "content": assistant_message}]
+                    yield "", history  # This updates the UI with the assistant's response
                 except Exception as e:
-                    history.append({"role": "user", "content": message})
-                    history.append({"role": "assistant", "content": f"Error: {str(e)}"})
-                    return "", history
+                    history = history + [{"role": "assistant", "content": f"Error: {str(e)}"}]
+                    yield "", history
 
             # Set up event handlers
             msg.submit(user_input, [msg, chatbot], [msg, chatbot])

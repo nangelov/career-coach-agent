@@ -6,13 +6,7 @@ from requests.exceptions import RequestException
 
 @tool
 def visit_webpage(url: str) -> str:
-    """Visits a webpage at the given url and reads its content as a markdown string.
-    
-    Args:
-        url: The url of the webpage to visit.
-        
-    Returns:
-        The webpage content converted to markdown format.
+    """Visits a webpage at the given url and reads its content as a markdown string
     """
     try:
         # Send a GET request to the URL with a 20-second timeout
@@ -38,3 +32,6 @@ def visit_webpage(url: str) -> str:
         return f"Error fetching the webpage: {str(e)}"
     except Exception as e:
         return f"An unexpected error occurred: {str(e)}"
+
+def wikipedia_search(query: str) -> str:
+    """Search Wikipedia for a specific topic and return a summary."""
