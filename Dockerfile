@@ -14,7 +14,7 @@ RUN apt-get update && \
 USER user
 
 COPY --chown=user requirements.txt requirements.txt
-RUN pip install --no-cache-dir --upgrade -r requirements.txt
+RUN pip install --upgrade -r requirements.txt
 
 COPY --chown=user . /app
 

@@ -18,9 +18,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import gradio as gr
 
-from huggingface_hub import login
-
 from Gradio_UI import GradioUI
+from huggingface_hub import login
 
 # Initialize FastAPI app
 app = FastAPI(title="AI Assistant", description="AI Assistant with LangChain and Gradio")
@@ -38,9 +37,8 @@ if not os.getenv('HUGGINGFACEHUB_API_TOKEN'):
     raise ValueError("Please set HUGGINGFACEHUB_API_TOKEN environment variable")
 login(token=os.getenv('HUGGINGFACEHUB_API_TOKEN'))
 
-# Initialize the HuggingFace pipeline
 llm = HuggingFacePipeline.from_model_id(
-    model_id="meta-llama/Meta-Llama-3-8B-Instruct",
+    model_id="Qwen/Qwen1.5-7B-Chat",
     task="text-generation",
     pipeline_kwargs={
         "temperature": 0.0,
@@ -51,6 +49,22 @@ llm = HuggingFacePipeline.from_model_id(
         "return_full_text": False,
     }
 )
+
+# Initialize the HuggingFace pipeline
+# llm = HuggingFaceEndpoint(
+#     endpoint_url="https://api-inference.huggingface.co/models/Qwen/Qwen1.5-7B-Chat",
+#     huggingfacehub_api_token=os.getenv('HUGGINGFACEHUB_API_TOKEN'),
+#     task="text-generation",
+#     temperature=0.1,
+#     max_new_tokens=1024,
+#     top_p=0.95,
+#     repetition_penalty=1.1,
+#     do_sample=True,
+#     return_full_text=False,
+#     model_kwargs={
+#         "stop": ["Human:", "Assistant:", "Observation:"]
+#     }
+# )
 
 # Load system prompt and template
 with open("prompts.yaml", 'r') as stream:
