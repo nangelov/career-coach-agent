@@ -94,9 +94,9 @@ agent_executor = AgentExecutor(
     tools=tools,
     verbose=True,
     handle_parsing_errors=True,
-    max_iterations=3,
+    max_iterations=5,
     return_intermediate_steps=True,
-    early_stopping_method="force",
+    early_stopping_method="generate",
     memory=memory
 )
 
