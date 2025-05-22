@@ -1,7 +1,13 @@
 from langchain_huggingface import HuggingFaceEndpoint
-from langchain.agents import AgentExecutor, create_react_agent
-from langchain_core.prompts import PromptTemplate
+from langchain.agents import AgentExecutor
+from langchain.agents.format_scratchpad import format_log_to_str
+from langchain.agents.output_parsers import ReActSingleInputOutputParser
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.memory import ConversationBufferMemory
+from langchain.tools.render import render_text_description
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langchain.agents import AgentType
+from langchain.agents import initialize_agent
 
 from tools.visit_webpage import visit_webpage
 from tools.wikipedia_tool import wikipedia_search
@@ -11,7 +17,7 @@ from tools.internet_search import internet_search
 import os
 import yaml
 import uuid
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 
 from fastapi import FastAPI, HTTPException
@@ -36,34 +42,53 @@ if not os.getenv('HUGGINGFACEHUB_API_TOKEN'):
 
 # Initialize the HuggingFace pipeline with more strict parameters
 llm = HuggingFaceEndpoint(
-    repo_id="meta-llama/Llama-3.3-70B-Instruct",
+    repo_id="meta-llama/Llama-3.3-70B-Instruct",  # Change to one of the recommended models
     huggingfacehub_api_token=os.getenv('HUGGINGFACEHUB_API_TOKEN'),
     provider="hf-inference",
     task="text-generation",
-    temperature=0.1,  # Keep low for more deterministic responses
-    max_new_tokens=2048,  # Increase token limit
+    temperature=0.2,
+    max_new_tokens=2048,
     top_p=0.95,
-    repetition_penalty=1.2,  # Slightly increase to prevent repetition
+    repetition_penalty=1.2,
     do_sample=True,
-    return_full_text=False,
+    verbose=True,
+    return_full_text=False
 )
 
 # Load system prompt and template
 with open("prompts.yaml", 'r') as stream:
     prompt_templates = yaml.safe_load(stream)
 
-# Create the ReAct prompt template with system prompt as a partial variable
-prompt = PromptTemplate.from_template(
-    template=prompt_templates["template"],
-    partial_variables={"system_prompt": prompt_templates["system_prompt"]}
+# Define tools
+tools = [visit_webpage, wikipedia_search, run_python_code, internet_search]
+
+# Create memory for conversation history
+memory = ConversationBufferMemory(
+    memory_key="chat_history",
+    return_messages=True,
+    output_key="output"  # Specify which key to use for the output
 )
 
-tools = [visit_webpage, wikipedia_search, run_python_code, internet_search]
-# Create the agent with more explicit instructions
-agent = create_react_agent(
-    llm=llm,
-    tools=tools,
-    prompt=prompt
+# Create the prompt template
+prompt = ChatPromptTemplate.from_messages([
+    ("system", prompt_templates["system_prompt"].format(
+        tools=render_text_description(tools),
+        tool_names=", ".join([t.name for t in tools])
+    )),
+    ("human", "Current question: {input}"),
+    ("ai", "Let me help you with that.\n{agent_scratchpad}")
+])
+
+# Define the agent
+chat_model_with_stop = llm.bind(stop=["\nObservation", "\nFinal Answer:", "\nHuman:", "\nAI:"])
+agent = (
+    {
+        "input": lambda x: x["input"],
+        "agent_scratchpad": lambda x: format_log_to_str(x["intermediate_steps"]) if x["intermediate_steps"] else "",
+    }
+    | prompt
+    | chat_model_with_stop
+    | ReActSingleInputOutputParser()
 )
 
 # Set up agent executor with better error handling
@@ -72,45 +97,70 @@ agent_executor = AgentExecutor(
     tools=tools,
     verbose=True,
     handle_parsing_errors=True,
-    max_iterations=5,  # Increased to give more chances
-    return_intermediate_steps=True,  # Return thought process
-    early_stopping_method="force",  # Force stop after max iterations
-    stop=["Human:", "Assistant:"]
+    max_iterations=3,
+    return_intermediate_steps=True,
+    early_stopping_method="force",
+    memory=memory
 )
+
 # API Models
 class QueryRequest(BaseModel):
-    query: str  # This matches the "query" field sent by Gradio
+    query: str
     thread_id: Optional[str] = None
     context: Dict[str, Any] = Field(default_factory=dict)
 
 # API Routes
 @app.post("/agent/query")
 async def query_agent(request: QueryRequest):
+    print("\n" + "="*50)
     print("Received query:", request.query)
+    print("="*50 + "\n")
     try:
         thread_id = request.thread_id or str(uuid.uuid4())
 
-        # Preprocess the query to help guide the agent
-        query = request.query
+        # Create the input with proper message formatting
+        agent_input = {
+            "input": request.query
+        }
 
-        # Check if this is likely a factual question
-        factual_indicators = ["who is", "what is", "when did", "where is", "why did", "how does"]
-        is_likely_factual = any(query.lower().startswith(indicator) for indicator in factual_indicators)
+        print("\nStarting agent execution...")
+        try:
+            response = agent_executor.invoke(agent_input)
+            print("Raw agent response:", response)
+        except Exception as e:
+            print(f"Agent execution error: {str(e)}")
+            # If the agent fails, return a graceful error message
+            return {
+                "status": "error",
+                "thread_id": thread_id,
+                "response": "I apologize, but I'm having trouble processing your request right now. Please try again with a different question.",
+                "full_thought_process": f"Agent execution failed: {str(e)}"
+            }
 
-        # Add a hint for factual questions
-        if is_likely_factual:
-            query = f"{query} (Please use your tools to find accurate information about this.)"
+        # Print detailed thought process
+        print("\n" + "-"*50)
+        print("Agent's Thought Process:")
+        print("-"*50)
+        for step in response.get("intermediate_steps", []):
+            print("\nStep:")
+            print(f"Action: {step[0].tool}")
+            print(f"Action Input: {step[0].tool_input}")
+            print(f"Observation: {step[1]}")
+            print("-"*30)
 
-        response = agent_executor.invoke({
-            "input": query
-        })
-
-        print("full_thought_process: ", response.get("intermediate_steps", "No thought process generated"))
-
-        # Clean up the response if needed
+        print("\nFinal Response:")
+        print("-"*50)
         output = response.get("output", "No response generated")
         if "<|eot_id|>" in output:
             output = output.split("<|eot_id|>")[0]
+        print(output)
+        print("="*50 + "\n")
+
+        # Save the response to memory
+        memory.save_context(
+            {"input": request.query},
+            {"output": output}
+        )
 
         return {
             "status": "success",
@@ -119,7 +169,10 @@ async def query_agent(request: QueryRequest):
             "full_thought_process": str(response.get("intermediate_steps", "No thought process generated"))
         }
     except Exception as e:
-        print(e)
+        print("\nError occurred:")
+        print("-"*50)
+        print(str(e))
+        print("="*50 + "\n")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Check if the frontend build directory exists

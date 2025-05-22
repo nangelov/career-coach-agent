@@ -6,24 +6,23 @@ colorTo: indigo
 sdk: docker
 app_port: 7860
 python_version: 3.12.3
-short_description: "AI career coaching assistant powered by Mixtral-8x7B."
+short_description: "AI career coaching assistant powered by Llama-3.3-70B-Instruct."
 tags:
   - career
   - ai
   - langchain
-  - gradio
   - fastapi
   - coaching
 ---
 
 # Career Coach AI Assistant
 
-A FastAPI and Gradio-based AI assistant that helps users with career development, powered by Mixtral-8x7B-Instruct and LangChain.
+A FastAPI-based AI assistant that helps users with career development, powered by Llama-3.3-70B-Instruct and LangChain.
 
 ## Features
 
-- Interactive chat interface built with Gradio
-- Career-focused AI assistant using Mixtral-8x7B-Instruct model
+- Interactive chat interface
+- Career-focused AI assistant using Llama-3.3-70B-Instruct model
 - FastAPI backend with RESTful endpoints
 - LangChain integration for advanced prompt handling and tool usage
 - System prompts and templates managed through YAML configuration
@@ -33,9 +32,12 @@ A FastAPI and Gradio-based AI assistant that helps users with career development
 ```
 career-coach-agent/
 ├── app.py              # Main FastAPI application with agent setup
-├── Gradio_UI.py        # Gradio interface implementation
 ├── prompts.yaml        # System prompts and templates
-├── main.py            # Application entry point
+├── tools/             # Tool implementations
+│   ├── visit_webpage.py    # Web page content fetcher
+│   ├── wikipedia_tool.py   # Wikipedia search tool
+│   ├── python_repl.py      # Python code execution tool
+│   └── internet_search.py  # Internet search tool
 └── README.md          # This file
 ```
 
@@ -43,9 +45,13 @@ career-coach-agent/
 
 - Python 3.12+
 - FastAPI
-- Gradio
 - LangChain
 - Hugging Face Hub API token
+- Additional dependencies:
+  - requests
+  - markdownify
+  - wikipedia
+  - duckduckgo-search
 
 ## Environment Variables
 
@@ -64,7 +70,7 @@ cd career-coach-agent
 
 2. Install dependencies:
 ```bash
-pip install fastapi gradio langchain langchain_huggingface pydantic python-multipart uvicorn
+pip install fastapi langchain langchain_huggingface pydantic python-multipart uvicorn requests markdownify wikipedia duckduckgo-search
 ```
 
 3. Set up your Hugging Face API token as an environment variable.
@@ -73,7 +79,7 @@ pip install fastapi gradio langchain langchain_huggingface pydantic python-multi
 
 Start the application:
 ```bash
-uvicorn main:app --reload
+uvicorn app:app --reload
 ```
 
 The application will be available at:
@@ -95,30 +101,46 @@ Request body:
 }
 ```
 
-## Features
+## Available Tools
 
-### AI Assistant
-- Career planning and goal setting
-- Professional development advice
-- Job search strategies
-- Skill development recommendations
-- Industry insights and trends
+The AI assistant has access to the following tools:
 
-### Technical Features
+1. **Wikipedia Search**
+   - Searches Wikipedia for information about topics, people, or concepts
+   - Returns relevant summaries and information
+
+2. **Web Page Visitor**
+   - Fetches and processes content from web pages
+   - Converts HTML to markdown for better readability
+   - Handles timeouts and errors gracefully
+
+3. **Python Code Execution**
+   - Executes Python code in a safe environment
+   - Returns execution results
+   - Handles syntax errors and runtime exceptions
+
+4. **Internet Search**
+   - Performs web searches using DuckDuckGo
+   - Returns relevant search results
+   - Useful for finding current information
+
+## Technical Features
+
 - Real-time chat interface
-- Timezone-aware responses
-- Session management
-- Error handling
+- Conversation memory and context management
+- Error handling and graceful degradation
 - CORS support
-- Interactive documentation
+- Interactive API documentation
+- Tool execution with proper error handling
+- Markdown formatting for better readability
 
 ## Architecture
 
 - **FastAPI**: Handles HTTP requests and API endpoints
-- **Gradio**: Provides the web interface
 - **LangChain**: Manages the AI agent and tools
-- **Mixtral-8x7B-Instruct**: Powers the AI responses
+- **Llama-3.3-70B-Instruct**: Powers the AI responses
 - **YAML Configuration**: Manages system prompts and templates
+- **Tools Integration**: Wikipedia, Web, Python, and Search capabilities
 
 ## Contributing
 

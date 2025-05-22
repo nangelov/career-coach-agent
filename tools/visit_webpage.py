@@ -6,9 +6,14 @@ from requests.exceptions import RequestException
 
 @tool
 def visit_webpage(url: str) -> str:
-    """Visits a webpage at the given url and reads its content as a markdown string
+    """Visits a webpage at the given url and reads its content as a markdown string.
+    Args:
+        url: The URL of the webpage to visit
+    Returns:
+        A string containing the webpage content in markdown format
     """
     try:
+        print("Visit Webpage search called with url: ",url)
         # Send a GET request to the URL with a 20-second timeout
         response = requests.get(url, timeout=20)
         response.raise_for_status()  # Raise an exception for bad status codes
@@ -27,11 +32,15 @@ def visit_webpage(url: str) -> str:
         return markdown_content
 
     except requests.exceptions.Timeout:
-        return "The request timed out. Please try again later or check the URL."
+        return "Error: The request timed out after 20 seconds. Please try again later or check the URL."
+    except requests.exceptions.HTTPError as e:
+        return f"Error: HTTP {e.response.status_code} - Could not access the webpage. Please check the URL."
+    except requests.exceptions.ConnectionError:
+        return "Error: Could not connect to the webpage. Please check your internet connection and the URL."
     except RequestException as e:
-        return f"Error fetching the webpage: {str(e)}"
+        return f"Error: Failed to fetch the webpage: {str(e)}"
     except Exception as e:
-        return f"An unexpected error occurred: {str(e)}"
+        return f"Error: An unexpected error occurred while visiting the webpage: {str(e)}"
 
 def wikipedia_search(query: str) -> str:
     """Search Wikipedia for a specific topic and return a summary."""
