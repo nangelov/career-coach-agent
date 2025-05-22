@@ -77,7 +77,7 @@ prompt = ChatPromptTemplate.from_messages([
 ])
 
 # Define the agent
-chat_model_with_stop = llm.bind(stop=["\nObservation", "\nFinal Answer:", "\nHuman:", "\nAI:"])
+chat_model_with_stop = llm.bind(stop=["\nObservation", "\nHuman:", "\nAI:"])
 agent = (
     {
         "input": lambda x: x["input"],
