@@ -6,10 +6,11 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
     def parse(self, text):
         # Clean up the text first
         text = text.strip()
+        print(f"Raw LLM output: {text[:200]}...")  # Debug output
 
         # Remove any trailing "Observation" that appears without content
-        text = re.sub(r'\nObservation\s*$', '', text)
-        text = re.sub(r'Observation\s*$', '', text)
+        text = re.sub(r'\nObservation\s*:?\s*$', '', text)
+        text = re.sub(r'Observation\s*:?\s*$', '', text)
 
         # Handle direct responses (greetings, simple questions)
         if not any(keyword in text for keyword in ["Thought:", "Action:", "Final Answer:"]):
@@ -80,15 +81,17 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
 
             i += 1
 
-        # Clean up action_input - remove any trailing "Observation" or similar artifacts
+        # Aggressive cleaning of action_input
         if action_input:
-            action_input = re.sub(r'\s*Observation\s*$', '', action_input)
+            # Remove quotes, observation text, and other artifacts
+            action_input = re.sub(r'\s*Observation\s*:?\s*$', '', action_input)
+            action_input = re.sub(r'^["\']|["\']$', '', action_input)  # Remove quotes
             action_input = action_input.strip()
 
         # If we have action and action_input, return AgentAction
         if action and action_input:
             print(f"Parsed Action: {action}")
-            print(f"Parsed Action Input: {action_input}")
+            print(f"Parsed Action Input: '{action_input}'")
             return AgentAction(
                 tool=action,
                 tool_input=action_input,

@@ -40,14 +40,14 @@ if not os.getenv('HUGGINGFACEHUB_API_TOKEN'):
 
 # Initialize the HuggingFace pipeline with more strict parameters
 llm = HuggingFaceEndpoint(
-    repo_id="meta-llama/Llama-3.3-70B-Instruct",  # Change to one of the recommended models
+    repo_id="meta-llama/Llama-3.3-70B-Instruct",
     huggingfacehub_api_token=os.getenv('HUGGINGFACEHUB_API_TOKEN'),
     provider="hf-inference",
     task="text-generation",
-    temperature=0.2,
-    max_new_tokens=2048,
-    top_p=0.95,
-    repetition_penalty=1.2,
+    temperature=0.1, # Lower temperature for more focused responses
+    max_new_tokens=1024,
+    top_p=0.9, # More focused
+    repetition_penalty=1.1, # Reduced
     do_sample=True,
     verbose=True,
     return_full_text=False
@@ -79,7 +79,7 @@ prompt = ChatPromptTemplate.from_messages([
 
 # Define the agent
 chat_model_with_stop = llm.bind(
-    stop=["\nObservation:", "\nHuman:", "\nAI:"]
+    stop=["\nObservation", "\nHuman:", "\nAI:", "Observation:"]
 )
 agent = (
     {
