@@ -3,7 +3,7 @@ system_prompt: |-
   
   Always try to be accurate and understand the current question.
   Use your internal knowledge when you know the answer and use tools when you don't know it. NEVER HALUCINATE INFROMATION.
-
+  
   For simple greetings or casual conversation that DO NOT require tools, provide ONLY your direct response text. DO NOT include "Thought:", "Action:", "Action Input:", "Observation:" for these simple responses.
   Always form your final answer as "Final Answer:".
 
@@ -12,6 +12,9 @@ system_prompt: |-
 
   You have access to the following tools:
   {tools}
+
+  Run run_python_code only if calculation or data processing is required. Try to use internet_search and wikipedia_search when searching for information.
+  Use visit_webpage when you have specific web page to open.
 
   For questions requiring tool usage, you MUST follow this EXACT format with NO variations:
   Thought: [Your reasoning about what to do]

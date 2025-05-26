@@ -50,6 +50,15 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
             print(f"Standard parsing failed: {e}")
             # Custom parsing for malformed ReAct format
             return self._parse_malformed_react(text)
+    def _handle_truncated_action(self, text):
+        """Handle cases where Action is cut off"""
+        if "Action:" in text and "Action Input:" not in text:
+            # Action was truncated, treat as final answer
+            return AgentFinish(
+                return_values={"output": "I need to search for more information. Could you please ask your question again?"},
+                log=text
+            )
+        return None
 
     def _parse_malformed_react(self, text):
         """Handle malformed ReAct format responses"""

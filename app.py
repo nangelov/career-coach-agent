@@ -48,10 +48,10 @@ llm = HuggingFaceEndpoint(
     huggingfacehub_api_token=os.getenv('HUGGINGFACEHUB_API_TOKEN'),
     provider="hf-inference",
     task="text-generation",
-    temperature=0.05,  # Almost deterministic
-    max_new_tokens=256,  # Very short responses
-    top_p=0.8,  # Very focused
-    repetition_penalty=1.1,
+    temperature=0.1,  # Slightly higher for more natural responses
+    max_new_tokens=512,  # Increase to avoid truncation
+    top_p=0.9,  # More diverse responses
+    repetition_penalty=1.15,  # Stronger penalty to avoid "Human:"
     do_sample=True,
     verbose=True,
     return_full_text=False
@@ -71,25 +71,28 @@ memory = ConversationBufferMemory(
     output_key="output"  # Specify which key to use for the output
 )
 
-# Create the prompt template
+# Create the prompt template with chat history
 prompt = ChatPromptTemplate.from_messages([
     ("system", prompt_templates["system_prompt"].format(
         tools=render_text_description(tools),
         tool_names=", ".join([t.name for t in tools])
     )),
+    MessagesPlaceholder(variable_name="chat_history"),
     ("human", "{input}"),
-    ("ai", "Let me help you with that.\n{agent_scratchpad}")
+    ("assistant", "{agent_scratchpad}")  # Remove the prefix text and change to "assistant"
 ])
 
 # Define the agent
 chat_model_with_stop = llm.bind(
-    stop=["\nObservation:", "\nHuman:", "Human:", "Observation:"]
+    stop=["\nHuman:", "Human:", "\n\nHuman", "\nUser:"] 
 )
 
+# Update the agent to include chat_history
 agent = (
     {
         "input": lambda x: x["input"],
         "agent_scratchpad": lambda x: format_log_to_str(x["intermediate_steps"]) if x["intermediate_steps"] else "",
+        "chat_history": lambda x: x.get("chat_history", [])  # Add this line!
     }
     | prompt
     | chat_model_with_stop
@@ -103,9 +106,24 @@ agent_executor = AgentExecutor(
     handle_parsing_errors="Check your output and make sure it conforms to the expected format!",
     max_iterations=3,  
     return_intermediate_steps=True,
-    early_stopping_method="force",  # Changed from "generate" which doesn't exist
+    early_stopping_method="force",  
     memory=memory
 )
+
+# Add this function to clear corrupted memory
+def clear_memory_if_corrupted():
+    """Clear memory if it contains too many corrupted entries"""
+    messages = memory.chat_memory.messages
+    if not messages:
+        return
+
+    corrupted_count = sum(1 for msg in messages if not msg.content.strip() or "Human:" in msg.content or msg.content == "Human:")
+
+    print(f"Memory check: {corrupted_count}/{len(messages)} corrupted messages")
+
+    if corrupted_count > len(messages) * 0.2:  # If 20% of messages are corrupted
+        print("Clearing corrupted memory...")
+        memory.clear()
 
 # API Models
 class QueryRequest(BaseModel):
@@ -128,6 +146,9 @@ async def query_agent(request: QueryRequest):
     print("\n" + "="*50)
     print("Received query:", request.query)
     print("="*50 + "\n")
+
+    # Clear corrupted memory
+    clear_memory_if_corrupted()
 
     thread_id = request.thread_id or str(uuid.uuid4())
 
