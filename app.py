@@ -147,10 +147,15 @@ async def query_agent(request: QueryRequest):
     print("Received query:", request.query)
     print("="*50 + "\n")
 
+    thread_id = request.thread_id or str(uuid.uuid4())
+
+    # If no thread_id provided, this is a new conversation - clear memory
+    if not request.thread_id:
+        print("New conversation started - clearing memory...")
+        memory.clear()
+
     # Clear corrupted memory
     clear_memory_if_corrupted()
-
-    thread_id = request.thread_id or str(uuid.uuid4())
 
     # Create a cancellation token
     cancel_event = asyncio.Event()
