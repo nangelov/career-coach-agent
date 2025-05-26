@@ -49,7 +49,7 @@ llm = HuggingFaceEndpoint(
     provider="hf-inference",
     task="text-generation",
     temperature=0.1, # Lower temperature for more focused responses
-    max_new_tokens=1024,
+    max_new_tokens=750,
     top_p=0.9, # More focused
     repetition_penalty=1.1, # Reduced
     do_sample=True,
@@ -101,7 +101,7 @@ agent_executor = AgentExecutor(
     tools=tools,
     verbose=True,
     handle_parsing_errors="Check your output and make sure it conforms to the expected format!",
-    max_iterations=5,
+    max_iterations=4,
     return_intermediate_steps=True,
     early_stopping_method="generate",  # Changed from "force"
     memory=memory
@@ -222,7 +222,7 @@ async def query_agent(request: QueryRequest):
         # Clean up the active request
         if thread_id in active_requests:
             del active_requests[thread_id]
-            
+
 # Check if the frontend build directory exists
 if os.path.exists("frontend/build"):
     # Serve static files from React build
