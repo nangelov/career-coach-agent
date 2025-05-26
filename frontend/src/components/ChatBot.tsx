@@ -119,7 +119,7 @@ const ChatBot: React.FC = () => {
         content: 'Hello! I\'m CareerCoach AI, your personal career development assistant. How can I help you today?'
       }
     ]);
-    setThreadId(null);
+    setThreadId(null); // This line already exists - good!
   };
 
   return (

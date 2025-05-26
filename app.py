@@ -149,6 +149,8 @@ async def query_agent(request: QueryRequest):
 
     thread_id = request.thread_id or str(uuid.uuid4())
 
+    print("thread_id:", thread_id)
+
     # If no thread_id provided, this is a new conversation - clear memory
     if not request.thread_id:
         print("New conversation started - clearing memory...")
