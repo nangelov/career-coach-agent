@@ -14,14 +14,18 @@ from tools.internet_search import internet_search
 import os
 import yaml
 import uuid
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
+import asyncio
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from output_parser import FlexibleOutputParser, clean_llm_response
+
+active_requests = {}
 
 # Initialize FastAPI app
 app = FastAPI(title="AI Assistant", description="AI Assistant with LangChain and Gradio")
@@ -110,26 +114,67 @@ class QueryRequest(BaseModel):
     context: Dict[str, Any] = Field(default_factory=dict)
 
 # API Routes
+@app.post("/agent/cancel/{thread_id}")
+async def cancel_request(thread_id: str):
+    if thread_id in active_requests:
+        active_requests[thread_id].cancel()
+        del active_requests[thread_id]
+        return {"status": "cancelled", "thread_id": thread_id}
+    return {"status": "not_found", "thread_id": thread_id}
+
+# Modify the existing query_agent function
 @app.post("/agent/query")
 async def query_agent(request: QueryRequest):
     print("\n" + "="*50)
     print("Received query:", request.query)
     print("="*50 + "\n")
-    try:
-        thread_id = request.thread_id or str(uuid.uuid4())
 
+    thread_id = request.thread_id or str(uuid.uuid4())
+
+    # Create a cancellation token
+    cancel_event = asyncio.Event()
+    active_requests[thread_id] = cancel_event
+
+    try:
         # Create the input with proper message formatting
         agent_input = {
             "input": request.query
         }
 
         print("\nStarting agent execution...")
+
+        # Create a task that can be cancelled
+        async def run_agent():
+            try:
+                # Run the agent in a thread pool to avoid blocking
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(agent_executor.invoke, agent_input)
+
+                    # Check for cancellation periodically
+                    while not future.done():
+                        if cancel_event.is_set():
+                            future.cancel()
+                            raise asyncio.CancelledError("Request was cancelled")
+                        await asyncio.sleep(0.1)
+
+                    return future.result()
+            except Exception as e:
+                print(f"Agent execution error: {str(e)}")
+                raise e
+
         try:
-            response = agent_executor.invoke(agent_input)
+            response = await run_agent()
             print("Raw agent response:", response)
+        except asyncio.CancelledError:
+            return {
+                "status": "cancelled",
+                "thread_id": thread_id,
+                "response": "Request was cancelled by user.",
+                "full_thought_process": "Request cancelled"
+            }
         except Exception as e:
             print(f"Agent execution error: {str(e)}")
-            # If the agent fails, return a graceful error message
             return {
                 "status": "error",
                 "thread_id": thread_id,
@@ -173,7 +218,11 @@ async def query_agent(request: QueryRequest):
         print(str(e))
         print("="*50 + "\n")
         raise HTTPException(status_code=500, detail=str(e))
-
+    finally:
+        # Clean up the active request
+        if thread_id in active_requests:
+            del active_requests[thread_id]
+            
 # Check if the frontend build directory exists
 if os.path.exists("frontend/build"):
     # Serve static files from React build

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import axios from 'axios';
 import ChatHeader from './ChatHeader';
@@ -20,6 +20,7 @@ const ChatBot: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const cancelTokenRef = useRef<AbortController | null>(null);
 
   // Add welcome message when component mounts
   useEffect(() => {
@@ -31,6 +32,31 @@ const ChatBot: React.FC = () => {
     ]);
   }, []);
 
+  const cancelRequest = async () => {
+    if (cancelTokenRef.current) {
+      cancelTokenRef.current.abort();
+    }
+    
+    if (threadId) {
+      try {
+        await axios.post(`/agent/cancel/${threadId}`);
+      } catch (error) {
+        console.error('Error cancelling request:', error);
+      }
+    }
+    
+    setIsLoading(false);
+    
+    // Add cancellation message
+    setMessages(prev => [
+      ...prev,
+      {
+        role: 'assistant',
+        content: 'Request was cancelled.'
+      }
+    ]);
+  };
+
   const sendMessage = async (content: string) => {
     // Add user message to chat
     const userMessage: Message = { role: 'user', content };
@@ -38,12 +64,17 @@ const ChatBot: React.FC = () => {
     
     setIsLoading(true);
     
+    // Create new abort controller
+    cancelTokenRef.current = new AbortController();
+    
     try {
       // Send message to API
       const response = await axios.post<ChatResponse>('/agent/query', {
         query: content,
         thread_id: threadId,
         context: {}
+      }, {
+        signal: cancelTokenRef.current.signal
       });
       
       // Update thread ID
@@ -60,6 +91,11 @@ const ChatBot: React.FC = () => {
       
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
+      if (axios.isCancel(error)) {
+        console.log('Request was cancelled');
+        return; // Don't add error message for cancelled requests
+      }
+      
       console.error('Error sending message:', error);
       
       // Add error message
@@ -72,6 +108,7 @@ const ChatBot: React.FC = () => {
       ]);
     } finally {
       setIsLoading(false);
+      cancelTokenRef.current = null;
     }
   };
 
@@ -89,7 +126,11 @@ const ChatBot: React.FC = () => {
     <ChatContainer>
       <ChatHeader onClearChat={clearChat} />
       <ChatWindow messages={messages} isLoading={isLoading} />
-      <ChatInput onSendMessage={sendMessage} isLoading={isLoading} />
+      <ChatInput 
+        onSendMessage={sendMessage} 
+        onCancelRequest={cancelRequest}
+        isLoading={isLoading} 
+      />
     </ChatContainer>
   );
 };
