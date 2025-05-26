@@ -21,78 +21,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from output_parser import FlexibleOutputParser, clean_llm_response
 
-from langchain.agents.output_parsers import ReActSingleInputOutputParser
-from langchain.schema import AgentAction, AgentFinish
-
-def clean_llm_response(output):
-    """Clean up the LLM response to extract just the user-facing part."""
-
-    # Remove special tokens
-    if "<|eot_id|>" in output:
-        output = output.split("<|eot_id|>")[0]
-
-    # If there's a Final Answer, extract only that part
-    if "Final Answer:" in output:
-        # Find the last occurrence of "Final Answer:" in case there are multiple
-        last_final_answer_index = output.rindex("Final Answer:")
-        final_answer = output[last_final_answer_index + len("Final Answer:"):].strip()
-
-        # If there are multiple "Final Answer:" sections, take only the last one
-        if "Final Answer:" in final_answer:
-            final_answer = final_answer.split("Final Answer:")[-1].strip()
-
-        return final_answer
-
-    # Pattern 1: Remove "No, instead say" pattern
-    if "No, instead say" in output:
-        parts = output.split("No, instead say")
-        if len(parts) > 1:
-            output = parts[1].strip()
-
-    # Remove any remaining internal instructions or notes
-    lines = output.split("\n")
-    cleaned_lines = []
-    for line in lines:
-        # Skip lines that look like internal notes or instructions
-        if (line.startswith("Let's") or "instead" in line.lower() or
-            "attempt" in line.lower() or "should" in line.lower() or
-            not line.strip()):
-            continue
-        cleaned_lines.append(line)
-
-    return "\n".join(cleaned_lines).strip()
-
-class FlexibleOutputParser(ReActSingleInputOutputParser):
-    def parse(self, text):
-        # Check if the response starts with a direct greeting without Thought/Action format
-        if not text.strip().startswith("Thought:"):
-            # For direct responses, return an AgentFinish
-            return AgentFinish(
-                return_values={"output": text.strip()},
-                log=text
-            )
-
-        try:
-            # Try to parse as ReAct format
-            return super().parse(text)
-        except Exception as e:
-            # If parsing fails, extract the Final Answer if present
-            if "Final Answer:" in text:
-                final_answer = text.split("Final Answer:")[1].strip()
-                # Remove any "Human:" or similar prompts that might be added
-                if "Human:" in final_answer:
-                    final_answer = final_answer.split("Human:")[0].strip()
-                return AgentFinish(
-                    return_values={"output": final_answer},
-                    log=text
-                )
-            # If no Final Answer, just return the text as is
-            return AgentFinish(
-                return_values={"output": text.strip()},
-                log=text
-            )
-        
 # Initialize FastAPI app
 app = FastAPI(title="AI Assistant", description="AI Assistant with LangChain and Gradio")
 
@@ -148,7 +78,9 @@ prompt = ChatPromptTemplate.from_messages([
 ])
 
 # Define the agent
-chat_model_with_stop = llm.bind(stop=["\nObservation", "\nHuman:", "\nAI:"])
+chat_model_with_stop = llm.bind(
+    stop=["\nObservation:", "\nHuman:", "\nAI:"]
+)
 agent = (
     {
         "input": lambda x: x["input"],
@@ -164,10 +96,10 @@ agent_executor = AgentExecutor(
     agent=agent,
     tools=tools,
     verbose=True,
-    handle_parsing_errors=True,
+    handle_parsing_errors="Check your output and make sure it conforms to the expected format!",
     max_iterations=5,
     return_intermediate_steps=True,
-    early_stopping_method="force",
+    early_stopping_method="generate",  # Changed from "force"
     memory=memory
 )
 
