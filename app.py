@@ -48,10 +48,10 @@ llm = HuggingFaceEndpoint(
     huggingfacehub_api_token=os.getenv('HUGGINGFACEHUB_API_TOKEN'),
     provider="hf-inference",
     task="text-generation",
-    temperature=0.1, # Lower temperature for more focused responses
-    max_new_tokens=750,
-    top_p=0.9, # More focused
-    repetition_penalty=1.1, # Reduced
+    temperature=0.05,  # Almost deterministic
+    max_new_tokens=256,  # Very short responses
+    top_p=0.8,  # Very focused
+    repetition_penalty=1.1,
     do_sample=True,
     verbose=True,
     return_full_text=False
@@ -83,8 +83,9 @@ prompt = ChatPromptTemplate.from_messages([
 
 # Define the agent
 chat_model_with_stop = llm.bind(
-    stop=["\nObservation", "\nHuman:", "\nAI:", "Observation:"]
+    stop=["\nObservation:", "\nHuman:", "Human:", "Observation:"]
 )
+
 agent = (
     {
         "input": lambda x: x["input"],
@@ -95,15 +96,14 @@ agent = (
     | FlexibleOutputParser()
 )
 
-# Set up agent executor with better error handling
 agent_executor = AgentExecutor(
     agent=agent,
     tools=tools,
     verbose=True,
     handle_parsing_errors="Check your output and make sure it conforms to the expected format!",
-    max_iterations=4,
+    max_iterations=3,  
     return_intermediate_steps=True,
-    early_stopping_method="generate",  # Changed from "force"
+    early_stopping_method="force",  # Changed from "generate" which doesn't exist
     memory=memory
 )
 

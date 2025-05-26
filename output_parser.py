@@ -8,6 +8,22 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
         text = text.strip()
         print(f"Raw LLM output: {text[:200]}...")  # Debug output
 
+        # CRITICAL: Detect if LLM generated both Action and Final Answer
+        has_action = "Action:" in text
+        has_final_answer = "Final Answer:" in text
+
+        if has_action and has_final_answer:
+            print("ERROR: LLM generated both Action and Final Answer - extracting Action only")
+            # Extract only the Action part, ignore Final Answer
+            lines = text.split('\n')
+            action_lines = []
+            for line in lines:
+                if line.strip().startswith("Final Answer:"):
+                    break  # Stop at Final Answer
+                action_lines.append(line)
+            text = '\n'.join(action_lines).strip()
+            print(f"Cleaned text: {text}")
+
         # Remove any trailing "Observation" that appears without content
         text = re.sub(r'\nObservation\s*:?\s*$', '', text)
         text = re.sub(r'Observation\s*:?\s*$', '', text)
@@ -57,16 +73,12 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
             elif line.startswith("Action Input:"):
                 action_input = line.replace("Action Input:", "").strip()
 
-                # Collect multi-line action input until we hit another keyword or end
-                j = i + 1
-                while j < len(lines):
-                    next_line = lines[j]
-                    if any(next_line.startswith(kw) for kw in ["Thought:", "Action:", "Final Answer:", "Observation"]):
-                        break
-                    if next_line.strip():  # Only add non-empty lines
-                        action_input += " " + next_line.strip()
-                    j += 1
-                i = j - 1  # Adjust index since we've processed multiple lines
+                # CRITICAL: Only take the first clean line, ignore everything else
+                # Split by common separators and take only the first part
+                action_input = action_input.split('\n')[0]  # Only first line
+                action_input = action_input.split('Thought:')[0]  # Stop at next Thought
+                action_input = action_input.split('Action:')[0]  # Stop at next Action
+                action_input = action_input.strip()
 
             elif line.startswith("Final Answer:"):
                 final_answer = line.replace("Final Answer:", "").strip()
@@ -83,10 +95,24 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
 
         # Aggressive cleaning of action_input
         if action_input:
-            # Remove quotes, observation text, and other artifacts
+            # Remove common contaminations
             action_input = re.sub(r'\s*Observation\s*:?\s*$', '', action_input)
             action_input = re.sub(r'^["\']|["\']$', '', action_input)  # Remove quotes
+            action_input = re.sub(r'\s*#.*$', '', action_input)  # Remove comments
             action_input = action_input.strip()
+
+            # If action_input is too long (likely contaminated), truncate
+            if len(action_input) > 200:
+                print(f"WARNING: Action input too long ({len(action_input)} chars), truncating")
+                action_input = action_input[:200].strip()
+
+        # Check for incomplete action (action without action_input)
+        if action and not action_input:
+            print("ERROR: Action without Action Input - treating as final answer")
+            return AgentFinish(
+                return_values={"output": "I apologize, but I need more information to help you properly. Could you please rephrase your question?"},
+                log=text
+            )
 
         # If we have action and action_input, return AgentAction
         if action and action_input:
@@ -114,9 +140,17 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
 def clean_llm_response(output):
     """Clean up the LLM response to extract just the user-facing part."""
 
-    # Remove special tokens
+    # Remove special tokens first
     if "<|eot_id|>" in output:
         output = output.split("<|eot_id|>")[0]
+
+    # Remove "Human:" and everything after it (most aggressive cleaning)
+    if "Human:" in output:
+        output = output.split("Human:")[0].strip()
+
+    # Remove trailing newlines and "Human" without colon
+    output = re.sub(r'\s*Human\s*$', '', output)
+    output = re.sub(r'\s*\n\s*$', '', output)
 
     # If there's a Final Answer, extract only that part
     if "Final Answer:" in output:
@@ -124,7 +158,7 @@ def clean_llm_response(output):
         last_final_answer_index = output.rindex("Final Answer:")
         final_answer = output[last_final_answer_index + len("Final Answer:"):].strip()
 
-        # Clean up any remaining artifacts
+        # Clean up any remaining artifacts from final answer
         if "Human:" in final_answer:
             final_answer = final_answer.split("Human:")[0].strip()
 
@@ -138,7 +172,7 @@ def clean_llm_response(output):
         # Skip lines that look like internal notes or instructions
         if (line.startswith("Let's") or "instead" in line.lower() or
             "attempt" in line.lower() or "should" in line.lower() or
-            not line):
+            line.startswith("Human") or not line):
             continue
         cleaned_lines.append(line)
 
