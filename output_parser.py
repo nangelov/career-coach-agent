@@ -153,16 +153,6 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
 
         # If we have final_answer, return AgentFinish
         if final_answer:
-            # Check if this is job search results that should be preserved as-is
-            if self._is_job_search_result(final_answer):
-                print("Detected job search results in final answer - preserving formatting")
-                # Format job results with proper line breaks
-                formatted_final_answer = self._format_job_results(final_answer)
-                return AgentFinish(
-                    return_values={"output": formatted_final_answer},
-                    log=text
-                )
-
             return AgentFinish(
                 return_values={"output": final_answer},
                 log=text
@@ -173,44 +163,6 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
             return_values={"output": text},
             log=text
         )
-
-    def _format_job_results(self, text):
-        """Format job search results to display each job on a new line"""
-
-        # If the text already has proper formatting, return as-is
-        if '\n' in text and ('**' in text or '•' in text or '-' in text):
-            return text
-
-        # Common patterns that indicate job listings
-        job_patterns = [
-            r'(\d+\.\s*\*\*[^*]+\*\*[^,]+(?:,\s*[^,]+)*)',  # "1. **Job Title**, Company, Location"
-            r'(\*\*[^*]+\*\*[^,]+(?:,\s*[^,]+)*)',          # "**Job Title**, Company, Location"
-            r'([A-Z][^,]+,\s*[^,]+,\s*[^,]+)',              # "Job Title, Company, Location"
-        ]
-
-        formatted_text = text
-
-        for pattern in job_patterns:
-            matches = re.findall(pattern, text)
-            if matches:
-                # Replace each match with the same text but add newlines
-                for match in matches:
-                    formatted_text = formatted_text.replace(match, f"\n{match}\n")
-
-        # Clean up extra newlines and format nicely
-        lines = [line.strip() for line in formatted_text.split('\n') if line.strip()]
-
-        # Add proper spacing between jobs
-        formatted_lines = []
-        for line in lines:
-            if line.startswith(('**', '•', '-', '1.', '2.', '3.', '4.', '5.')):
-                if formatted_lines:  # Add extra space before new job (except first)
-                    formatted_lines.append('')
-                formatted_lines.append(line)
-            else:
-                formatted_lines.append(line)
-
-        return '\n'.join(formatted_lines)
 
     def _should_be_final_answer(self, text):
         """Check if this text should be treated as a final answer"""

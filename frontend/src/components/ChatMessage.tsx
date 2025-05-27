@@ -16,6 +16,8 @@ const MessageBubble = styled.div<{ isUser: boolean }>`
   color: ${props => props.isUser ? 'white' : 'black'};
   text-align: left;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  white-space: pre-wrap; /* This preserves line breaks and spaces */
+  word-wrap: break-word; /* Ensures long words don't overflow */
 `;
 
 interface ChatMessageProps {
