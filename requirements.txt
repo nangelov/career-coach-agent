@@ -18,3 +18,4 @@ duckduckgo-search
 huggingface_hub
 hf_xet
 aiofiles
+google-search-results

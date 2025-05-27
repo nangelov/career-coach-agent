@@ -7,5 +7,6 @@ services:
       - "7860:7860"
     environment:
       - HUGGINGFACEHUB_API_TOKEN=${HUGGINGFACEHUB_API_TOKEN}
+      - SERPAPI_API_KEY=${SERPAPI_API_KEY}
     # Remove the volumes section that's causing issues
     restart: unless-stopped

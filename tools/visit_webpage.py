@@ -3,6 +3,7 @@ import requests
 import markdownify
 import re
 from requests.exceptions import RequestException
+from .helper import clean_input
 
 @tool
 def visit_webpage(url: str) -> str:
@@ -13,9 +14,10 @@ def visit_webpage(url: str) -> str:
         A string containing the webpage content in markdown format
     """
     try:
-        print("Visit Webpage search called with url: ",url)
+        print("\n Visit Webpage search called with url: ",url)
         # Send a GET request to the URL with a 20-second timeout
-        response = requests.get(url, timeout=20)
+        clean_url = clean_input(url)
+        response = requests.get(clean_url, timeout=20)
         response.raise_for_status()  # Raise an exception for bad status codes
 
         # Convert the HTML content to Markdown
@@ -42,5 +44,3 @@ def visit_webpage(url: str) -> str:
     except Exception as e:
         return f"Error: An unexpected error occurred while visiting the webpage: {str(e)}"
 
-def wikipedia_search(query: str) -> str:
-    """Search Wikipedia for a specific topic and return a summary."""

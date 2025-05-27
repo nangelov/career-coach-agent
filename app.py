@@ -1,7 +1,6 @@
 from langchain_huggingface import HuggingFaceEndpoint
 from langchain.agents import AgentExecutor
 from langchain.agents.format_scratchpad import format_log_to_str
-from langchain.agents.output_parsers import ReActSingleInputOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.memory import ConversationBufferMemory
 from langchain.tools.render import render_text_description
@@ -10,6 +9,9 @@ from tools.visit_webpage import visit_webpage
 from tools.wikipedia_tool import wikipedia_search
 from tools.python_repl import run_python_code
 from tools.internet_search import internet_search
+from tools.google_jobs_search import google_job_search
+from tools.date_and_time import current_date_and_time
+from output_parser import FlexibleOutputParser, clean_llm_response
 
 import os
 import yaml
@@ -17,18 +19,17 @@ import uuid
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
 import asyncio
-from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from output_parser import FlexibleOutputParser, clean_llm_response
+
 
 active_requests = {}
 
 # Initialize FastAPI app
-app = FastAPI(title="AI Assistant", description="AI Assistant with LangChain and Gradio")
+app = FastAPI(title="AI Assistant", description="AI Assistant with LangChain powered by Llama-3.3-70B-Instruct")
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,9 +43,11 @@ app.add_middleware(
 if not os.getenv('HUGGINGFACEHUB_API_TOKEN'):
     raise ValueError("Please set HUGGINGFACEHUB_API_TOKEN environment variable")
 
+model = "meta-llama/Llama-3.3-70B-Instruct"
+
 # Initialize the HuggingFace pipeline with more strict parameters
 llm = HuggingFaceEndpoint(
-    repo_id="meta-llama/Llama-3.3-70B-Instruct",
+    repo_id=model,
     huggingfacehub_api_token=os.getenv('HUGGINGFACEHUB_API_TOKEN'),
     provider="hf-inference",
     task="text-generation",
@@ -57,12 +60,13 @@ llm = HuggingFaceEndpoint(
     return_full_text=False
 )
 
+utc_date_and_time_now = current_date_and_time('UTC')
 # Load system prompt and template
 with open("prompts.yaml", 'r') as stream:
     prompt_templates = yaml.safe_load(stream)
 
 # Define tools
-tools = [visit_webpage, wikipedia_search, run_python_code, internet_search]
+tools = [visit_webpage, wikipedia_search, run_python_code, internet_search, google_job_search, current_date_and_time]
 
 # Create memory for conversation history
 memory = ConversationBufferMemory(
@@ -75,7 +79,8 @@ memory = ConversationBufferMemory(
 prompt = ChatPromptTemplate.from_messages([
     ("system", prompt_templates["system_prompt"].format(
         tools=render_text_description(tools),
-        tool_names=", ".join([t.name for t in tools])
+        tool_names=", ".join([t.name for t in tools]),
+        current_utc_date_and_time=utc_date_and_time_now
     )),
     MessagesPlaceholder(variable_name="chat_history"),
     ("human", "{input}"),
@@ -103,8 +108,9 @@ agent_executor = AgentExecutor(
     agent=agent,
     tools=tools,
     verbose=True,
-    handle_parsing_errors="Check your output and make sure it conforms to the expected format!",
-    max_iterations=3,  
+   #handle_parsing_errors="Check your output and make sure it conforms to the expected format!",
+    handle_parsing_errors=True,
+    max_iterations=4,  
     return_intermediate_steps=True,
     early_stopping_method="force",  
     memory=memory

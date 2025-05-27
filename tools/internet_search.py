@@ -1,5 +1,7 @@
 from langchain_core.tools import tool
 from langchain_community.tools import DuckDuckGoSearchResults
+from .helper import clean_input
+
 
 @tool
 def internet_search(query: str) -> str:
@@ -10,11 +12,15 @@ def internet_search(query: str) -> str:
         A string containing the search results
     """
     try:
-        print("Internet search tool with query: ",query)
+        # Clean the query by removing special tokens
+        cleaned_query = clean_input(query)
+        print(f"\n Internet search tool with query: {cleaned_query}")
+
         search = DuckDuckGoSearchResults()
-        results = search.run(query)
+        results = search.run(cleaned_query)
         if not results:
-            return f"No results found for query: '{query}'"
+            return f"No results found for query: '{cleaned_query}'"
         return results
     except Exception as e:
-        return f"Error: Failed to perform internet search - {str(e)}" 
+        return f"Error: Failed to perform internet search - {str(e)}"
+

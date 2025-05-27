@@ -1,6 +1,7 @@
 from langchain_core.tools import tool
 from langchain_community.tools import WikipediaQueryRun
 from langchain_community.utilities import WikipediaAPIWrapper
+from .helper import clean_input
 
 @tool
 def wikipedia_search(topic: str) -> str:
@@ -11,11 +12,12 @@ def wikipedia_search(topic: str) -> str:
         A string containing the Wikipedia summary of the topic
     """
     try:
-        print("Wikipedia search called with topic: ",topic)
+        print("\n Wikipedia search called with topic: ",topic)
         wiki = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())
-        result = wiki.run(topic)
+        clean_topic = clean_input(topic)
+        result = wiki.run(clean_topic)
         if not result:
-            return f"No Wikipedia article found for '{topic}'"
+            return f"No Wikipedia article found for '{clean_topic}'"
         return result
     except Exception as e:
-        return f"Error searching Wikipedia for '{topic}': {str(e)}" 
+        return f"Error searching Wikipedia for '{clean_topic}': {str(e)}" 

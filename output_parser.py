@@ -62,6 +62,29 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
 
     def _parse_malformed_react(self, text):
         """Handle malformed ReAct format responses"""
+
+        # Clean special tokens from the entire text first
+        text = re.sub(r'<\|eot_id\|>', '', text)
+        text = re.sub(r'<\|eom_id\|>', '', text)
+        text = re.sub(r'<\|.*?\|>', '', text)
+        text = text.strip()
+
+        # Check if this is a response that should be a Final Answer but is missing the prefix
+        if self._should_be_final_answer(text):
+            print("Detected response that should be Final Answer - treating as final answer")
+            return AgentFinish(
+                return_values={"output": text},
+                log=text
+            )
+
+        # Check if this looks like job search results that should be preserved as-is
+        if self._is_job_search_result(text) and "Action:" not in text:
+            print("Detected job search results in full text - preserving formatting")
+            return AgentFinish(
+                return_values={"output": text},
+                log=text
+            )
+
         lines = [line.strip() for line in text.split('\n') if line.strip()]
 
         thought = ""
@@ -82,12 +105,8 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
             elif line.startswith("Action Input:"):
                 action_input = line.replace("Action Input:", "").strip()
 
-                # CRITICAL: Only take the first clean line, ignore everything else
-                # Split by common separators and take only the first part
-                action_input = action_input.split('\n')[0]  # Only first line
-                action_input = action_input.split('Thought:')[0]  # Stop at next Thought
-                action_input = action_input.split('Action:')[0]  # Stop at next Action
-                action_input = action_input.strip()
+                # Clean action input more aggressively
+                action_input = self._clean_action_input(action_input)
 
             elif line.startswith("Final Answer:"):
                 final_answer = line.replace("Final Answer:", "").strip()
@@ -95,27 +114,26 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
                 # Collect multi-line final answer
                 j = i + 1
                 while j < len(lines):
-                    if lines[j].strip():
+                    if lines[j].strip() and not lines[j].startswith(("Thought:", "Action:", "Observation:", "Human:")):
                         final_answer += " " + lines[j].strip()
-                    j += 1
-                break
+                        j += 1
+                    else:
+                        break
 
             i += 1
 
-        # Aggressive cleaning of action_input
+        # Additional cleaning of action_input if it exists
         if action_input:
-            # Remove common contaminations
             action_input = re.sub(r'\s*Observation\s*:?\s*$', '', action_input)
-            action_input = re.sub(r'^["\']|["\']$', '', action_input)  # Remove quotes
-            action_input = re.sub(r'\s*#.*$', '', action_input)  # Remove comments
+            action_input = re.sub(r'^["\']|["\']$', '', action_input)
+            action_input = re.sub(r'\s*#.*$', '', action_input)
             action_input = action_input.strip()
 
-            # If action_input is too long (likely contaminated), truncate
             if len(action_input) > 200:
                 print(f"WARNING: Action input too long ({len(action_input)} chars), truncating")
                 action_input = action_input[:200].strip()
 
-        # Check for incomplete action (action without action_input)
+        # Check for incomplete action
         if action and not action_input:
             print("ERROR: Action without Action Input - treating as final answer")
             return AgentFinish(
@@ -135,6 +153,16 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
 
         # If we have final_answer, return AgentFinish
         if final_answer:
+            # Check if this is job search results that should be preserved as-is
+            if self._is_job_search_result(final_answer):
+                print("Detected job search results in final answer - preserving formatting")
+                # Format job results with proper line breaks
+                formatted_final_answer = self._format_job_results(final_answer)
+                return AgentFinish(
+                    return_values={"output": formatted_final_answer},
+                    log=text
+                )
+
             return AgentFinish(
                 return_values={"output": final_answer},
                 log=text
@@ -145,6 +173,103 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
             return_values={"output": text},
             log=text
         )
+
+    def _format_job_results(self, text):
+        """Format job search results to display each job on a new line"""
+
+        # If the text already has proper formatting, return as-is
+        if '\n' in text and ('**' in text or '•' in text or '-' in text):
+            return text
+
+        # Common patterns that indicate job listings
+        job_patterns = [
+            r'(\d+\.\s*\*\*[^*]+\*\*[^,]+(?:,\s*[^,]+)*)',  # "1. **Job Title**, Company, Location"
+            r'(\*\*[^*]+\*\*[^,]+(?:,\s*[^,]+)*)',          # "**Job Title**, Company, Location"
+            r'([A-Z][^,]+,\s*[^,]+,\s*[^,]+)',              # "Job Title, Company, Location"
+        ]
+
+        formatted_text = text
+
+        for pattern in job_patterns:
+            matches = re.findall(pattern, text)
+            if matches:
+                # Replace each match with the same text but add newlines
+                for match in matches:
+                    formatted_text = formatted_text.replace(match, f"\n{match}\n")
+
+        # Clean up extra newlines and format nicely
+        lines = [line.strip() for line in formatted_text.split('\n') if line.strip()]
+
+        # Add proper spacing between jobs
+        formatted_lines = []
+        for line in lines:
+            if line.startswith(('**', '•', '-', '1.', '2.', '3.', '4.', '5.')):
+                if formatted_lines:  # Add extra space before new job (except first)
+                    formatted_lines.append('')
+                formatted_lines.append(line)
+            else:
+                formatted_lines.append(line)
+
+        return '\n'.join(formatted_lines)
+
+    def _should_be_final_answer(self, text):
+        """Check if this text should be treated as a final answer"""
+        # Indicators that this is a final response
+        final_indicators = [
+            "based on the observation",
+            "based on the search",
+            "according to",
+            "the winner",
+            "manchester city",
+            "liverpool",
+            "premier league",
+            "champions",
+            "most recent",
+            "in conclusion",
+            "therefore",
+            "the answer is",
+            "the results show",
+            "from the search results"
+        ]
+
+        # Check if it contains final answer indicators and no action keywords
+        has_final_indicators = any(indicator in text.lower() for indicator in final_indicators)
+        has_action_keywords = any(keyword in text for keyword in ["Action:", "Thought:", "Action Input:"])
+
+        return has_final_indicators and not has_action_keywords
+
+    def _clean_action_input(self, action_input: str) -> str:
+        """Clean action input by removing special tokens and unwanted text"""
+        # Remove special tokens
+        action_input = re.sub(r'<\|eot_id\|>', '', action_input)
+        action_input = re.sub(r'<\|eom_id\|>', '', action_input)
+        action_input = re.sub(r'<\|.*?\|>', '', action_input)
+
+        # Remove everything after newlines (take only first line)
+        action_input = action_input.split('\n')[0]
+
+        # Remove everything after common stop words
+        stop_words = ['Thought:', 'Action:', 'Observation:', 'Human:', 'Assistant:']
+        for stop_word in stop_words:
+            if stop_word in action_input:
+                action_input = action_input.split(stop_word)[0]
+
+        # Remove quotes if they wrap the entire input
+        action_input = re.sub(r'^["\']|["\']$', '', action_input)
+
+        # Remove any trailing special characters or whitespace
+        action_input = action_input.strip()
+
+        return action_input
+
+    def _is_job_search_result(self, text):
+        """Check if the text contains job search results that should be preserved"""
+        job_indicators = [
+            "Job Title:", "Company:", "Location:", "job listings",
+            "Found", "jobs", "position", "role", "employment",
+            "**", "- Company:", "- Location:", "Link:"
+        ]
+        return any(indicator.lower() in text.lower() for indicator in job_indicators)
 
 def clean_llm_response(output):
     """Clean up the LLM response to extract just the user-facing part."""
