@@ -32,7 +32,7 @@ const ChatBot: React.FC = () => {
     setMessages([
       {
         role: 'assistant',
-        content: 'Hello! I\'m CareerCoach AI, your personal career development assistant. How can I help you today?'
+        content: 'Hello! I\'m AI CareerCoach, your personal career development assistant. How can I help you today?'
       }
     ]);
   }, []);
@@ -121,7 +121,7 @@ const ChatBot: React.FC = () => {
     setMessages([
       {
         role: 'assistant',
-        content: 'Hello! I\'m CareerCoach AI, your personal career development assistant. How can I help you today?'
+        content: 'Hello! I\'m AI CareerCoach, your personal career development assistant. How can I help you today?'
       }
     ]);
     setThreadId(null);
