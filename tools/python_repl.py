@@ -1,6 +1,14 @@
 from langchain_core.tools import tool
 from langchain_experimental.utilities import PythonREPL
 from helpers.helper import clean_input
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 @tool
 def run_python_code(code: str) -> str:
@@ -11,11 +19,11 @@ def run_python_code(code: str) -> str:
         A string containing the output of the executed code
     """
     try:
-        print("\n run python code with code: ", code)
+        logging.info(f"\n run python code with code: {code}")
 
         # Clean the code by removing special tokens and unwanted text
         cleaned_code = clean_input(code)
-        print("cleaned code: ", cleaned_code)
+        logging.info(f"cleaned code: {cleaned_code}")
 
         python_repl = PythonREPL()
         result = python_repl.run(cleaned_code)

@@ -53,7 +53,6 @@ def serpapi_fallback(query: str) -> str:
 
         search = serpapi.GoogleSearch({
             "q": query,
-            "location": "Munich, Germany" if "munich" in query.lower() else None,
             "api_key": os.getenv('SERPAPI_API_KEY'),
             "engine": "google_jobs"
         })

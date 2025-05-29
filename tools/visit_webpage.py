@@ -4,6 +4,14 @@ import markdownify
 import re
 from requests.exceptions import RequestException
 from helpers.helper import clean_input
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 @tool
 def visit_webpage(url: str) -> str:
@@ -14,7 +22,7 @@ def visit_webpage(url: str) -> str:
         A string containing the webpage content in markdown format
     """
     try:
-        print("\n Visit Webpage search called with url: ",url)
+        logging.info(f"\n Visit Webpage search called with url: {url}")
         # Send a GET request to the URL with a 20-second timeout
         clean_url = clean_input(url)
         response = requests.get(clean_url, timeout=20)

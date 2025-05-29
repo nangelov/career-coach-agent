@@ -2,6 +2,14 @@ from langchain_core.tools import tool
 from datetime import datetime
 import pytz
 from helpers.helper import clean_input
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
 
 @tool
 def current_date_and_time(timezone: str) -> str:
@@ -12,7 +20,7 @@ def current_date_and_time(timezone: str) -> str:
         return current date and time in format '%Y:%m:%d %H:%M:%S %Z %z'
     """
     try:
-        print("\n Get current date and time for Timezone:", timezone)
+        logging.info(f"\n Get current date and time for Timezone: {timezone}")
         clean_timezone = clean_input(timezone)
         tz = pytz.timezone(clean_timezone)
         current_time = datetime.now(tz)

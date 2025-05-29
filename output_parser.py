@@ -1,19 +1,27 @@
 from langchain.agents.output_parsers import ReActSingleInputOutputParser
 from langchain.schema import AgentAction, AgentFinish
 import re
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 class FlexibleOutputParser(ReActSingleInputOutputParser):
     def parse(self, text):
         # Clean up the text first
         text = text.strip()
-        print(f"Raw LLM output: {text[:200]}...")  # Debug output
+        logging.info(f"Raw LLM output: {text[:200]}...")  # Debug output
 
         # CRITICAL: Detect if LLM generated both Action and Final Answer
         has_action = "Action:" in text
         has_final_answer = "Final Answer:" in text
 
         if has_action and has_final_answer:
-            print("ERROR: LLM generated both Action and Final Answer - extracting Action only")
+            logging.info("ERROR: LLM generated both Action and Final Answer - extracting Action only")
             # Extract only the Action part, ignore Final Answer
             lines = text.split('\n')
             action_lines = []
@@ -22,7 +30,7 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
                     break  # Stop at Final Answer
                 action_lines.append(line)
             text = '\n'.join(action_lines).strip()
-            print(f"Cleaned text: {text}")
+            logging.info(f"Cleaned text: {text}")
 
         # Remove any trailing "Observation" that appears without content
         text = re.sub(r'\nObservation\s*:?\s*$', '', text)
@@ -47,7 +55,7 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
             # Try standard ReAct parsing first
             return super().parse(text)
         except Exception as e:
-            print(f"Standard parsing failed: {e}")
+            logging.info(f"Standard parsing failed: {e}")
             # Custom parsing for malformed ReAct format
             return self._parse_malformed_react(text)
 
@@ -72,7 +80,7 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
 
         # NEW: Handle "Action: None" case - this should be a final answer
         if "Action: None" in text:
-            print("Detected 'Action: None' - treating as final answer")
+            logging.info("Detected 'Action: None' - treating as final answer")
             # Extract everything before "Action: None"
             final_text = text.split("Action: None")[0].strip()
             return AgentFinish(
@@ -82,7 +90,7 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
 
         # Check if this is a response that should be a Final Answer but is missing the prefix
         if self._should_be_final_answer(text):
-            print("Detected response that should be Final Answer - treating as final answer")
+            logging.info("Detected response that should be Final Answer - treating as final answer")
             return AgentFinish(
                 return_values={"output": text},
                 log=text
@@ -90,7 +98,7 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
 
         # Check if this looks like job search results that should be preserved as-is
         if self._is_job_search_result(text) and "Action:" not in text:
-            print("Detected job search results in full text - preserving formatting")
+            logging.info("Detected job search results in full text - preserving formatting")
             return AgentFinish(
                 return_values={"output": text},
                 log=text
@@ -115,7 +123,7 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
 
                 # NEW: If action is "None", treat everything before as final answer
                 if action.lower() == "none":
-                    print("Found 'Action: None' - treating preceding text as final answer")
+                    logging.info("Found 'Action: None' - treating preceding text as final answer")
                     # Get all text before this Action line
                     preceding_lines = lines[:i]
                     final_text = "\n".join(preceding_lines).strip()
@@ -160,7 +168,7 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
 
         # Check for incomplete action
         if action and not action_input and action.lower() != "none":
-            print("ERROR: Action without Action Input - treating as final answer")
+            logging.info("ERROR: Action without Action Input - treating as final answer")
             return AgentFinish(
                 return_values={"output": "I apologize, but I need more information to help you properly. Could you please rephrase your question?"},
                 log=text
@@ -168,8 +176,8 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
 
         # If we have action and action_input, return AgentAction
         if action and action_input and action.lower() != "none":
-            print(f"Parsed Action: {action}")
-            print(f"Parsed Action Input: '{action_input[:100]}...'")
+            logging.info(f"Parsed Action: {action}")
+            logging.info(f"Parsed Action Input: '{action_input[:100]}...'")
             return AgentAction(
                 tool=action,
                 tool_input=action_input,

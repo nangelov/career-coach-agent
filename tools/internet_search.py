@@ -1,7 +1,14 @@
 from langchain_core.tools import tool
 from langchain_community.tools import DuckDuckGoSearchResults
 from helpers.helper import clean_input
+import logging
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 @tool
 def internet_search(query: str) -> str:
@@ -14,7 +21,7 @@ def internet_search(query: str) -> str:
     try:
         # Clean the query by removing special tokens
         cleaned_query = clean_input(query)
-        print(f"\n Internet search tool with query: {cleaned_query}")
+        logging.info(f"\n Internet search tool with query: {cleaned_query}")
 
         search = DuckDuckGoSearchResults()
         results = search.run(cleaned_query)

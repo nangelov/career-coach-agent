@@ -3,6 +3,14 @@ import os
 from datetime import datetime
 from typing import Dict, Any, List
 import shutil
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 def store_feedback(contact: str, feedback: str) -> Dict[str, Any]:
     """
@@ -100,7 +108,7 @@ def store_feedback(contact: str, feedback: str) -> Dict[str, Any]:
 
     except Exception as e:
         error_msg = f"Error saving feedback: {str(e)}"
-        print(error_msg)
+        logging.error(error_msg)
         raise Exception(error_msg)
 
 
@@ -120,14 +128,14 @@ def _read_feedback_file(filename: str) -> List[Dict[str, Any]]:
                 # If file is corrupted, try to read backup
                 backup_filename = f"{filename}.bak"
                 if os.path.exists(backup_filename):
-                    print(f"Warning: Corrupted feedback file {filename}, trying backup")
+                    logging.warning(f"Warning: Corrupted feedback file {filename}, trying backup")
                     with open(backup_filename, 'r', encoding='utf-8') as backup_f:
                         return json.load(backup_f)
                 else:
-                    print(f"Warning: Corrupted feedback file {filename}, starting fresh")
+                    logging.warning(f"Warning: Corrupted feedback file {filename}, starting fresh")
                     return []
     except Exception as e:
-        print(f"Error reading feedback file: {str(e)}")
+        logging.error(f"Error reading feedback file: {str(e)}")
         return []
 
 
@@ -151,11 +159,11 @@ def _write_feedback_file(filename: str, feedback_list: List[Dict[str, Any]]) -> 
 
 def _log_feedback_to_console(feedback_entry: Dict[str, Any], filename: str) -> None:
     """Log feedback to console for immediate visibility"""
-    print("\n" + "="*60)
-    print("NEW FEEDBACK RECEIVED")
-    print("="*60)
-    print(f"Timestamp: {feedback_entry['timestamp']}")
-    print(f"Contact: {feedback_entry['contact']}")
-    print(f"Feedback: {feedback_entry['feedback']}")
-    print(f"Saved to: {filename}")
-    print("="*60 + "\n")
+    logging.info("\n" + "="*60)
+    logging.info("NEW FEEDBACK RECEIVED")
+    logging.info("="*60)
+    logging.info(f"Timestamp: {feedback_entry['timestamp']}")
+    logging.info(f"Contact: {feedback_entry['contact']}")
+    logging.info(f"Feedback: {feedback_entry['feedback']}")
+    logging.info(f"Saved to: {filename}")
+    logging.info("="*60 + "\n")

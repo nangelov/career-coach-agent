@@ -10,6 +10,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from output_parser import FlexibleOutputParser, clean_llm_response, validate_pdp_response, PDPOutputParser
 from tools import *
 from helpers import *
+import logging
 
 
 import os
@@ -56,7 +57,7 @@ llm = HuggingFaceEndpoint(
     provider="hf-inference",
     task="text-generation",
     temperature=0.1,  # Slightly higher for more natural responses
-    max_new_tokens=512,  # Increase to avoid truncation
+    max_new_tokens=1024,  # Increase to avoid truncation
     top_p=0.9,  # More diverse responses
     repetition_penalty=1.15,  # Stronger penalty to avoid "Human:"
     do_sample=True,
@@ -161,6 +162,12 @@ pdp_agent_executor = AgentExecutor(
     memory=memory
 )
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 # Add this function to clear corrupted memory
 def clear_memory_if_corrupted():
@@ -171,10 +178,10 @@ def clear_memory_if_corrupted():
 
     corrupted_count = sum(1 for msg in messages if not msg.content.strip() or "Human:" in msg.content or msg.content == "Human:")
 
-    print(f"Memory check: {corrupted_count}/{len(messages)} corrupted messages")
+    logging.info(f"Memory check: {corrupted_count}/{len(messages)} corrupted messages")
 
     if corrupted_count > len(messages) * 0.2:  # If 20% of messages are corrupted
-        print("Clearing corrupted memory...")
+        logging.info("Clearing corrupted memory...")
         memory.clear()
 
 # API Models
@@ -196,7 +203,7 @@ async def feedback(contact: str, feedback: str):
     Receive and store user feedback
     """
     try:
-        print("Feedback: ",contact, feedback)
+        logging.info(f"Feedback: {contact}, {feedback}")
         result = store_feedback(contact, feedback)
         return result
     except Exception as e:
@@ -269,7 +276,7 @@ async def pdp_generator(
             cv_content=cv_content
         )
         #debug
-        print("PDP request: ", pdp_request)
+        logging.info(f"PDP request: {pdp_request}")
 
         # Generate PDP using the agent
         pdp_query = f"""
@@ -313,12 +320,12 @@ async def pdp_generator(
                 response = pdp_agent_executor.invoke(agent_input)
                 pdp_response = response.get("output", "")
                                
-                print(f"DEBUG: After cleanup length: {len(pdp_response)}")
+                logging.info(f"DEBUG: After cleanup length: {len(pdp_response)}")
                 
                 # Validate the response
                 if validate_pdp_response(pdp_response):
                     # Create PDF only if validation passes
-                    print("raw-pdp_response: ", pdp_response)
+                    logging.info(f"raw-pdp_response: {pdp_response}")
                     try:
                         pdf_buffer = create_pdp_pdf(
                             pdp_content=pdp_response,
@@ -347,11 +354,11 @@ async def pdp_generator(
                         )
 
                     except Exception as e:
-                        print(f"PDF creation error on attempt {attempt + 1}: {str(e)}")
+                        logging.info(f"PDF creation error on attempt {attempt + 1}: {str(e)}")
                         if attempt == max_retries - 1:
                             raise HTTPException(status_code=500, detail=f"Error creating PDF: {str(e)}")
                 else:
-                    print(f"Invalid PDP response on attempt {attempt + 1}")
+                    logging.info(f"Invalid PDP response on attempt {attempt + 1}")
                     if attempt == max_retries - 1:
                         raise HTTPException(
                             status_code=500,
@@ -359,7 +366,7 @@ async def pdp_generator(
                         )
 
             except Exception as e:
-                print(f"Agent execution error on attempt {attempt + 1}: {str(e)}")
+                logging.info(f"Agent execution error on attempt {attempt + 1}: {str(e)}")
                 if attempt == max_retries - 1:
                     raise HTTPException(
                         status_code=500,
@@ -376,21 +383,21 @@ async def pdp_generator(
             try:
                 os.unlink(tmp_file_path)
             except Exception as e:
-                print(f"Error cleaning up temporary file: {str(e)}")
+                logging.info(f"Error cleaning up temporary file: {str(e)}")
 
 @app.post("/agent/query")
 async def query_agent(request: QueryRequest):
-    print("\n" + "="*50)
-    print("Received query:", request.query)
-    print("="*50 + "\n")
+    logging.info(f"\n" + "="*50)
+    logging.info(f"Received query: {request.query}")
+    logging.info("="*50 + "\n")
 
     thread_id = request.thread_id or str(uuid.uuid4())
 
-    print("thread_id:", thread_id)
+    logging.info(f"thread_id: {thread_id}")
 
     # If no thread_id provided, this is a new conversation - clear memory
     if not request.thread_id:
-        print("New conversation started - clearing memory...")
+        logging.info("New conversation started - clearing memory...")
         memory.clear()
 
     # Clear corrupted memory
@@ -406,7 +413,7 @@ async def query_agent(request: QueryRequest):
             "input": request.query
         }
 
-        print("\nStarting agent execution...")
+        logging.info("\nStarting agent execution...")
 
         # Create a task that can be cancelled
         async def run_agent():
@@ -425,13 +432,13 @@ async def query_agent(request: QueryRequest):
 
                     return future.result()
             except Exception as e:
-                print(f"Agent execution error: {str(e)}")
+                logging.info(f"Agent execution error: {str(e)}")
                 raise e
 
         try:
             response = await run_agent()
             #debug
-            print("Raw agent response:", response)
+            logging.info(f"Raw agent response: {response}")
         except asyncio.CancelledError:
             return {
                 "status": "cancelled",
@@ -440,7 +447,7 @@ async def query_agent(request: QueryRequest):
                 "full_thought_process": "Request cancelled"
             }
         except Exception as e:
-            print(f"Agent execution error: {str(e)}")
+            logging.info(f"Agent execution error: {str(e)}")
             return {
                 "status": "error",
                 "thread_id": thread_id,
@@ -449,23 +456,23 @@ async def query_agent(request: QueryRequest):
             }
 
         # Print detailed thought process
-        print("\n" + "-"*50)
-        print("Agent's Thought Process:")
-        print("-"*50)
+        logging.info(f"\n" + "-"*50)
+        logging.info(f"Agent's Thought Process:")
+        logging.info("-"*50)
         for step in response.get("intermediate_steps", []):
-            print("\nStep:")
-            print(f"Action: {step[0].tool}")
-            print(f"Action Input: {step[0].tool_input}")
-            print(f"Observation: {step[1]}")
-            print("-"*30)
+            logging.info("\nStep:")
+            logging.info(f"Action: {step[0].tool}")
+            logging.info(f"Action Input: {step[0].tool_input}")
+            logging.info(f"Observation: {step[1]}")
+            logging.info("-"*30)
 
-        print("\nFinal Response:")
-        print("-"*50)
+        logging.info("\nFinal Response:")
+        logging.info("-"*50)
         raw_output = response.get("output", "No response generated")
         output = clean_llm_response(raw_output)
         #debug
-        print(output)
-        print("="*50 + "\n")
+        logging.info(output)
+        logging.info("="*50 + "\n")
 
         # Save the response to memory
         memory.save_context(
@@ -480,10 +487,10 @@ async def query_agent(request: QueryRequest):
             "full_thought_process": str(response.get("intermediate_steps", "No thought process generated"))
         }
     except Exception as e:
-        print("\nError occurred:")
-        print("-"*50)
-        print(str(e))
-        print("="*50 + "\n")
+        logging.info("\nError occurred:")
+        logging.info("-"*50)
+        logging.info(str(e))
+        logging.info("="*50 + "\n")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         # Clean up the active request
