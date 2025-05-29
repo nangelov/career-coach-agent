@@ -4,7 +4,6 @@ import styled from 'styled-components';
 const HeaderContainer = styled.div`
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 15px 20px;
   background-color: #0084ff;
   color: white;
@@ -16,6 +15,8 @@ const HeaderContainer = styled.div`
 const Title = styled.div`
   display: flex;
   align-items: center;
+  flex: 1;
+  justify-content: center;
 `;
 
 const Logo = styled.div`
@@ -23,7 +24,18 @@ const Logo = styled.div`
   font-size: 24px;
 `;
 
-const ClearButton = styled.button`
+const RightSection = styled.div`
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+`;
+
+const LeftSection = styled.div`
+  display: flex;
+  gap: 10px;
+`;
+
+const Button = styled.button`
   background-color: transparent;
   color: white;
   border: 1px solid white;
@@ -37,18 +49,38 @@ const ClearButton = styled.button`
   }
 `;
 
+const PDPButton = styled(Button)`
+  background-color: #28a745;
+  border-color: #28a745;
+  border: 1px solid white;
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 14px;
+  
+  &:hover {
+    background-color: #218838;
+  }
+`;
+
 interface ChatHeaderProps {
   onClearChat: () => void;
+  onOpenPDP: () => void;
 }
 
-const ChatHeader: React.FC<ChatHeaderProps> = ({ onClearChat }) => {
+const ChatHeader: React.FC<ChatHeaderProps> = ({ onClearChat, onOpenPDP }) => {
   return (
     <HeaderContainer>
+      <LeftSection>
+        <Button onClick={onClearChat}>New Chat</Button>
+      </LeftSection>
       <Title>
         <Logo>👨‍💼</Logo>
-        CareerCoach AI
+        AI CareerCoach
       </Title>
-      <ClearButton onClick={onClearChat}>New Chat</ClearButton>
+      <RightSection>
+        <PDPButton onClick={onOpenPDP}>Generate Personal Development Plan</PDPButton>
+      </RightSection>
     </HeaderContainer>
   );
 };

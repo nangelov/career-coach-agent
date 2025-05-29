@@ -19,3 +19,6 @@ huggingface_hub
 hf_xet
 aiofiles
 google-search-results
+pypdf
+reportlab
+spire.doc

@@ -10,3 +10,12 @@ export interface ChatResponse {
   response: string;
   full_thought_process?: string;
 }
+
+export interface PDPResponse {
+  status: string;
+  message: string;
+  pdp: string;
+  filename: string;
+  career_goal: string;
+  target_date: string;
+}

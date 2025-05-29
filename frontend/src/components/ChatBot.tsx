@@ -4,6 +4,7 @@ import axios from 'axios';
 import ChatHeader from './ChatHeader';
 import ChatWindow from './ChatWindow';
 import ChatInput from './ChatInput';
+import PDPDialog, { PDPFormData } from './PDPDialog';
 import { Message, ChatResponse } from '../types';
 
 const ChatContainer = styled.div`
@@ -20,6 +21,7 @@ const ChatBot: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isPDPDialogOpen, setIsPDPDialogOpen] = useState(false);
   const cancelTokenRef = useRef<AbortController | null>(null);
 
   // Add welcome message when component mounts
@@ -119,17 +121,131 @@ const ChatBot: React.FC = () => {
         content: 'Hello! I\'m CareerCoach AI, your personal career development assistant. How can I help you today?'
       }
     ]);
-    setThreadId(null); // This line already exists - good!
+    setThreadId(null);
+  };
+
+  const openPDPDialog = () => {
+    setIsPDPDialogOpen(true);
+  };
+
+  const closePDPDialog = () => {
+    setIsPDPDialogOpen(false);
+  };
+
+  const handlePDPSubmit = async (formData: PDPFormData) => {
+    // Add chat message showing PDP generation details
+    const pdpMessage: Message = {
+      role: 'user',
+      content: `Generating PDP from:
+  CV: ${formData.cvFile?.name || 'No file'}
+  Career Goal: ${formData.careerGoal}
+  Additional Context: ${formData.additionalContext || 'None provided'}
+  Target Date: ${formData.targetDate}`
+    };
+    
+    setMessages(prev => [...prev, pdpMessage]);
+    
+    // Add loading message
+    const loadingMessage: Message = {
+      role: 'assistant',
+      content: 'Generating your Personal Development Plan... This may take a few moments.'
+    };
+    
+    setMessages(prev => [...prev, loadingMessage]);
+    setIsLoading(true);
+  
+    try {
+      const data = new FormData();
+      if (formData.cvFile) {
+        data.append('file', formData.cvFile);
+      }
+      data.append('career_goal', formData.careerGoal);
+      data.append('additional_context', formData.additionalContext);
+      data.append('target_date', formData.targetDate);
+  
+      const response = await fetch('/pdp-generator', {
+        method: 'POST',
+        body: data,
+      });
+  
+      if (response.ok) {
+        // Get the filename from the response headers
+        const contentDisposition = response.headers.get('Content-Disposition');
+        const filename = contentDisposition 
+          ? contentDisposition.split('filename=')[1].replace(/"/g, '')
+          : 'PDP.pdf';
+  
+        // Create blob and download
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        // Add success message to chat
+        const successMessage: Message = {
+          role: 'assistant',
+          content: `✅ Your Personal Development Plan has been generated successfully and downloaded as "${filename}"! 
+  
+  The PDP includes:
+  - Current skills assessment based on your CV
+  - Skills gap analysis for your career goal
+  - Learning objectives and milestones
+  - Recommended training and development
+  - Timeline and action steps
+  - Progress tracking and KPIs
+  
+  You can now review your personalized development plan and start working towards your career goals!`
+        };
+        
+        setMessages(prev => [...prev.slice(0, -1), successMessage]); // Replace loading message
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to generate PDP');
+      }
+    } catch (error) {
+      console.error('Error generating PDP:', error);
+      
+      // Add error message to chat
+      const errorMessage: Message = {
+        role: 'assistant',
+        content: `❌ Sorry, I encountered an error while generating your PDP: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`
+      };
+      
+      setMessages(prev => [...prev.slice(0, -1), errorMessage]); // Replace loading message
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // The pdpDialog function as requested
+  const pdpDialog = () => {
+    openPDPDialog();
   };
 
   return (
     <ChatContainer>
-      <ChatHeader onClearChat={clearChat} />
-      <ChatWindow messages={messages} isLoading={isLoading} />
+      <ChatHeader 
+        onClearChat={clearChat} 
+        onOpenPDP={pdpDialog}
+      />
+      <ChatWindow 
+        messages={messages} 
+        isLoading={isLoading} 
+      />
       <ChatInput 
         onSendMessage={sendMessage} 
         onCancelRequest={cancelRequest}
         isLoading={isLoading} 
+      />
+      <PDPDialog
+        isOpen={isPDPDialogOpen}
+        onClose={closePDPDialog}
+        onSubmit={handlePDPSubmit}
       />
     </ChatContainer>
   );

@@ -3,7 +3,9 @@ from langchain.agents import AgentExecutor
 from langchain.agents.format_scratchpad import format_log_to_str
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.memory import ConversationBufferMemory
-from langchain.tools.render import render_text_description
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_core.tools.render import render_text_description
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 from tools.visit_webpage import visit_webpage
 from tools.wikipedia_tool import wikipedia_search
@@ -12,6 +14,7 @@ from tools.internet_search import internet_search
 from tools.google_jobs_search import google_job_search
 from tools.date_and_time import current_date_and_time
 from output_parser import FlexibleOutputParser, clean_llm_response
+from tools import create_pdp_pdf
 
 import os
 import yaml
@@ -19,8 +22,13 @@ import uuid
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
 import asyncio
+import tempfile
+from io import BytesIO
+import re
+from datetime import datetime
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -137,6 +145,12 @@ class QueryRequest(BaseModel):
     thread_id: Optional[str] = None
     context: Dict[str, Any] = Field(default_factory=dict)
 
+class PDPRequest(BaseModel):
+    career_goal: str
+    additional_context: str = ""
+    target_date: str
+    cv_content: str = ""  # To store extracted CV text
+
 # API Routes
 @app.post("/agent/cancel/{thread_id}")
 async def cancel_request(thread_id: str):
@@ -146,7 +160,135 @@ async def cancel_request(thread_id: str):
         return {"status": "cancelled", "thread_id": thread_id}
     return {"status": "not_found", "thread_id": thread_id}
 
-# Modify the existing query_agent function
+# Configure text splitter
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=1000,
+    chunk_overlap=200,
+    length_function=len,
+)
+
+@app.post("/pdp-generator")
+async def pdp_generator(
+    file: UploadFile = File(...),
+    career_goal: str = Form(...),
+    additional_context: str = Form(""),
+    target_date: str = Form(...)
+):
+    """
+    Generate Personal Development Plan as PDF using uploaded CV and user inputs
+    """
+    # Validate file type
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+
+    # Create temporary file
+    tmp_file_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+            # Write uploaded content to temp file
+            content = await file.read()
+            if not content:
+                raise HTTPException(status_code=400, detail="Empty file uploaded")
+            tmp_file.write(content)
+            tmp_file_path = tmp_file.name
+
+        # Load PDF using LangChain
+        try:
+            loader = PyPDFLoader(tmp_file_path)
+            documents = loader.load()
+            if not documents:
+                raise HTTPException(status_code=400, detail="Could not extract content from PDF")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error processing PDF: {str(e)}")
+
+        # Split documents into chunks
+        chunks = text_splitter.split_documents(documents)
+        if not chunks:
+            raise HTTPException(status_code=400, detail="No content could be extracted from the PDF")
+
+        # Extract CV content
+        cv_content = "\n".join([chunk.page_content for chunk in chunks])
+        if not cv_content.strip():
+            raise HTTPException(status_code=400, detail="No text content found in the PDF")
+
+        # Create PDP request
+        pdp_request = PDPRequest(
+            career_goal=career_goal,
+            additional_context=additional_context,
+            target_date=target_date,
+            cv_content=cv_content
+        )
+
+        # Generate PDP using the agent
+        pdp_query = f"""
+        Please generate a comprehensive Personal Development Plan based on the following information:
+
+        **Career Goal:** {career_goal}
+        **Target Date:** {target_date}
+        **Additional Context:** {additional_context}
+
+        **CV Content:**
+        {cv_content}
+
+        Please create a detailed personal development plan that includes:
+        1. Current Skills Assessment - Analyze the skills and experience from the CV
+        2. Skills Gap Analysis - Identify what skills are needed for the career goal
+        3. Learning Objectives and Milestones - Specific, measurable goals
+        4. Recommended Training and Development - Courses, certifications, training programs
+        5. Timeline and Action Steps - Detailed timeline leading to the target date
+        6. Progress Tracking and KPIs - How to measure success and progress
+
+        Format the response with clear headings and bullet points for easy reading.
+        """
+
+        # Use the existing agent to generate the PDP
+        agent_input = {"input": pdp_query}
+
+        try:
+            response = agent_executor.invoke(agent_input)
+            print("raw-response-llm: ",response)
+            pdp_response = response.get("output")
+            if not pdp_response:
+                raise HTTPException(status_code=500, detail="Failed to generate PDP content")
+        except Exception as e:
+            print(f"Agent execution error: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error generating PDP: {str(e)}")
+
+        # Create PDF
+        try:
+            pdf_buffer = create_pdp_pdf(
+                pdp_content=pdp_response,
+                career_goal=career_goal,
+                target_date=target_date,
+                filename=file.filename
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error creating PDF: {str(e)}")
+
+        # Generate filename for the PDF
+        safe_career_goal = re.sub(r'[^\w\s-]', '', career_goal).strip()
+        safe_career_goal = re.sub(r'[-\s]+', '-', safe_career_goal)
+        pdf_filename = f"PDP_{safe_career_goal}_{datetime.now().strftime('%Y%m%d')}.pdf"
+
+        # Return PDF as streaming response
+        return StreamingResponse(
+            BytesIO(pdf_buffer.read()),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={pdf_filename}"}
+        )
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating PDP: {str(e)}")
+    finally:
+        # Clean up temp file
+        if tmp_file_path and os.path.exists(tmp_file_path):
+            try:
+                os.unlink(tmp_file_path)
+            except Exception as e:
+                print(f"Error cleaning up temporary file: {str(e)}")
+
 @app.post("/agent/query")
 async def query_agent(request: QueryRequest):
     print("\n" + "="*50)
@@ -256,6 +398,8 @@ async def query_agent(request: QueryRequest):
         # Clean up the active request
         if thread_id in active_requests:
             del active_requests[thread_id]
+
+
 
 # Check if the frontend build directory exists
 if os.path.exists("frontend/build"):

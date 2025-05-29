@@ -50,6 +50,7 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
             print(f"Standard parsing failed: {e}")
             # Custom parsing for malformed ReAct format
             return self._parse_malformed_react(text)
+
     def _handle_truncated_action(self, text):
         """Handle cases where Action is cut off"""
         if "Action:" in text and "Action Input:" not in text:
@@ -105,6 +106,17 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
             elif line.startswith("Action Input:"):
                 action_input = line.replace("Action Input:", "").strip()
 
+                # Handle multi-line action input (especially for code blocks)
+                j = i + 1
+                while j < len(lines):
+                    next_line = lines[j]
+                    # Stop if we hit another ReAct keyword
+                    if any(next_line.startswith(keyword) for keyword in ["Thought:", "Action:", "Observation:", "Final Answer:", "Human:"]):
+                        break
+                    action_input += "\n" + next_line
+                    j += 1
+                i = j - 1  # Adjust index to account for consumed lines
+
                 # Clean action input more aggressively
                 action_input = self._clean_action_input(action_input)
 
@@ -122,17 +134,6 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
 
             i += 1
 
-        # Additional cleaning of action_input if it exists
-        if action_input:
-            action_input = re.sub(r'\s*Observation\s*:?\s*$', '', action_input)
-            action_input = re.sub(r'^["\']|["\']$', '', action_input)
-            action_input = re.sub(r'\s*#.*$', '', action_input)
-            action_input = action_input.strip()
-
-            if len(action_input) > 200:
-                print(f"WARNING: Action input too long ({len(action_input)} chars), truncating")
-                action_input = action_input[:200].strip()
-
         # Check for incomplete action
         if action and not action_input:
             print("ERROR: Action without Action Input - treating as final answer")
@@ -144,7 +145,7 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
         # If we have action and action_input, return AgentAction
         if action and action_input:
             print(f"Parsed Action: {action}")
-            print(f"Parsed Action Input: '{action_input}'")
+            print(f"Parsed Action Input: '{action_input[:100]}...'")
             return AgentAction(
                 tool=action,
                 tool_input=action_input,
@@ -181,7 +182,12 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
             "therefore",
             "the answer is",
             "the results show",
-            "from the search results"
+            "from the search results",
+            "personal development plan",
+            "skills gap analysis",
+            "development objectives",
+            "career progression",
+            "learning milestones"
         ]
 
         # Check if it contains final answer indicators and no action keywords
@@ -197,20 +203,68 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
         action_input = re.sub(r'<\|eom_id\|>', '', action_input)
         action_input = re.sub(r'<\|.*?\|>', '', action_input)
 
-        # Remove everything after newlines (take only first line)
-        action_input = action_input.split('\n')[0]
+        # Handle code blocks properly
+        if "```" in action_input:
+            # Extract content between triple backticks
+            code_match = re.search(r'```(?:python)?\s*(.*?)\s*```', action_input, re.DOTALL)
+            if code_match:
+                action_input = code_match.group(1).strip()
+            else:
+                # If we have opening ``` but no closing, take everything after it
+                if action_input.count('```') == 1:
+                    parts = action_input.split('```', 1)
+                    if len(parts) > 1:
+                        action_input = parts[1].strip()
+                        # Remove any language identifier
+                        if action_input.startswith('python'):
+                            action_input = action_input[6:].strip()
+                        elif action_input.startswith('\npython'):
+                            action_input = action_input[7:].strip()
 
-        # Remove everything after common stop words
-        stop_words = ['Thought:', 'Action:', 'Observation:', 'Human:', 'Assistant:']
+        # Remove everything after common stop words (but preserve code structure)
+        stop_words = ['Thought:', 'Action:', 'Observation:', 'Human:', 'Assistant:', 'Please see below', 'Now that we']
         for stop_word in stop_words:
             if stop_word in action_input:
                 action_input = action_input.split(stop_word)[0]
 
-        # Remove quotes if they wrap the entire input
-        action_input = re.sub(r'^["\']|["\']$', '', action_input)
+        # Remove quotes if they wrap the entire input (but not if they're part of code)
+        if not ('"""' in action_input or "'''" in action_input or 'print(' in action_input):
+            action_input = re.sub(r'^["\']|["\']$', '', action_input)
 
         # Remove any trailing special characters or whitespace
         action_input = action_input.strip()
+
+        # Remove any trailing text that looks like instructions
+        lines = action_input.split('\n')
+        cleaned_lines = []
+        skip_rest = False
+        
+        for line in lines:
+            # Skip lines that look like instructions or comments after code
+            if (skip_rest or 
+                line.strip().startswith('Please see below') or
+                line.strip().startswith('Now that we') or
+                line.strip().startswith('Based on the output') or
+                line.strip().startswith('After running') or
+                line.strip().startswith('The output') or
+                line.strip().startswith('Here is') or
+                line.strip().startswith('Let me') or
+                line.strip().startswith('I will') or
+                line.strip().startswith('Next,') or
+                line.strip().startswith('Then,') or
+                line.strip().startswith('Finally,') or
+                re.match(r'^\s*#.*instructions.*', line, re.IGNORECASE) or
+                re.match(r'^\s*#.*note.*', line, re.IGNORECASE)):
+                skip_rest = True
+                break
+            cleaned_lines.append(line)
+
+        action_input = '\n'.join(cleaned_lines).strip()
+
+        # Final cleanup - remove any remaining trailing instructions
+        action_input = re.sub(r'\n\s*Please.*$', '', action_input, flags=re.DOTALL)
+        action_input = re.sub(r'\n\s*Now.*$', '', action_input, flags=re.DOTALL)
+        action_input = re.sub(r'\n\s*Based on.*$', '', action_input, flags=re.DOTALL)
 
         return action_input
 
@@ -229,6 +283,9 @@ def clean_llm_response(output):
     # Remove special tokens first
     if "<|eot_id|>" in output:
         output = output.split("<|eot_id|>")[0]
+
+    if "<|eom_id|>" in output:
+        output = output.split("<|eom_id|>")[0]
 
     # Remove "Human:" and everything after it (most aggressive cleaning)
     if "Human:" in output:
@@ -258,8 +315,17 @@ def clean_llm_response(output):
         # Skip lines that look like internal notes or instructions
         if (line.startswith("Let's") or "instead" in line.lower() or
             "attempt" in line.lower() or "should" in line.lower() or
-            line.startswith("Human") or not line):
+            line.startswith("Human") or not line or
+            line.startswith("I will") or line.startswith("Next,") or
+            line.startswith("Then,") or line.startswith("Finally,")):
             continue
         cleaned_lines.append(line)
 
-    return "\n".join(cleaned_lines).strip()
+    result = "\n".join(cleaned_lines).strip()
+
+    # Final cleanup
+    result = re.sub(r'\n\s*Please.*$', '', result, flags=re.DOTALL)
+    result = re.sub(r'\n\s*Now.*$', '', result, flags=re.DOTALL)
+    result = re.sub(r'\n\s*Based on.*$', '', result, flags=re.DOTALL)
+
+    return result
