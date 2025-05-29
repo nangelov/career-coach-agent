@@ -3,7 +3,7 @@ import requests
 import markdownify
 import re
 from requests.exceptions import RequestException
-from .helper import clean_input
+from helpers.helper import clean_input
 
 @tool
 def visit_webpage(url: str) -> str:

@@ -19,3 +19,13 @@ export interface PDPResponse {
   career_goal: string;
   target_date: string;
 }
+
+export interface FeedbackFormData {
+  contact: string;
+  feedback: string;
+}
+
+export interface FeedbackResponse {
+  status: string;
+  message: string;
+}

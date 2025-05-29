@@ -9,12 +9,13 @@ RUN apt-get update && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-# Create logs directory as root and set permissions
-RUN mkdir -p logs
+# Create logs directory as root
+RUN mkdir -p /app/data
 
 # Create a non-root user and set permissions
 RUN useradd -m -u 1000 user && \
-    chown -R user:user /app
+    chown -R user:user /app \
+    && chown -R user:user /app/data
 
 # Switch to non-root user
 USER user

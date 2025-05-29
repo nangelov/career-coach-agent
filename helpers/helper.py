@@ -5,7 +5,6 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib.colors import HexColor
 from io import BytesIO
-import re
 from datetime import datetime
 
 def clean_input(input: str) -> str:

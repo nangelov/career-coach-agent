@@ -48,6 +48,7 @@ system_prompt: |-
   - Focus on practical career advice
   - Do NOT execute code or perform technical analysis
   - Do NOT use tools unless specifically needed for research
+  - You can use internet_search to check for proper books, trainings or courses
   - Keep responses focused and professional
 
   **NEVER:**

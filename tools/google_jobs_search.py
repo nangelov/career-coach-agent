@@ -1,7 +1,7 @@
 from langchain_community.tools.google_jobs import GoogleJobsQueryRun
 from langchain_community.utilities.google_jobs import GoogleJobsAPIWrapper
 from langchain_core.tools import tool
-from .helper import clean_input
+from helpers.helper import clean_input
 import os
 
 if not os.getenv('SERPAPI_API_KEY'):

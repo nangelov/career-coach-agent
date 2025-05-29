@@ -15,34 +15,39 @@ tags:
   - coaching
 ---
 
-# Career Coach AI Assistant
+# Career Coach Agent
 
-A FastAPI-based AI assistant that helps users with career development, powered by Llama-3.3-70B-Instruct and LangChain.
-
-## Features
-
-- Interactive chat interface
-- Career-focused AI assistant using Llama-3.3-70B-Instruct model
-- FastAPI backend with RESTful endpoints
-- LangChain integration for advanced prompt handling and tool usage
-- System prompts and templates managed through YAML configuration
+An AI-powered career coaching assistant that helps users create personalized development plans and provides career guidance.
 
 ## Project Structure
 
 ```
 career-coach-agent/
 ├── app.py              # Main FastAPI application with agent setup
-├── prompts.yaml        # System prompts and templates
+├── main.py            # Application entry point
+├── prompts.yaml       # System prompts and templates
+├── output_parser.py   # Response parsing and validation
+├── frontend/          # React frontend application
+│   ├── src/
+│   │   ├── components/    # React components
+│   │   ├── types/        # TypeScript type definitions
+│   │   └── App.tsx       # Main application component
 ├── tools/             # Tool implementations
 │   ├── visit_webpage.py    # Web page content fetcher
 │   ├── wikipedia_tool.py   # Wikipedia search tool
 │   ├── python_repl.py      # Python code execution tool
-│   └── internet_search.py  # Internet search tool
+│   ├── internet_search.py  # Internet search tool
+│   ├── google_jobs_search.py # Google Jobs search tool
+│   └── date_and_time.py    # Date and time utilities
+├── helpers/           # Helper functions
+│   ├── helper.py         # General helper functions
+│   └── feedback_handler.py # Feedback processing
 └── README.md          # This file
 ```
 
 ## Requirements
 
+### Backend
 - Python 3.12+
 - FastAPI
 - LangChain
@@ -52,6 +57,19 @@ career-coach-agent/
   - markdownify
   - wikipedia
   - duckduckgo-search
+  - pytz
+  - python-multipart
+  - uvicorn
+
+### Frontend
+- Node.js 16+
+- React
+- TypeScript
+- Additional dependencies:
+  - styled-components
+  - axios
+  - @types/react
+  - @types/styled-components
 
 ## Environment Variables
 
@@ -68,24 +86,51 @@ git clone <repository-url>
 cd career-coach-agent
 ```
 
-2. Install dependencies:
+2. Install backend dependencies:
 ```bash
-pip install fastapi langchain langchain_huggingface pydantic python-multipart uvicorn requests markdownify wikipedia duckduckgo-search
+pip install -r requirements.txt
 ```
 
-3. Set up your Hugging Face API token as an environment variable.
+3. Install frontend dependencies:
+```bash
+cd frontend
+npm install
+```
+
+4. Set up your Hugging Face API token as an environment variable.
 
 ## Running the Application
 
-Start the application:
+### Development Mode
+
+1. Start the backend:
 ```bash
-uvicorn app:app --reload
+uvicorn main:app --reload
+```
+
+2. Start the frontend development server:
+```bash
+cd frontend
+npm start
+```
+
+### Production Mode
+
+1. Build the frontend:
+```bash
+cd frontend
+npm run build
+```
+
+2. Start the application:
+```bash
+uvicorn main:app
 ```
 
 The application will be available at:
-- Web Interface: http://localhost:8000
-- API Documentation: http://localhost:8000/docs
-- Alternative API Documentation: http://localhost:8000/redoc
+- Web Interface: http://localhost:7860
+- API Documentation: http://localhost:7860/docs
+- Alternative API Documentation: http://localhost:7860/redoc
 
 ## API Endpoints
 
@@ -98,6 +143,30 @@ Request body:
     "query": "string",
     "thread_id": "string (optional)",
     "context": {} (optional)
+}
+```
+
+### `/agent/feedback` (POST)
+Submit user feedback.
+
+Request body:
+```json
+{
+    "contact": "string",
+    "feedback": "string"
+}
+```
+
+### `/pdp-generator` (POST)
+Generate a Personal Development Plan.
+
+Request body:
+```json
+{
+    "file": "PDF file",
+    "career_goal": "string",
+    "additional_context": "string (optional)",
+    "target_date": "string"
 }
 ```
 
@@ -124,9 +193,29 @@ The AI assistant has access to the following tools:
    - Returns relevant search results
    - Useful for finding current information
 
-## Technical Features
+5. **Google Jobs Search**
+   - Searches for job listings on Google Jobs
+   - Returns relevant job opportunities
+   - Helps with career research
 
-- Real-time chat interface
+6. **Date and Time**
+   - Provides current date and time information
+   - Supports multiple timezones
+   - Useful for scheduling and planning
+
+## Features
+
+### Frontend
+- Modern, responsive UI built with React and TypeScript
+- Real-time chat interface with message history
+- Personal Development Plan (PDP) generation
+- PDF upload and processing
+- User feedback system
+- Mobile-friendly design
+
+### Backend
+- FastAPI-based REST API
+- LangChain-powered AI agent
 - Conversation memory and context management
 - Error handling and graceful degradation
 - CORS support
@@ -136,11 +225,18 @@ The AI assistant has access to the following tools:
 
 ## Architecture
 
-- **FastAPI**: Handles HTTP requests and API endpoints
-- **LangChain**: Manages the AI agent and tools
-- **Llama-3.3-70B-Instruct**: Powers the AI responses
-- **YAML Configuration**: Manages system prompts and templates
-- **Tools Integration**: Wikipedia, Web, Python, and Search capabilities
+- **Frontend**:
+  - React with TypeScript
+  - Styled Components for styling
+  - Axios for API communication
+  - Responsive design for all devices
+
+- **Backend**:
+  - FastAPI: Handles HTTP requests and API endpoints
+  - LangChain: Manages the AI agent and tools
+  - Llama-3.3-70B-Instruct: Powers the AI responses
+  - YAML Configuration: Manages system prompts and templates
+  - Tools Integration: Wikipedia, Web, Python, Search, and more
 
 ## Contributing
 

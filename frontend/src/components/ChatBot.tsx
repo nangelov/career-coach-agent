@@ -5,7 +5,8 @@ import ChatHeader from './ChatHeader';
 import ChatWindow from './ChatWindow';
 import ChatInput from './ChatInput';
 import PDPDialog, { PDPFormData } from './PDPDialog';
-import { Message, ChatResponse } from '../types';
+import SendFeedback from './SendFeedback';
+import { Message, ChatResponse, FeedbackFormData } from '../types';
 
 const ChatContainer = styled.div`
   display: flex;
@@ -22,6 +23,7 @@ const ChatBot: React.FC = () => {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isPDPDialogOpen, setIsPDPDialogOpen] = useState(false);
+  const [isSendFeedbackDialogOpen, setIsSendFeedbackDialogOpen] = useState(false);
   const cancelTokenRef = useRef<AbortController | null>(null);
 
   // Add welcome message when component mounts
@@ -221,10 +223,36 @@ const ChatBot: React.FC = () => {
       setIsLoading(false);
     }
   };
-  
+
   // The pdpDialog function as requested
   const pdpDialog = () => {
     openPDPDialog();
+  };
+
+  const closeSendFeedbackDialog = () => {
+    setIsSendFeedbackDialogOpen(false);
+  };
+
+  const handleSendFeedbackSubmit = async (data: FeedbackFormData) => {
+    try {
+      console.log('Sending feedback data:', JSON.stringify(data));
+      const url = new URL('/agent/feedback', window.location.origin);
+      url.searchParams.append('contact', data.contact);
+      url.searchParams.append('feedback', data.feedback);
+
+      const response = await fetch(url.toString(), {
+        method: 'POST'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to submit feedback');
+      }
+
+      alert('Thank you for your feedback!');
+    } catch (error) {
+      console.error('Error submitting feedback:', error);
+      alert('Failed to submit feedback. Please try again later.');
+    }
   };
 
   return (
@@ -240,7 +268,13 @@ const ChatBot: React.FC = () => {
       <ChatInput 
         onSendMessage={sendMessage} 
         onCancelRequest={cancelRequest}
-        isLoading={isLoading} 
+        isLoading={isLoading}
+        onOpenFeedback={() => setIsSendFeedbackDialogOpen(true)}
+      />
+      <SendFeedback 
+        isOpen={isSendFeedbackDialogOpen}
+        onClose={closeSendFeedbackDialog}
+        onSubmit={handleSendFeedbackSubmit}
       />
       <PDPDialog
         isOpen={isPDPDialogOpen}

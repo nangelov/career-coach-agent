@@ -1,6 +1,6 @@
 from langchain_core.tools import tool
 from langchain_community.tools import DuckDuckGoSearchResults
-from .helper import clean_input
+from helpers.helper import clean_input
 
 
 @tool

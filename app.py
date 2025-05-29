@@ -7,14 +7,10 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.tools.render import render_text_description
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-from tools.visit_webpage import visit_webpage
-from tools.wikipedia_tool import wikipedia_search
-from tools.python_repl import run_python_code
-from tools.internet_search import internet_search
-from tools.google_jobs_search import google_job_search
-from tools.date_and_time import current_date_and_time
 from output_parser import FlexibleOutputParser, clean_llm_response, validate_pdp_response
-from tools import create_pdp_pdf
+from tools import *
+from helpers import *
+
 
 import os
 import yaml
@@ -100,12 +96,11 @@ chat_model_with_stop = llm.bind(
     stop=["\nHuman:", "Human:", "\n\nHuman", "\nUser:"] 
 )
 
-# Update the agent to include chat_history
 agent = (
     {
         "input": lambda x: x["input"],
         "agent_scratchpad": lambda x: format_log_to_str(x["intermediate_steps"]) if x["intermediate_steps"] else "",
-        "chat_history": lambda x: x.get("chat_history", [])  # Add this line!
+        "chat_history": lambda x: x.get("chat_history", []) 
     }
     | prompt
     | chat_model_with_stop
@@ -152,6 +147,18 @@ class PDPRequest(BaseModel):
     cv_content: str = ""  # To store extracted CV text
 
 # API Routes
+@app.post("/agent/feedback")
+async def feedback(contact: str, feedback: str):
+    """
+    Receive and store user feedback
+    """
+    try:
+        print("Feedback: ",contact, feedback)
+        result = store_feedback(contact, feedback)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/agent/cancel/{thread_id}")
 async def cancel_request(thread_id: str):
     if thread_id in active_requests:
@@ -224,6 +231,7 @@ async def pdp_generator(
         # Generate PDP using the agent
         pdp_query = f"""
         Create a comprehensive Personal Development Plan for transitioning to {pdp_request.career_goal} by {pdp_request.target_date}.
+        DO NOT ASK FOR CONFIRMATION OF THIS REQUEST!
 
         Based on this CV content: {pdp_request.cv_content}
         Additional context: {pdp_request.additional_context}
@@ -265,6 +273,7 @@ async def pdp_generator(
                 # Validate the response
                 if validate_pdp_response(pdp_response):
                     # Create PDF only if validation passes
+                    print("raw-pdp_response: ",pdp_response)
                     try:
                         pdf_buffer = create_pdp_pdf(
                             pdp_content=pdp_response,
@@ -277,6 +286,14 @@ async def pdp_generator(
                         safe_career_goal = re.sub(r'[^\w\s-]', '', career_goal).strip()
                         safe_career_goal = re.sub(r'[-\s]+', '-', safe_career_goal)
                         pdf_filename = f"PDP_{safe_career_goal}_{datetime.now().strftime('%Y%m%d')}.pdf"
+
+                        # Add PDP request to chat history memory
+                        user_pdp_message = f"User requested a Personal Development Plan.\nCareer Goal: {pdp_request.career_goal}\nTarget Date: {pdp_request.target_date}\nAdditional Context: {pdp_request.additional_context or 'None'}\nCV Provided: {'Yes' if cv_content.strip() else 'No'}"
+                        assistant_pdp_ack = "Okay, I 've successfully generated you PDP PDF file"
+                        memory.save_context(
+                            {"input": user_pdp_message},
+                            {"output": assistant_pdp_ack}
+                        )
 
                         return StreamingResponse(
                             BytesIO(pdf_buffer.read()),
