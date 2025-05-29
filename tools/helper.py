@@ -78,7 +78,10 @@ def prepare_pdf_content(pdf_content: str):
             clean_line = clean_line.replace('**', '</b>', 1)
             formatted_lines.append(('body', clean_line))
         # Handle bullet points
-        elif line.startswith('- ') or line.startswith('* '):
+        elif line.startswith('- '):
+            clean_line = f"• {line[2:]}"
+            formatted_lines.append(('body', clean_line))
+        elif line.startswith('* '):
             clean_line = f"• {line[2:]}"
             formatted_lines.append(('body', clean_line))
         # Handle numbered lists

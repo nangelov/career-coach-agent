@@ -329,3 +329,48 @@ def clean_llm_response(output):
     result = re.sub(r'\n\s*Based on.*$', '', result, flags=re.DOTALL)
 
     return result
+
+def validate_pdp_response(response_text: str) -> bool:
+    """
+    Validate if the PDP response is properly formatted and complete
+    """
+    # Check for minimum length
+    if len(response_text.strip()) < 500:
+        return False
+    
+    # Check for required sections
+    required_sections = [
+        "Current Skills Assessment",
+        "Skills Gap Analysis", 
+        "Learning Objectives",
+        "Recommended Training",
+        "Timeline",
+        "Progress Tracking"
+    ]
+    
+    found_sections = 0
+    for section in required_sections:
+        if section.lower() in response_text.lower():
+            found_sections += 1
+    
+    # Require at least 4 out of 6 sections
+    if found_sections < 4:
+        return False
+    
+    # Check for problematic patterns
+    problematic_patterns = [
+        "```python",  # Unfinished code blocks
+        "SyntaxError",
+        "Action:",
+        "Action Input:",
+        "Observation:",
+        "Let's correct this",
+        "There was an issue",
+        "skill_gaps =",  # Incomplete variable assignments
+    ]
+    
+    for pattern in problematic_patterns:
+        if pattern in response_text:
+            return False
+    
+    return True

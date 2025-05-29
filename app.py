@@ -13,7 +13,7 @@ from tools.python_repl import run_python_code
 from tools.internet_search import internet_search
 from tools.google_jobs_search import google_job_search
 from tools.date_and_time import current_date_and_time
-from output_parser import FlexibleOutputParser, clean_llm_response
+from output_parser import FlexibleOutputParser, clean_llm_response, validate_pdp_response
 from tools import create_pdp_pdf
 
 import os
@@ -218,71 +218,98 @@ async def pdp_generator(
             target_date=target_date,
             cv_content=cv_content
         )
+        #debug
+        print("PDP request: ", pdp_request)
 
         # Generate PDP using the agent
         pdp_query = f"""
-        Please generate a comprehensive Personal Development Plan based on the following information:
+        Create a comprehensive Personal Development Plan for transitioning to {pdp_request.career_goal} by {pdp_request.target_date}.
 
-        **Career Goal:** {career_goal}
-        **Target Date:** {target_date}
-        **Additional Context:** {additional_context}
+        Based on this CV content: {pdp_request.cv_content}
+        Additional context: {pdp_request.additional_context}
 
-        **CV Content:**
-        {cv_content}
+        Structure your response with these exact sections:
 
-        Please create a detailed personal development plan that includes:
-        1. Current Skills Assessment - Analyze the skills and experience from the CV
-        2. Skills Gap Analysis - Identify what skills are needed for the career goal
-        3. Learning Objectives and Milestones - Specific, measurable goals
-        4. Recommended Training and Development - Courses, certifications, training programs
-        5. Timeline and Action Steps - Detailed timeline leading to the target date
-        6. Progress Tracking and KPIs - How to measure success and progress
+        ## Current Skills Assessment
+        [Analyze current skills from CV]
 
-        Format the response with clear headings and bullet points for easy reading.
+        ## Skills Gap Analysis
+        [Identify missing skills for the target role]
+
+        ## Learning Objectives and Milestones
+        [Specific, measurable goals with dates]
+
+        ## Recommended Training and Development
+        [Specific courses, certifications, resources]
+
+        ## Timeline and Action Steps
+        [Month-by-month plan until {pdp_request.target_date}]
+
+        ## Progress Tracking and KPIs
+        [How to measure success]
+
+        Do NOT include any code execution and Python scripts.
+        Focus on creating a clear, actionable career development plan.
         """
 
-        # Use the existing agent to generate the PDP
-        agent_input = {"input": pdp_query}
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Clear memory before each attempt to avoid contamination
+                memory.clear()
 
-        try:
-            response = agent_executor.invoke(agent_input)
-            print("raw-response-llm: ",response)
-            pdp_response = response.get("output")
-            if not pdp_response:
-                raise HTTPException(status_code=500, detail="Failed to generate PDP content")
-        except Exception as e:
-            print(f"Agent execution error: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Error generating PDP: {str(e)}")
+                agent_input = {"input": pdp_query}
+                response = agent_executor.invoke(agent_input)
+                pdp_response = response.get("output", "")
 
-        # Create PDF
-        try:
-            pdf_buffer = create_pdp_pdf(
-                pdp_content=pdp_response,
-                career_goal=career_goal,
-                target_date=target_date,
-                filename=file.filename
-            )
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error creating PDF: {str(e)}")
+                # Validate the response
+                if validate_pdp_response(pdp_response):
+                    # Create PDF only if validation passes
+                    try:
+                        pdf_buffer = create_pdp_pdf(
+                            pdp_content=pdp_response,
+                            career_goal=career_goal,
+                            target_date=target_date,
+                            filename=file.filename
+                        )
 
-        # Generate filename for the PDF
-        safe_career_goal = re.sub(r'[^\w\s-]', '', career_goal).strip()
-        safe_career_goal = re.sub(r'[-\s]+', '-', safe_career_goal)
-        pdf_filename = f"PDP_{safe_career_goal}_{datetime.now().strftime('%Y%m%d')}.pdf"
+                        # Return successful PDF
+                        safe_career_goal = re.sub(r'[^\w\s-]', '', career_goal).strip()
+                        safe_career_goal = re.sub(r'[-\s]+', '-', safe_career_goal)
+                        pdf_filename = f"PDP_{safe_career_goal}_{datetime.now().strftime('%Y%m%d')}.pdf"
 
-        # Return PDF as streaming response
-        return StreamingResponse(
-            BytesIO(pdf_buffer.read()),
-            media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename={pdf_filename}"}
-        )
+                        return StreamingResponse(
+                            BytesIO(pdf_buffer.read()),
+                            media_type="application/pdf",
+                            headers={"Content-Disposition": f"attachment; filename={pdf_filename}"}
+                        )
 
-    except HTTPException as he:
-        raise he
+                    except Exception as e:
+                        print(f"PDF creation error on attempt {attempt + 1}: {str(e)}")
+                        if attempt == max_retries - 1:
+                            raise HTTPException(status_code=500, detail=f"Error creating PDF: {str(e)}")
+                else:
+                    print(f"Invalid PDP response on attempt {attempt + 1}")
+                    if attempt == max_retries - 1:
+                        raise HTTPException(
+                            status_code=500,
+                            detail="Unable to generate a properly formatted PDP. Please try again with different inputs or contact support."
+                        )
+
+            except Exception as e:
+                print(f"Agent execution error on attempt {attempt + 1}: {str(e)}")
+                if attempt == max_retries - 1:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="The AI assistant encountered an issue generating your PDP. Please try again or contact support if the problem persists."
+                    )
+
+        # This should never be reached, but just in case
+        raise HTTPException(status_code=500, detail="Failed to generate PDP after multiple attempts")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating PDP: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
     finally:
-        # Clean up temp file
+        # Clean up temporary file if it exists
         if tmp_file_path and os.path.exists(tmp_file_path):
             try:
                 os.unlink(tmp_file_path)
@@ -341,6 +368,7 @@ async def query_agent(request: QueryRequest):
 
         try:
             response = await run_agent()
+            #debug
             print("Raw agent response:", response)
         except asyncio.CancelledError:
             return {
@@ -373,6 +401,7 @@ async def query_agent(request: QueryRequest):
         print("-"*50)
         raw_output = response.get("output", "No response generated")
         output = clean_llm_response(raw_output)
+        #debug
         print(output)
         print("="*50 + "\n")
 
