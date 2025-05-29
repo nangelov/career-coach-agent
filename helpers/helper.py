@@ -7,15 +7,31 @@ from reportlab.lib.colors import HexColor
 from io import BytesIO
 from datetime import datetime
 
-def clean_input(input: str) -> str:
-    """Clean the code input by removing special tokens and unwanted text"""
-    # Remove special tokens
-    input = re.sub(r'<\|eom_id\|>', '', input)
-    input = re.sub(r'<\|eot_id\|>', '', input)
-    input = re.sub(r'<\|.*?\|>', '', input)  # Remove any other special tokens
+def clean_input(input_text: str) -> str:
+    """Clean the input by removing special tokens, code blocks, and unwanted text"""
+    if not input_text:
+        return ""
+
+    # Remove special tokens first (more aggressive)
+    input_text = re.sub(r'<\|eom_id\|>', '', input_text)
+    input_text = re.sub(r'<\|eot_id\|>', '', input_text)
+    input_text = re.sub(r'<\|.*?\|>', '', input_text)
+
+    # Remove any remaining angle bracket tokens
+    input_text = re.sub(r'<[^>]*>', '', input_text)
+
+    # Remove code blocks completely
+    input_text = re.sub(r'```python.*?```', '', input_text, flags=re.DOTALL)
+    input_text = re.sub(r'```.*?```', '', input_text, flags=re.DOTALL)
+    input_text = re.sub(r'```[^`]*$', '', input_text)  # Remove incomplete code blocks
+
+    # Remove common LLM artifacts
+    input_text = re.sub(r'# No code', '', input_text)
+    input_text = re.sub(r'Human:', '', input_text)
+    input_text = re.sub(r'Assistant:', '', input_text)
 
     # Remove any trailing newlines or whitespace
-    input = input.strip()
+    input_text = input_text.strip()
 
     # Remove any text after common stop patterns
     stop_patterns = [
@@ -28,10 +44,10 @@ def clean_input(input: str) -> str:
     ]
 
     for pattern in stop_patterns:
-        if pattern in input:
-            input = input.split(pattern)[0].strip()
+        if pattern in input_text:
+            input_text = input_text.split(pattern)[0].strip()
 
-    return input
+    return input_text
 
 def prepare_pdf_content(pdf_content: str):
     """

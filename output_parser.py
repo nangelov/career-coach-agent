@@ -70,6 +70,16 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
         text = re.sub(r'<\|.*?\|>', '', text)
         text = text.strip()
 
+        # NEW: Handle "Action: None" case - this should be a final answer
+        if "Action: None" in text:
+            print("Detected 'Action: None' - treating as final answer")
+            # Extract everything before "Action: None"
+            final_text = text.split("Action: None")[0].strip()
+            return AgentFinish(
+                return_values={"output": final_text},
+                log=text
+            )
+
         # Check if this is a response that should be a Final Answer but is missing the prefix
         if self._should_be_final_answer(text):
             print("Detected response that should be Final Answer - treating as final answer")
@@ -103,6 +113,20 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
             elif line.startswith("Action:"):
                 action = line.replace("Action:", "").strip()
 
+                # NEW: If action is "None", treat everything before as final answer
+                if action.lower() == "none":
+                    print("Found 'Action: None' - treating preceding text as final answer")
+                    # Get all text before this Action line
+                    preceding_lines = lines[:i]
+                    final_text = "\n".join(preceding_lines).strip()
+                    # Remove "Thought:" prefix if present
+                    if final_text.startswith("Thought:"):
+                        final_text = final_text.replace("Thought:", "").strip()
+                    return AgentFinish(
+                        return_values={"output": final_text},
+                        log=text
+                    )
+
             elif line.startswith("Action Input:"):
                 action_input = line.replace("Action Input:", "").strip()
 
@@ -135,7 +159,7 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
             i += 1
 
         # Check for incomplete action
-        if action and not action_input:
+        if action and not action_input and action.lower() != "none":
             print("ERROR: Action without Action Input - treating as final answer")
             return AgentFinish(
                 return_values={"output": "I apologize, but I need more information to help you properly. Could you please rephrase your question?"},
@@ -143,7 +167,7 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
             )
 
         # If we have action and action_input, return AgentAction
-        if action and action_input:
+        if action and action_input and action.lower() != "none":
             print(f"Parsed Action: {action}")
             print(f"Parsed Action Input: '{action_input[:100]}...'")
             return AgentAction(
@@ -167,34 +191,27 @@ class FlexibleOutputParser(ReActSingleInputOutputParser):
 
     def _should_be_final_answer(self, text):
         """Check if this text should be treated as a final answer"""
-        # Indicators that this is a final response
-        final_indicators = [
-            "based on the observation",
-            "based on the search",
-            "according to",
-            "the winner",
-            "manchester city",
-            "liverpool",
-            "premier league",
-            "champions",
-            "most recent",
-            "in conclusion",
-            "therefore",
-            "the answer is",
-            "the results show",
-            "from the search results",
-            "personal development plan",
-            "skills gap analysis",
-            "development objectives",
-            "career progression",
-            "learning milestones"
-        ]
 
-        # Check if it contains final answer indicators and no action keywords
-        has_final_indicators = any(indicator in text.lower() for indicator in final_indicators)
+        # If it contains ReAct keywords, it's not a final answer
         has_action_keywords = any(keyword in text for keyword in ["Action:", "Thought:", "Action Input:"])
+        if has_action_keywords:
+            return False
 
-        return has_final_indicators and not has_action_keywords
+        # If it's just a greeting or simple response, treat as final answer
+        if len(text.strip()) < 50:
+            return True
+
+        # If it contains structured content (multiple sentences/paragraphs), likely a final answer
+        sentences = text.split('.')
+        if len(sentences) > 2:
+            return True
+
+        # If it contains newlines (structured response), likely a final answer
+        if '\n' in text.strip():
+            return True
+
+        # Default to treating as final answer if no clear ReAct structure
+        return True
 
     def _clean_action_input(self, action_input: str) -> str:
         """Clean action input by removing special tokens and unwanted text"""
@@ -336,6 +353,7 @@ def validate_pdp_response(response_text: str) -> bool:
     """
     # Check for minimum length
     if len(response_text.strip()) < 500:
+        print("PDP_VALIDATION_FAILED on length:" ,len(response_text.strip()))
         return False
     
     # Check for required sections
@@ -355,6 +373,7 @@ def validate_pdp_response(response_text: str) -> bool:
     
     # Require at least 4 out of 6 sections
     if found_sections < 4:
+        print("PDP_VALIDATION_FAILED on number of sections: ",found_sections)
         return False
     
     # Check for problematic patterns
@@ -371,6 +390,42 @@ def validate_pdp_response(response_text: str) -> bool:
     
     for pattern in problematic_patterns:
         if pattern in response_text:
+            print("PDP_VALIDATION_FAILED on pattern:" ,pattern)
             return False
     
     return True
+
+class PDPOutputParser(FlexibleOutputParser):
+    def parse(self, text):
+        print(f"PDPOutputParser: Processing {len(text)} characters")
+
+        # Clean special tokens first
+        text = re.sub(r'<\|eot_id\|>', '', text)
+        text = re.sub(r'<\|eom_id\|>', '', text)
+        text = re.sub(r'<\|.*?\|>', '', text)
+
+        # For PDP, extract content before "Final Answer:"
+        if "Final Answer:" in text:
+            pdp_content = text.split("Final Answer:")[0].strip()
+        else:
+            pdp_content = text.strip()
+
+        # Remove ReAct thinking patterns for clean PDP
+        pdp_content = re.sub(r'Thought:.*?(?=##|$)', '', pdp_content, flags=re.DOTALL)
+        pdp_content = re.sub(r'Action:.*?(?=##|$)', '', pdp_content, flags=re.DOTALL)
+
+        # Extract just the structured PDP sections
+        if "## Current Skills Assessment" in pdp_content:
+            start_idx = pdp_content.find("## Current Skills Assessment")
+            pdp_content = pdp_content[start_idx:].strip()
+
+        # Clean up any remaining artifacts
+        pdp_content = re.sub(r'\n\s*\n\s*\n', '\n\n', pdp_content)  # Remove excessive newlines
+        pdp_content = pdp_content.strip()
+
+        print(f"PDPOutputParser: Cleaned to {len(pdp_content)} characters")
+
+        return AgentFinish(
+            return_values={"output": pdp_content},
+            log=text
+        )

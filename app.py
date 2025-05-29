@@ -7,7 +7,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.tools.render import render_text_description
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-from output_parser import FlexibleOutputParser, clean_llm_response, validate_pdp_response
+from output_parser import FlexibleOutputParser, clean_llm_response, validate_pdp_response, PDPOutputParser
 from tools import *
 from helpers import *
 
@@ -118,6 +118,49 @@ agent_executor = AgentExecutor(
     early_stopping_method="force",  
     memory=memory
 )
+
+#initialize PDP agent
+pdp_llm = HuggingFaceEndpoint(
+    repo_id=model,
+    huggingfacehub_api_token=os.getenv('HUGGINGFACEHUB_API_TOKEN'),
+    provider="hf-inference",
+    task="text-generation",
+    temperature=0.1,
+    max_new_tokens=2048,  # Much higher for comprehensive PDPs
+    top_p=0.9,
+    repetition_penalty=1.15,
+    do_sample=True,
+    verbose=True,
+    return_full_text=False
+)
+
+# Create separate agent executor for PDP
+pdp_chat_model_with_stop = pdp_llm.bind(
+    stop=["\nHuman:", "Human:", "\n\nHuman", "\nUser:"] 
+)
+
+pdp_agent = (
+    {
+        "input": lambda x: x["input"],
+        "agent_scratchpad": lambda x: format_log_to_str(x["intermediate_steps"]) if x["intermediate_steps"] else "",
+        "chat_history": lambda x: x.get("chat_history", []) 
+    }
+    | prompt
+    | pdp_chat_model_with_stop
+    | PDPOutputParser()
+)
+
+pdp_agent_executor = AgentExecutor(
+    agent=pdp_agent,
+    tools=tools,
+    verbose=True,
+    handle_parsing_errors=True,
+    max_iterations=3,  
+    return_intermediate_steps=True,
+    early_stopping_method="force",  
+    memory=memory
+)
+
 
 # Add this function to clear corrupted memory
 def clear_memory_if_corrupted():
@@ -260,20 +303,22 @@ async def pdp_generator(
         Focus on creating a clear, actionable career development plan.
         """
 
-        max_retries = 3
+        max_retries = 1
         for attempt in range(max_retries):
             try:
                 # Clear memory before each attempt to avoid contamination
                 memory.clear()
 
                 agent_input = {"input": pdp_query}
-                response = agent_executor.invoke(agent_input)
+                response = pdp_agent_executor.invoke(agent_input)
                 pdp_response = response.get("output", "")
-
+                               
+                print(f"DEBUG: After cleanup length: {len(pdp_response)}")
+                
                 # Validate the response
                 if validate_pdp_response(pdp_response):
                     # Create PDF only if validation passes
-                    print("raw-pdp_response: ",pdp_response)
+                    print("raw-pdp_response: ", pdp_response)
                     try:
                         pdf_buffer = create_pdp_pdf(
                             pdp_content=pdp_response,
