@@ -6,6 +6,7 @@ import ChatWindow from './ChatWindow';
 import ChatInput from './ChatInput';
 import PDPDialog, { PDPFormData } from './PDPDialog';
 import SendFeedback from './SendFeedback';
+import ChatFooter from './ChatFooter';
 import { Message, ChatResponse, FeedbackFormData } from '../types';
 
 const ChatContainer = styled.div`
@@ -259,7 +260,6 @@ const ChatBot: React.FC = () => {
     <ChatContainer>
       <ChatHeader 
         onClearChat={clearChat} 
-        onOpenPDP={pdpDialog}
       />
       <ChatWindow 
         messages={messages} 
@@ -269,7 +269,10 @@ const ChatBot: React.FC = () => {
         onSendMessage={sendMessage} 
         onCancelRequest={cancelRequest}
         isLoading={isLoading}
+      />
+      <ChatFooter
         onOpenFeedback={() => setIsSendFeedbackDialogOpen(true)}
+        onOpenPDP={pdpDialog}
       />
       <SendFeedback 
         isOpen={isSendFeedbackDialogOpen}

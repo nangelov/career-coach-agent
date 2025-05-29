@@ -30,11 +30,6 @@ const RightSection = styled.div`
   margin-left: auto;
 `;
 
-const LeftSection = styled.div`
-  display: flex;
-  gap: 10px;
-`;
-
 const Button = styled.button`
   background-color: transparent;
   color: white;
@@ -49,37 +44,19 @@ const Button = styled.button`
   }
 `;
 
-const PDPButton = styled(Button)`
-  background-color: #28a745;
-  border-color: #28a745;
-  border: 1px solid white;
-  border-radius: 4px;
-  padding: 5px 10px;
-  cursor: pointer;
-  font-size: 14px;
-  
-  &:hover {
-    background-color: #218838;
-  }
-`;
-
 interface ChatHeaderProps {
   onClearChat: () => void;
-  onOpenPDP: () => void;
 }
 
-const ChatHeader: React.FC<ChatHeaderProps> = ({ onClearChat, onOpenPDP }) => {
+const ChatHeader: React.FC<ChatHeaderProps> = ({ onClearChat }) => {
   return (
     <HeaderContainer>
-      <LeftSection>
-        <Button onClick={onClearChat}>New Chat</Button>
-      </LeftSection>
       <Title>
         <Logo>👨‍💼</Logo>
         AI CareerCoach
       </Title>
       <RightSection>
-        <PDPButton onClick={onOpenPDP}>Generate Personal Development Plan</PDPButton>
+        <Button onClick={onClearChat}>New Chat</Button>
       </RightSection>
     </HeaderContainer>
   );

@@ -1,6 +1,5 @@
 import React, { useState, FormEvent, ChangeEvent } from 'react';
 import styled from 'styled-components';
-import SendFeedback from './SendFeedback';
 import { FeedbackFormData, FeedbackResponse } from '../types';
 
 const InputContainer = styled.div`
@@ -54,29 +53,13 @@ const StopButton = styled.button`
   }
 `;
 
-const FeedbackButton = styled.button`
-  margin-left: 10px;
-  padding: 10px 15px;
-  background-color:rgb(131, 138, 145);
-  color: white;
-  border: none;
-  border-radius: 20px;
-  cursor: pointer;
-  font-size: 16px;
-  
-  &:hover {
-    background-color: #5a6268;
-  }
-`;
-
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
   onCancelRequest: () => void;
   isLoading: boolean;
-  onOpenFeedback: () => void;
 }
 
-const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, onCancelRequest, isLoading, onOpenFeedback }) => {
+const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, onCancelRequest, isLoading }) => {
   const [message, setMessage] = useState('');
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
@@ -90,9 +73,6 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, onCancelRequest, i
   return (
     <InputContainer>
       <form onSubmit={handleSubmit} style={{ display: 'flex', width: '100%' }}>
-        <FeedbackButton type="button" onClick={onOpenFeedback}>
-          Send Feedback
-        </FeedbackButton>
         <Input
           type="text"
           value={message}
