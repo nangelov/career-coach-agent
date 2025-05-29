@@ -25,13 +25,14 @@ const Button = styled.button`
 const FeedbackButton = styled(Button)`
   background-color: rgb(131, 138, 145);
   color: white;
-  flex: 0 0 33%;
+  align-items: left;
 `;
 
 const PDPButton = styled(Button)`
   background-color: #28a745;
   color: white;
-  flex: 0 0 33%;
+  flex: 1;
+  align-items: right;
 `;
 
 interface ChatFooterProps {
