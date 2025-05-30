@@ -12,7 +12,7 @@ def main():
     """
     Run the FastAPI server with integrated React UI
     """
-    port = 7860
+    port = 8000
     host = "0.0.0.0"
 
     logging.info(f"Starting server on {host}:{port}...")

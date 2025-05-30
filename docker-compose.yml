@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "7860:7860"
+      - "8000:8000"
     environment:
       - HUGGINGFACEHUB_API_TOKEN=${HUGGINGFACEHUB_API_TOKEN}
       - SERPAPI_API_KEY=${SERPAPI_API_KEY}

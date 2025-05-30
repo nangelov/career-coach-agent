@@ -4,7 +4,7 @@ emoji: 🧑‍💼
 colorFrom: blue
 colorTo: indigo
 sdk: docker
-app_port: 7860
+app_port: 8000
 python_version: 3.12.3
 short_description: "AI career coach powered by Llama-3.3-70B"
 tags:
@@ -128,9 +128,8 @@ uvicorn main:app
 ```
 
 The application will be available at:
-- Web Interface: http://localhost:7860
-- API Documentation: http://localhost:7860/docs
-- Alternative API Documentation: http://localhost:7860/redoc
+- Web Interface: http://localhost:8000
+- API Documentation: http://localhost:8000/docs
 
 ## API Endpoints
 

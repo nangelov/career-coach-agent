@@ -38,6 +38,6 @@ RUN npm install && npm run build
 WORKDIR /app
 
 # Expose port (used by FastAPI)
-EXPOSE 7860
+EXPOSE 8000
 
 CMD ["python", "main.py"]
