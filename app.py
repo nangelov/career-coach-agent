@@ -197,6 +197,32 @@ class PDPRequest(BaseModel):
     cv_content: str = ""  # To store extracted CV text
 
 # API Routes
+@app.get("/get-feedback")
+async def get_feedback(key: str):
+    """
+    Read out all feedback files. Requires Hugging Face API token for authentication.
+    """
+    try:
+        token = os.getenv('HUGGINGFACEHUB_API_TOKEN')
+        
+        if not token:
+            raise HTTPException(status_code=500, detail="HUGGINGFACEHUB_API_TOKEN not configured")
+            
+        if key != token:
+            raise HTTPException(status_code=401, detail="Unauthorized access")
+            
+        result = read_out_feedback()
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error retrieving feedback: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving feedback: {str(e)}"
+        )
+
 @app.post("/agent/feedback")
 async def feedback(contact: str, feedback: str):
     """

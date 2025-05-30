@@ -167,3 +167,45 @@ def _log_feedback_to_console(feedback_entry: Dict[str, Any], filename: str) -> N
     logging.info(f"Feedback: {feedback_entry['feedback']}")
     logging.info(f"Saved to: {filename}")
     logging.info("="*60 + "\n")
+
+def read_out_feedback() -> Dict[str, Any]:
+    """
+    Read all feedback files from the feedback directory and return their contents
+    
+    Returns:
+        Dict[str, Any]: Dictionary containing all feedback entries organized by date
+    """
+    try:
+        feedback_dir = "/app/data/feedback"
+        if not os.path.exists(feedback_dir):
+            return {"status": "success", "message": "No feedback files found", "feedback": {}}
+            
+        if not os.access(feedback_dir, os.R_OK):
+            raise PermissionError(f"No read permission for directory: {feedback_dir}")
+            
+        feedback_data = {}
+        
+        # Read all feedback files
+        for filename in os.listdir(feedback_dir):
+            if filename.endswith('.json'):
+                file_path = os.path.join(feedback_dir, filename)
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        feedback_entries = json.load(f)
+                        # Use the date from filename as key
+                        date_key = filename.replace('feedback_', '').replace('.json', '')
+                        feedback_data[date_key] = feedback_entries
+                except Exception as e:
+                    logging.error(f"Error reading feedback file {filename}: {str(e)}")
+                    continue
+                    
+        return {
+            "status": "success",
+            "message": "Feedback retrieved successfully",
+            "feedback": feedback_data
+        }
+        
+    except Exception as e:
+        error_msg = f"Error reading feedback: {str(e)}"
+        logging.error(error_msg)
+        raise Exception(error_msg)
