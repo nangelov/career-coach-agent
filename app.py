@@ -48,6 +48,7 @@ app.add_middleware(
 if not os.getenv('HUGGINGFACEHUB_API_TOKEN'):
     raise ValueError("Please set HUGGINGFACEHUB_API_TOKEN environment variable")
 
+#model = "nvidia/Llama-3.1-Nemotron-70B-Instruct-HF"
 model = "meta-llama/Llama-3.3-70B-Instruct"
 
 # Initialize the HuggingFace pipeline with more strict parameters

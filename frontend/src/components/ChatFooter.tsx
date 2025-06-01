@@ -1,6 +1,13 @@
 import React from 'react';
 import styled from 'styled-components';
 
+// Declare gtag on the Window object to resolve TypeScript error
+declare global {
+  interface Window {
+    gtag?: (...args: any[]) => void;
+  }
+}
+
 const FooterContainer = styled.div`
   display: flex;
   justify-content: space-around;
@@ -41,16 +48,27 @@ interface ChatFooterProps {
 }
 
 const ChatFooter: React.FC<ChatFooterProps> = ({ onOpenFeedback, onOpenPDP }) => {
+  const handlePDPButtonClick = () => {
+    if (window.gtag) {
+      window.gtag('event', 'click', {
+        event_category: 'ChatFooter',
+        event_label: 'PDPButton',
+        value: 1,
+      });
+    }
+    onOpenPDP();
+  };
+
   return (
     <FooterContainer>
       <FeedbackButton onClick={onOpenFeedback}>
         Send Feedback
       </FeedbackButton>
-      <PDPButton onClick={onOpenPDP}>
+      <PDPButton onClick={handlePDPButtonClick}>
         Generate Personal Development Plan
       </PDPButton>
     </FooterContainer>
   );
 };
 
-export default ChatFooter; 
+export default ChatFooter;

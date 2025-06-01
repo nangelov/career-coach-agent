@@ -1,5 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, FC, ChangeEvent, DragEvent, MouseEvent } from 'react';
 import styled from 'styled-components';
+
+// Declare gtag on the Window object to resolve TypeScript error
+declare global {
+  interface Window {
+    gtag?: (...args: any[]) => void;
+  }
+}
 
 const DialogOverlay = styled.div`
   position: fixed;
@@ -176,7 +183,7 @@ export interface PDPFormData {
   targetDate: string;
 }
 
-const PDPDialog: React.FC<PDPDialogProps> = ({ isOpen, onClose, onSubmit }) => {
+const PDPDialog: FC<PDPDialogProps> = ({ isOpen, onClose, onSubmit }) => {
   const [formData, setFormData] = useState<PDPFormData>({
     cvFile: null,
     careerGoal: '',
@@ -188,28 +195,28 @@ const PDPDialog: React.FC<PDPDialogProps> = ({ isOpen, onClose, onSubmit }) => {
 
   if (!isOpen) return null;
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && file.type === 'application/pdf') {
-      setFormData(prev => ({ ...prev, cvFile: file }));
+      setFormData((prev: PDPFormData) => ({ ...prev, cvFile: file }));
     } else {
       alert('Please select a PDF file');
     }
   };
 
-  const handleDrop = (event: React.DragEvent) => {
+  const handleDrop = (event: DragEvent) => {
     event.preventDefault();
     setDragOver(false);
     
     const file = event.dataTransfer.files[0];
     if (file && file.type === 'application/pdf') {
-      setFormData(prev => ({ ...prev, cvFile: file }));
+      setFormData((prev: PDPFormData) => ({ ...prev, cvFile: file }));
     } else {
       alert('Please select a PDF file');
     }
   };
 
-  const handleDragOver = (event: React.DragEvent) => {
+  const handleDragOver = (event: DragEvent) => {
     event.preventDefault();
     setDragOver(true);
   };
@@ -224,6 +231,14 @@ const PDPDialog: React.FC<PDPDialogProps> = ({ isOpen, onClose, onSubmit }) => {
       return;
     }
     
+    // Track Generate PDP button click
+    if (window.gtag) {
+      window.gtag('event', 'click', {
+        'event_category': 'Button',
+        'event_label': 'Generate PDP Button - Dialog',
+      });
+    }
+    
     onSubmit(formData);
     onClose();
     
@@ -236,7 +251,7 @@ const PDPDialog: React.FC<PDPDialogProps> = ({ isOpen, onClose, onSubmit }) => {
     });
   };
 
-  const handleOverlayClick = (event: React.MouseEvent) => {
+  const handleOverlayClick = (event: MouseEvent) => {
     if (event.target === event.currentTarget) {
       onClose();
     }
@@ -277,7 +292,7 @@ const PDPDialog: React.FC<PDPDialogProps> = ({ isOpen, onClose, onSubmit }) => {
           <TextArea
             placeholder="Describe your career aspirations and goals..."
             value={formData.careerGoal}
-            onChange={(e) => setFormData(prev => ({ ...prev, careerGoal: e.target.value }))}
+            onChange={(e) => setFormData((prev: PDPFormData) => ({ ...prev, careerGoal: e.target.value }))}
           />
         </FormGroup>
 
@@ -286,7 +301,7 @@ const PDPDialog: React.FC<PDPDialogProps> = ({ isOpen, onClose, onSubmit }) => {
           <TextArea
             placeholder="Any specific skills, industries, or preferences you'd like to mention..."
             value={formData.additionalContext}
-            onChange={(e) => setFormData(prev => ({ ...prev, additionalContext: e.target.value }))}
+            onChange={(e) => setFormData((prev: PDPFormData) => ({ ...prev, additionalContext: e.target.value }))}
           />
         </FormGroup>
 
@@ -295,7 +310,7 @@ const PDPDialog: React.FC<PDPDialogProps> = ({ isOpen, onClose, onSubmit }) => {
           <DateInput
             type="date"
             value={formData.targetDate}
-            onChange={(e) => setFormData(prev => ({ ...prev, targetDate: e.target.value }))}
+            onChange={(e) => setFormData((prev: PDPFormData) => ({ ...prev, targetDate: e.target.value }))}
             min={new Date().toISOString().split('T')[0]}
           />
         </FormGroup>
