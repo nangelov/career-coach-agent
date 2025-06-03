@@ -9,6 +9,13 @@ import SendFeedback from './SendFeedback';
 import ChatFooter from './ChatFooter';
 import { Message, ChatResponse, FeedbackFormData } from '../types';
 
+// Declare gtag on the Window object to resolve TypeScript error
+declare global {
+  interface Window {
+    gtag?: (...args: any[]) => void;
+  }
+}
+
 const ChatContainer = styled.div`
   display: flex;
   flex-direction: column;
@@ -63,6 +70,7 @@ const ChatBot: React.FC = () => {
   };
 
   const sendMessage = async (content: string) => {
+
     // Add user message to chat
     const userMessage: Message = { role: 'user', content };
     setMessages(prev => [...prev, userMessage]);
@@ -72,6 +80,14 @@ const ChatBot: React.FC = () => {
     // Create new abort controller
     cancelTokenRef.current = new AbortController();
     
+    if (window.gtag) {
+      window.gtag('event', 'click-send-message', {
+        event_category: 'ChatBot',
+        event_label: 'SendMessage',
+        value: 1,
+      });
+    }
+
     try {
       // Send message to API
       const response = await axios.post<ChatResponse>('/agent/query', {
@@ -235,6 +251,13 @@ const ChatBot: React.FC = () => {
   };
 
   const handleSendFeedbackSubmit = async (data: FeedbackFormData) => {
+    if (window.gtag) {
+      window.gtag('event', 'click-send-feedback', {
+        event_category: 'ChatBot',
+        event_label: 'SendFeedback',
+        value: 1,
+      });
+    }
     try {
       console.log('Sending feedback data:', JSON.stringify(data));
       const url = new URL('/agent/feedback', window.location.origin);

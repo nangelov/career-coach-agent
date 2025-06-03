@@ -1,7 +1,6 @@
 import React, { useState, FC, ChangeEvent, DragEvent, MouseEvent } from 'react';
 import styled from 'styled-components';
 
-// Declare gtag on the Window object to resolve TypeScript error
 declare global {
   interface Window {
     gtag?: (...args: any[]) => void;
@@ -233,7 +232,7 @@ const PDPDialog: FC<PDPDialogProps> = ({ isOpen, onClose, onSubmit }) => {
     
     // Track Generate PDP button click
     if (window.gtag) {
-      window.gtag('event', 'click', {
+      window.gtag('event', 'click-pdp-submit', {
         'event_category': 'Button',
         'event_label': 'Generate PDP Button - Dialog',
       });

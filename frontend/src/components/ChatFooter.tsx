@@ -50,7 +50,7 @@ interface ChatFooterProps {
 const ChatFooter: React.FC<ChatFooterProps> = ({ onOpenFeedback, onOpenPDP }) => {
   const handlePDPButtonClick = () => {
     if (window.gtag) {
-      window.gtag('event', 'click', {
+      window.gtag('event', 'click-pdp-button', {
         event_category: 'ChatFooter',
         event_label: 'PDPButton',
         value: 1,
