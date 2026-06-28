@@ -1,0 +1,11 @@
+# Rebuilt inside the image — never ship the host copies.
+node_modules/
+.next/
+out/
+build/
+coverage/
+.env*
+npm-debug.log*
+.DS_Store
+*.tsbuildinfo
+.git

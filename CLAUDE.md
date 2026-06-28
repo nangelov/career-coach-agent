@@ -5,31 +5,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## ⚠️ A v2 refactor is planned — read the design docs first
 
 The code currently in the repo is **v1** (described below and still the running app). A ground-up **v2 refactor** has been designed but **not yet implemented**. Before doing substantial work, read:
-- **[.claude/dev-board/app-design-and-features.md](./.claude/dev-board/app-design-and-features.md)** — v2 system design, architecture, tech stack, data model, features, security.
-- **[.claude/dev-board/plan.md](./.claude/dev-board/plan.md)** — phased execution plan (P0–P11, foundation-first).
+- **[dev-board/app-design-and-features.md](./dev-board/app-design-and-features.md)** — v2 system design, architecture, tech stack, data model, features, security.
+- **[dev-board/plan.md](./dev-board/plan.md)** — phased execution plan (P0–P11, foundation-first).
 
-**Locked v2 decisions** (the rest are still open — see the "Open items" list in `.claude/dev-board/plan.md`):
-- **OSS LLM with native tool-calling** via HF Inference Providers (OpenAI-compatible) — this *deletes* the v1 ReAct text-parser (`output_parser.py`). Multi-agent graph (planner → workers → responder) with **LangGraph** as the leading orchestration choice.
+**Locked v2 decisions** (all 9 pre-work decisions are now locked except one — see below and the "Decisions locked before P1" list in `dev-board/plan.md`):
+- **Orchestration → LangGraph** (confirmed; hand-rolled orchestrator rejected). Multi-agent graph (planner → workers → responder) with typed shared state.
+- **Primary LLM → `zai-org/GLM-5.2`** with **native tool-calling** via HF Inference Providers (OpenAI-compatible) — this *deletes* the v1 ReAct text-parser (`output_parser.py`).
+- **LLM failover → secondary `Qwen/Qwen3.6-27B`, no paid last-resort**; on **mid-stream** failure the in-flight stream **resumes** on the secondary (not restart-with-notice).
 - **Backend:** modular async **FastAPI**. **Frontend:** **Next.js (App Router)** replacing CRA. **Streaming** chat (SSE).
 - **Auth:** **SSO-only (Google + LinkedIn) via Authlib OIDC, backend-owned session JWT, no passwords** (PKCE, minimal scopes, secrets in HF Space Secrets).
-- **Datastores:** **Postgres (pgvector + JSONB) + Redis only** — *no MongoDB* (consolidated into Postgres; rationale is single-container-on-Spaces simplicity, not cost).
-- **Teachable per-user memory** on internal **pgvector** + **per-message 👍/👎 feedback**; **Celery** (Redis broker) for async OCR/doc-intel/crawling; **multi-LLM failover router**; **budget = free/OSS/self-hosted throughout**.
-- Embeddings default to **in-process `sentence-transformers`** (no API cost). v1's `run_python_code` REPL is **removed** in v2 (ACE risk).
+- **Datastores → Postgres (pgvector + JSONB) + Redis only, self-hosted** — *no MongoDB* (consolidated into Postgres) and **no managed tier** (Neon/Supabase/Upstash) for now: `docker-compose` locally + co-located on Spaces.
+- **Embeddings → `Qwen/Qwen3-Embedding-8B`** run **in-process via `sentence-transformers`** (no API cost), **output dim 4096 → pgvector `vector(4096)`** (fixes all migrations).
+- **Teachable per-user memory → LangMem** (in-process, over the pgvector `user_memories` store) + **per-message 👍/👎 feedback**; **Celery** (Redis broker) for async OCR/doc-intel/crawling; **multi-LLM failover router**; **budget = free/OSS/self-hosted throughout**.
+- **Guest rate-limit → 10 messages + 1 document upload per guest session** (guests limited harder; Redis-enforced).
+- v1's `run_python_code` REPL is **removed** in v2 (ACE risk).
+- **Still open (1):** learned-memory application — applied *silently but viewable/deletable* vs *require user confirmation* — TBD, to be decided in **P9**.
 
-The v1 description below stays accurate until v2 lands; when implementing v2, follow `.claude/dev-board/plan.md` and update this file as phases complete.
+The v1 description below stays accurate until v2 lands; when implementing v2, follow `dev-board/plan.md` and update this file as phases complete.
 
 ## v2 development workflow (multi-agent, file-based handoff)
 
 v2 work is built one task at a time through an **orchestrator agent** that drives a subagent pipeline.
 
-- **[.claude/dev-board/tasks.md](./.claude/dev-board/tasks.md)** — the actionable task breakdown (pre-work decisions + P0–P11), tagged (B)/(F)/(I)/(D)/(T).
-- **[.claude/dev-board/code-review/](./.claude/dev-board/code-review/)** — per-task subfolders where agents pass files to each other (`task.md`, `engineer.md`, `code-review.md`, `architecture-review.md`). `queue.md` is the status board.
+- **[dev-board/tasks.md](./dev-board/tasks.md)** — the actionable task breakdown (pre-work decisions + P0–P11), tagged (B)/(F)/(I)/(D)/(T).
+- **[dev-board/code-review/](./dev-board/code-review/)** — per-task subfolders where agents pass files to each other (`task.md`, `engineer.md`, `code-review.md`, `architecture-review.md`). `queue.md` is the status board.
 - **`agent-handoff` skill** (`.claude/skills/agent-handoff/SKILL.md`) — single source of truth for the pipeline steps, folder layout, file templates, and verdict gates.
 - **Four agent types** (`.claude/agents/`):
   - **orchestrator** (blue) — picks tasks, writes briefs, dispatches the pipeline, routes on verdicts, marks tasks done. Invoke it directly with `[IMPLEMENTATION <task>]`, `[IMPLEMENTATION_NEXT_TASK]`, or `[CODE_REVIEW <scope>]`.
   - **fullstack-engineer** (green) — implements the task (model: sonnet).
   - **code-reviewer** (orange) — reviews after the engineer for correctness/security/quality (model: opus).
-  - **system-architect** (purple) — verifies conformance to `.claude/dev-board/plan.md` + `.claude/dev-board/app-design-and-features.md` (model: opus).
+  - **system-architect** (purple) — verifies conformance to `dev-board/plan.md` + `dev-board/app-design-and-features.md` (model: opus).
 
   All agents have `memory: project` — a persistent directory (`.claude/agent-memory/<agent>/`) so they accumulate codebase conventions, recurring defect patterns, and design rulings across tasks.
 

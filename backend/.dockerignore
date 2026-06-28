@@ -1,0 +1,13 @@
+# Keep the build context small and the image clean.
+.venv/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+tests/
+.env
+*.egg-info/
+uv.lock

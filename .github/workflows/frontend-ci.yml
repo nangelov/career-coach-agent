@@ -1,0 +1,56 @@
+name: frontend-ci
+
+# Lint (next lint / ESLint) + type-check (tsc --noEmit) + unit tests (Jest)
+# for the Next.js app in frontend/. Runs on every push / PR to main and
+# version-2, but only when frontend code or this workflow changes (backend CI
+# is a separate workflow).
+on:
+  push:
+    branches: [main, version-2]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+  pull_request:
+    branches: [main, version-2]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20 (with npm cache)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # npm ci installs the exact locked tree (incl. dev deps) and fails if
+      # package-lock.json is out of sync — keeps CI reproducible.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (next lint)
+        run: npm run lint
+
+      - name: Type-check (tsc --noEmit)
+        run: npm run type-check
+
+      - name: Test (jest)
+        run: npm test -- --watchAll=false

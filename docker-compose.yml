@@ -1,12 +1,103 @@
+# Local development stack for Career Coach Agent v2.
+#
+# Five services: Postgres(pgvector) + Redis (self-hosted datastores, locked
+# decision — no Mongo, no managed tier), the FastAPI backend, a Celery worker
+# (same image as the backend), and the Next.js frontend.
+#
+# All credentials come from a local `.env` file (see `.env.example`); nothing
+# secret is hard-coded here. Copy `.env.example` to `.env` and fill it in.
+
 services:
-  app:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Init scripts run by the Postgres entrypoint on first cluster init only
+      # (empty data volume). Enables the pgvector `vector` extension — see
+      # backend/migrations/init/01_enable_pgvector.sql.
+      - ./backend/migrations/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # Enable append-only persistence so the named volume actually retains data.
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ./backend
+    # Pull non-secret model/app config from .env, then override the datastore
+    # URLs to point at the in-network service hostnames (db / redis).
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"
-    environment:
-      - HUGGINGFACEHUB_API_TOKEN=${HUGGINGFACEHUB_API_TOKEN}
-      - SERPAPI_API_KEY=${SERPAPI_API_KEY}
-    # Remove the volumes section that's causing issues
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "python -c \"import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8000/health').status==200 else sys.exit(1)\""
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
+
+  worker:
+    # Same image as the backend; only the command differs.
+    build:
+      context: ./backend
+    command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

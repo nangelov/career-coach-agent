@@ -1,17 +1,17 @@
 ---
 name: agent-handoff
-description: Orchestration playbook for the fullstack-engineer → (code-reviewer + system-architect in parallel) subagent pipeline via file-based handoff in .claude/dev-board/code-review/. Load this when an orchestrator agent drives [IMPLEMENTATION <task>], [IMPLEMENTATION_NEXT_TASK], or [CODE_REVIEW <scope>] triggers, or whenever subagents must communicate through findings on disk rather than prose.
+description: Orchestration playbook for the fullstack-engineer → (code-reviewer + system-architect in parallel) subagent pipeline via file-based handoff in dev-board/code-review/. Load this when an orchestrator agent drives [IMPLEMENTATION <task>], [IMPLEMENTATION_NEXT_TASK], or [CODE_REVIEW <scope>] triggers, or whenever subagents must communicate through findings on disk rather than prose.
 ---
 
 # Agent Handoff — orchestration playbook
 
 The **orchestrator agent** coordinates three worker subagents. All agents communicate **only through files in
-`.claude/dev-board/code-review/`** — never by relaying findings as prose.
+`dev-board/code-review/`** — never by relaying findings as prose.
 
 Subagents (custom agent types, dispatched with the Agent tool):
 - **fullstack-engineer** — Senior full-stack engineer; implements one task.
 - **code-reviewer** — Senior code reviewer; reviews correctness/security/quality.
-- **system-architect** — Reviews the work against `.claude/dev-board/plan.md` + `.claude/dev-board/app-design-and-features.md`.
+- **system-architect** — Reviews the work against `dev-board/plan.md` + `dev-board/app-design-and-features.md`.
 
 **The code-reviewer and system-architect always run in parallel** (dispatched together in one message), never
 one-after-the-other.
@@ -20,16 +20,16 @@ one-after-the-other.
 
 | Trigger | Meaning | Flow |
 |---------|---------|------|
-| `[IMPLEMENTATION <task>]` | Implement a specific task (id from `.claude/dev-board/tasks.md`, or a described task) | Implementation pipeline |
-| `[IMPLEMENTATION_NEXT_TASK]` | Pick the next unchecked item in `.claude/dev-board/tasks.md` and implement it | Implementation pipeline |
+| `[IMPLEMENTATION <task>]` | Implement a specific task (id from `dev-board/tasks.md`, or a described task) | Implementation pipeline |
+| `[IMPLEMENTATION_NEXT_TASK]` | Pick the next unchecked item in `dev-board/tasks.md` and implement it | Implementation pipeline |
 | `[CODE_REVIEW <full_codebase>]` | Review the whole codebase | Review-only flow (no engineer step) |
 | `[CODE_REVIEW <given area>]` | Review a path/module/area | Review-only flow, scoped to that area |
 
-- For `[IMPLEMENTATION_NEXT_TASK]`, the next task = first unchecked `[ ]` item in `.claude/dev-board/tasks.md`, in
+- For `[IMPLEMENTATION_NEXT_TASK]`, the next task = first unchecked `[ ]` item in `dev-board/tasks.md`, in
   document order, skipping `(D)` decision items — if the next item is a `(D)` decision, surface it to the user
   instead of dispatching the engineer.
 - For `[CODE_REVIEW ...]`, there is no engineer step first; open a review folder
-  `.claude/dev-board/code-review/CR-<seq>-<slug>/` with a `task.md` describing the scope, then run the parallel review.
+  `dev-board/code-review/CR-<seq>-<slug>/` with a `task.md` describing the scope, then run the parallel review.
   If findings require fixes, route to the engineer and re-verify (same loop).
 
 ## Why file-based
@@ -39,7 +39,7 @@ thin — it routes by reading verdicts, it does not carry content between agents
 ## Folder layout
 
 ```
-.claude/dev-board/
+dev-board/
 ├── tasks.md                         # actionable task list (orchestrator picks from here)
 ├── plan.md                          # phased execution plan
 ├── app-design-and-features.md       # system design reference
@@ -52,7 +52,7 @@ thin — it routes by reading verdicts, it does not carry content between agents
         └── architecture-review.md  # system-architect: design-conformance findings + verdict
 ```
 
-`<task-id>` convention: `<phase>-<seq>-<slug>` (e.g. `P0-03-config`, `P4-02-planner`), matching `.claude/dev-board/tasks.md`.
+`<task-id>` convention: `<phase>-<seq>-<slug>` (e.g. `P0-03-config`, `P4-02-planner`), matching `dev-board/tasks.md`.
 
 ## The pipeline (MUST always follow these steps)
 
@@ -64,7 +64,7 @@ orchestrator → fullstack-engineer ──▶ ┌─ code-reviewer ─┐ (PARAL
                        (engineer fixes → only the reviewer(s) that flagged issues re-verify)
 ```
 
-1. **Orchestrator** writes `.claude/dev-board/code-review/<task-id>/task.md`, sets the `queue.md` row to `ENG`,
+1. **Orchestrator** writes `dev-board/code-review/<task-id>/task.md`, sets the `queue.md` row to `ENG`,
    dispatches the engineer with just the task id + "read the agent-handoff skill / your task.md".
 2. **fullstack-engineer** implements, writes `<task-id>/engineer.md`. Orchestrator sets status `REVIEW`.
 3. **code-reviewer AND system-architect run in parallel** — dispatch both in a single message. Each reads the
@@ -72,7 +72,7 @@ orchestrator → fullstack-engineer ──▶ ┌─ code-reviewer ─┐ (PARAL
    `Verdict:` line. Wait for both to finish.
 4. **Route on the two verdicts:**
    - **Both `APPROVED`** → task is **DONE**: set `queue.md` to `DONE` and **check the item off in
-     `.claude/dev-board/tasks.md`** (`[ ]` → `[x]`).
+     `dev-board/tasks.md`** (`[ ]` → `[x]`).
    - **Either (or both) `CHANGES_REQUESTED`** → status `ENG`; re-dispatch the engineer, which reads **every**
      review file with findings, fixes them, appends a `Response to review` section, and bumps the revision in
      `engineer.md`.
@@ -84,14 +84,14 @@ A task is **DONE only when both `code-review.md` and `architecture-review.md` sh
 (latest) engineer revision**. The orchestrator never skips a reviewer and never declares done on one verdict.
 
 ## Orchestrator responsibilities
-- Recognize the triggers above; pick the task from `.claude/dev-board/tasks.md` accordingly. Keep each task small
+- Recognize the triggers above; pick the task from `dev-board/tasks.md` accordingly. Keep each task small
   (one item); split if the engineer flags it too big.
-- Maintain `.claude/dev-board/code-review/queue.md` (create it from the template below if missing).
+- Maintain `dev-board/code-review/queue.md` (create it from the template below if missing).
 - **Engineer is dispatched alone; the two reviewers are dispatched together (parallel).** Route on the
   `Verdict:` lines, never on your own judgment of the work.
 - Never relay findings yourself — point the next agent at the files. Only summarize status to the user.
 - On `CHANGES_REQUESTED`, re-dispatch the engineer; do not argue the finding for them.
-- **On completion, check the task off in `.claude/dev-board/tasks.md`** (`[ ]` → `[x]`) and set `queue.md` to `DONE`
+- **On completion, check the task off in `dev-board/tasks.md`** (`[ ]` → `[x]`) and set `queue.md` to `DONE`
   — only when both reviews are `APPROVED` for the same revision.
 
 ### `queue.md` template
@@ -117,7 +117,7 @@ A task is **DONE only when both `code-review.md` and `architecture-review.md` sh
 ## Acceptance criteria
 - [ ] <testable outcome>
 ## Design references
-- .claude/dev-board/plan.md: <phase/section>   ·   .claude/dev-board/app-design-and-features.md: <§>
+- dev-board/plan.md: <phase/section>   ·   dev-board/app-design-and-features.md: <§>
 ## Constraints / non-goals
 <out of scope>
 ```

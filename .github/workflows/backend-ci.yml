@@ -1,0 +1,69 @@
+name: backend-ci
+
+# Lint (ruff) + type-check (mypy --strict) + unit tests (pytest) for the backend.
+# Runs on every push / PR to the main and version-2 branches, but only when
+# backend code or this workflow changes (frontend CI is a separate workflow).
+on:
+  push:
+    branches: [main, version-2]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    branches: [main, version-2]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up uv (with cache)
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      # Curated install: the dev tool group + only the *light* runtime libs the
+      # backend currently imports (fastapi / pydantic / celery). A full `uv sync`
+      # would pull the heavy ML stack (torch via sentence-transformers, docling)
+      # which lint / type-check / the health test never exercise — wasteful on a
+      # free CI tier. Revisit (e.g. split deps into a `ml` extra) when tests start
+      # importing the ML modules. mypy's ignore_missing_imports keeps un-installed
+      # libs as Any, and first-party code stays fully typed.
+      - name: Install dependencies
+        run: |
+          uv sync --only-group dev
+          uv pip install fastapi pydantic pydantic-settings "celery[redis]"
+
+      # --no-sync: run the tool in the curated venv above WITHOUT uv re-resolving
+      # and installing the full project dependency tree (which would drag in the
+      # heavy ML/CUDA stack). The env was prepared explicitly in the step above.
+      - name: Lint (ruff check)
+        run: uv run --no-sync ruff check .
+
+      - name: Format check (ruff format --check)
+        run: uv run --no-sync ruff format --check .
+
+      - name: Type-check (mypy --strict)
+        run: uv run --no-sync mypy app/
+
+      - name: Test (pytest)
+        run: uv run --no-sync pytest
