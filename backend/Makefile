@@ -13,8 +13,27 @@
 # alembic reads DATABASE_URL from app.config.Settings, so the app env vars
 # (root .env) must be present for the migrate-* targets.
 
-.PHONY: install lint format format-check typecheck test test-integration check \
-        migrate migrate-down migrate-base migrate-status revision
+.PHONY: install lint format format-check typecheck test test-integration \
+        test-integration-full check \
+        migrate migrate-integration migrate-down migrate-base migrate-status revision
+
+# ---------------------------------------------------------------------------
+# Shared helpers for the live-DB (docker-compose Postgres) workflow.
+#
+# The compose file + the credentials .env both live at the repo root, one level
+# up from backend/. `docker compose -f ../docker-compose.yml` therefore uses the
+# repo root as its project directory, so it reads the root `.env` for variable
+# interpolation exactly like running compose from the repo root does.
+COMPOSE = docker compose -f ../docker-compose.yml
+
+# Shell prefix that loads the root `.env` and exports a *localhost* async DSN so
+# every live-DB recipe (migrate + pytest) talks to the docker-compose Postgres
+# published on :5432. app.config.Settings loads its `.env` relative to the CWD
+# (backend/), which has no .env — so the required fields (DATABASE_URL,
+# HF_API_TOKEN, JWT_SECRET_KEY) must come from the exported root .env here.
+# DRY: one definition, reused by migrate-integration and test-integration.
+LIVE_DB_ENV = set -a && . ../.env && set +a && \
+	export DATABASE_URL="postgresql+asyncpg://$$POSTGRES_USER:$$POSTGRES_PASSWORD@localhost:5432/$$POSTGRES_DB" &&
 
 # ---------------------------------------------------------------------------
 # Lint / type-check / test — same commands and curated install as backend CI.
@@ -28,7 +47,7 @@
 install:
 	uv sync --only-group dev
 	uv pip install fastapi pydantic pydantic-settings "celery[redis]" openai \
-		sqlalchemy asyncpg aiosqlite pgvector
+		sqlalchemy asyncpg aiosqlite pgvector alembic
 
 lint:
 	uv run --no-sync ruff check .
@@ -48,14 +67,28 @@ typecheck:
 test:
 	uv run --no-sync pytest
 
-# Run the full suite against the docker-compose Postgres (compose stack must be
-# up and migrated: `docker compose up -d db && make migrate`). Builds the async
-# DSN from the root .env so the live-DB integration suites actually execute
-# instead of skipping. Leaves the DB as found (rolled-back / cleaned-up tests).
+# Run the full suite against the docker-compose Postgres. The compose stack must
+# be up and migrated first (`$(COMPOSE) up -d --wait db && make migrate-integration`),
+# or just use the all-in-one `test-integration-full` below. Builds the async DSN
+# from the root .env so the live-DB integration suites actually execute instead
+# of skipping. Leaves the DB as found (rolled-back / cleaned-up tests).
 test-integration:
-	set -a && . ../.env && set +a && \
-	DATABASE_URL="postgresql+asyncpg://$$POSTGRES_USER:$$POSTGRES_PASSWORD@localhost:5432/$$POSTGRES_DB" \
-	uv run --no-sync pytest
+	$(LIVE_DB_ENV) uv run --no-sync pytest
+
+# All-in-one, self-contained live-DB verification (P2 exit criteria). Brings up
+# the Postgres(+pgvector) container, applies migrations, runs the WHOLE suite so
+# the live-DB integration tests execute (not skip), then tears the container
+# back down. Reproducible from a clean checkout:
+#   cd backend && make test-integration-full
+# `up --wait db` blocks until the healthcheck passes; `down` removes the compose
+# containers (named volumes, incl. postgres_data, are preserved). If pytest
+# fails, make stops before `down` so the DB stays up for debugging — re-run, or
+# tear down manually with `$(COMPOSE) down`.
+test-integration-full:
+	$(COMPOSE) up -d --wait db
+	$(MAKE) migrate-integration
+	$(MAKE) test-integration
+	$(COMPOSE) down
 
 # The full local gate — everything CI runs, in one command.
 check: lint format-check typecheck test
@@ -64,9 +97,18 @@ check: lint format-check typecheck test
 # Migrations
 # ---------------------------------------------------------------------------
 
-# Apply all pending migrations.
+# Apply all pending migrations. Requires DATABASE_URL (+ the other required
+# Settings fields) in the environment — e.g. exported in your shell, or a
+# backend/.env. For the docker-compose Postgres, prefer `make migrate-integration`
+# (or the all-in-one `make test-integration-full`), which loads the root .env for
+# you.
 migrate:
 	uv run alembic upgrade head
+
+# Apply all pending migrations against the docker-compose Postgres, loading the
+# root .env and building the localhost DSN just like `test-integration`.
+migrate-integration:
+	$(LIVE_DB_ENV) uv run alembic upgrade head
 
 # Revert the most recent migration.
 migrate-down:
