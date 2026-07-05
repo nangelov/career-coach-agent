@@ -79,6 +79,8 @@ We are using Github free tier.
 - [x] **(B)** `llm/embeddings.py` — `EmbeddingClient` (in-process `sentence-transformers` `Qwen/Qwen3-Embedding-8B`, 4096-dim) + pgvector write + similarity-search helpers - use Hybrid Search with weights.
 - [x] **(B)** Persist P1 conversations to Postgres for **logged-in** users; guests stay Redis-only.
 - [x] **(T)** Restart app → account chat history intact. Insert + cosine similarity query on a vector column returns expected neighbor - add extra weighting.
+- [x] **(T)** Full integration verification against a live container: `docker compose up -d db` (Postgres+pgvector) → run the full backend test suite so the live-DB-gated integration tests execute instead of skipping (`make test-integration` or equivalent) → confirm green → `docker compose down` to tear the container back down. Repeat this whenever the container/Postgres/pgvector setup or schema changes.
+- [x] **(I)** Add a Postgres(+pgvector) service container to backend CI (`.github/workflows/backend-ci.yml`): bring up the service, run migrations, export `DATABASE_URL` so the live-DB-gated integration tests (currently skipped in CI) actually execute on every push/PR instead of only via the local `make test-integration-full` workflow.
 
 ---
 

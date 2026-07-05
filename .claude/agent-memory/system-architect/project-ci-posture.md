@@ -31,5 +31,26 @@ DATABASE_URL). Don't let "free-tier posture" be used to argue it's impossible; i
   `backend/pyproject.toml` referenced by both. Cheap; flag it if a future CI-touching task doesn't consolidate.
 - Real (accepted) risk: P2 persistence / pgvector / migration paths are unguarded on PRs until a CI Postgres
   service lands. Recommend tracking that follow-up against P2-exit/P3, not budget.
+- **P2-09 (APPROVED):** blessed the local live-DB lifecycle target `backend/Makefile test-integration-full`
+  (`compose up -d --wait db → migrate-integration → test-integration → down`; `LIVE_DB_ENV` DRYs the
+  root-.env sourcing + localhost DSN). Makefile-only scope for a (T) verify task is correct — docs stay in the
+  Makefile (v1 root README untouched), no CI service container (still the standing follow-up). Nuance to flag,
+  not block: `docker compose down` (no `-v`) preserves `postgres_data`, so the pgvector init script
+  (`migrations/init/01_enable_pgvector.sql`, runs only on first/empty-volume init) does NOT re-run on re-`up`;
+  a *pgvector-setup/init-script* change needs `down -v` to re-verify from empty. Schema/migration changes are
+  fine (alembic upgrade head against the persisted volume).
+
+- **P2-10 (APPROVED):** the standing CI-service-container follow-up is now **CLOSED** — `backend-ci.yml`
+  gained a `pgvector/pgvector:pg16` `services.postgres` (same OSS image as compose `db`, ephemeral, no managed
+  tier) + `alembic upgrade head` step; the ~40 live-DB tests execute (142 passed, 0 skipped) instead of
+  skipping. Blessed patterns: (a) enable the extension by feeding the **exact checked-out
+  `migrations/init/01_enable_pgvector.sql`** to the service via `docker exec` — NOT duplicating the DDL and NOT
+  folding CREATE EXTENSION into migration 0001 (preserves P0-07 invariant that migrations assume the extension
+  pre-exists, mirroring prod entrypoint); (b) `alembic` is a light/pure-Python add to the curated list — does
+  NOT breach the no-heavy-ML boundary; `--no-sync` keeps the curated venv. Two NEW follow-ups to track (neither
+  a blocker): (1) **Redis is still not a CI service** — when P3 auth/guest-session or Celery live tests land
+  they will skip-in-CI the same way, a foreseeable repeat of this gap; (2) the curated-install-list **DRY
+  follow-up (N2) is still open** — `alembic` was added to both `backend-ci.yml` and `Makefile install` by hand;
+  the two lists still drift-by-hand, consolidate into a `pyproject.toml` group when a future CI task touches it.
 
 Related: [[project-phase-exit-verification]] (integration tests skip-not-fail on live DB).

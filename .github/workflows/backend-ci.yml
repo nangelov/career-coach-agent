@@ -29,6 +29,41 @@ jobs:
     defaults:
       run:
         working-directory: backend
+
+    # Non-secret CI placeholders for the *required* Settings fields (app.config).
+    # HF_API_TOKEN / JWT_SECRET_KEY are not exercised by these tests but Settings()
+    # raises without them, so alembic (env.py imports app.config) and pytest both
+    # need them present. DATABASE_URL points at the `postgres` service below via
+    # localhost: a GitHub Actions service container is port-mapped onto the runner
+    # host, so the compose `db` hostname is NOT valid here — only localhost:5432.
+    # These are throwaway values (the DB dies with the runner); never real secrets.
+    env:
+      HF_API_TOKEN: ci-not-a-real-token
+      JWT_SECRET_KEY: ci-not-a-real-secret
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/career_coach_test
+
+    # Postgres(+pgvector) service, matching the local docker-compose `db` service
+    # (pgvector/pgvector:pg16). Without it, the ~40 live-DB integration tests
+    # (test_conversation_store / test_identity_models / test_knowledge_models /
+    # test_p2_exit_verification / test_structured_models / test_vector_search)
+    # skip because no Postgres is reachable at DATABASE_URL; with it they execute.
+    # The `options` health check gates every job step until the DB is accepting
+    # connections, so no manual wait/sleep is needed. Credentials are ephemeral.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: career_coach_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d career_coach_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -58,11 +93,16 @@ jobs:
       # test imports app.repositories transitively, it must be present or collection
       # errors out for the whole suite. All four are light. mypy's ignore_missing_imports
       # keeps still-un-installed libs as Any, and first-party code stays fully typed.
+      # `alembic` is added here (light — pure-Python, pulls only SQLAlchemy/Mako,
+      # already present) so the migration step below can run `alembic upgrade head`
+      # in this curated venv via --no-sync, without triggering a full project sync
+      # that would drag in the heavy ML stack. Keep this list in sync with the
+      # backend/Makefile `install` target (they must produce the same venv).
       - name: Install dependencies
         run: |
           uv sync --only-group dev
           uv pip install fastapi pydantic pydantic-settings "celery[redis]" openai \
-            sqlalchemy asyncpg aiosqlite pgvector
+            sqlalchemy asyncpg aiosqlite pgvector alembic
 
       # --no-sync: run the tool in the curated venv above WITHOUT uv re-resolving
       # and installing the full project dependency tree (which would drag in the
@@ -79,5 +119,28 @@ jobs:
         # ignore_missing_imports treats it as Any (same posture as langgraph/docling).
         run: uv run --no-sync mypy app/ migrations/
 
+      # The pgvector `vector` extension is normally enabled by the P0-07 init
+      # script (migrations/init/01_enable_pgvector.sql), which docker-compose mounts
+      # into the container's /docker-entrypoint-initdb.d. A GitHub Actions service
+      # container starts BEFORE the repo is checked out, so it can't mount that file
+      # — instead we feed the exact same script to the service's own psql via
+      # `docker exec` (no host-psql-version assumption). Migration 0003 assumes the
+      # extension already exists, so this must run before `alembic upgrade head`.
+      - name: Enable pgvector extension
+        run: |
+          docker exec -i "${{ job.services.postgres.id }}" \
+            psql -U postgres -d career_coach_test \
+            < migrations/init/01_enable_pgvector.sql
+
+      # Apply Alembic migrations to the CI Postgres before the tests run. Migrations
+      # are always an explicit, separate step (never auto-run in the app lifespan) —
+      # same posture as `make migrate`. alembic reads DATABASE_URL from
+      # app.config.Settings (job-level env above); --no-sync reuses the curated venv.
+      - name: Run migrations (alembic upgrade head)
+        run: uv run --no-sync alembic upgrade head
+
+      # With the service + migrations in place, DATABASE_URL now points at a live,
+      # migrated Postgres — so the previously-skipped integration modules execute
+      # (net +40 tests running) instead of skipping.
       - name: Test (pytest)
         run: uv run --no-sync pytest

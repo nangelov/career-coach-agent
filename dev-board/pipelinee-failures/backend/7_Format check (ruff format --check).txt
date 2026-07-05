@@ -1,7 +1,0 @@
-﻿2026-07-05T11:45:09.8842047Z ##[group]Run uv run --no-sync ruff format --check .
-2026-07-05T11:45:09.8842460Z [36;1muv run --no-sync ruff format --check .[0m
-2026-07-05T11:45:09.8864455Z shell: /usr/bin/bash -e {0}
-2026-07-05T11:45:09.8865430Z env:
-2026-07-05T11:45:09.8865705Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
-2026-07-05T11:45:09.8866011Z ##[endgroup]
-2026-07-05T11:45:09.9203055Z 72 files already formatted
