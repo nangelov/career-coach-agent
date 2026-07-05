@@ -39,3 +39,4 @@ The orchestrator's board. One row per task. See `.claude/skills/agent-handoff/SK
 | P2-07-persist-conversations | Persist chat to Postgres for logged-in users | P2 | DONE | 2 | APPROVED | APPROVED |
 | P2-08-verify | P2 exit: restart-intact history + weighted vector/hybrid search | P2 | DONE | 1 | APPROVED | APPROVED |
 | CR-01-design-practices-audit | Whole-codebase design-practices audit (P0-P2) | cross-cutting | DONE | 2 | APPROVED | APPROVED |
+| FIX-01-backend-test-deps | Fix failing backend test collection (missing deps) | cross-cutting | DONE | 1 | APPROVED | APPROVED |

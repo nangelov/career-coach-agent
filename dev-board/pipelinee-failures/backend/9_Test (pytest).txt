@@ -1,0 +1,180 @@
+﻿2026-07-05T11:45:21.4739002Z ##[group]Run uv run --no-sync pytest
+2026-07-05T11:45:21.4739387Z [36;1muv run --no-sync pytest[0m
+2026-07-05T11:45:21.4761754Z shell: /usr/bin/bash -e {0}
+2026-07-05T11:45:21.4762213Z env:
+2026-07-05T11:45:21.4762459Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-07-05T11:45:21.4762764Z ##[endgroup]
+2026-07-05T11:45:24.6108906Z ============================= test session starts ==============================
+2026-07-05T11:45:24.6109740Z platform linux -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0
+2026-07-05T11:45:24.6110659Z rootdir: /home/runner/work/career-coach-agent/career-coach-agent/backend
+2026-07-05T11:45:24.6111692Z configfile: pyproject.toml
+2026-07-05T11:45:24.6112530Z testpaths: tests
+2026-07-05T11:45:24.6113087Z plugins: asyncio-1.4.0, anyio-4.14.1
+2026-07-05T11:45:24.6114509Z asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+2026-07-05T11:45:24.6115992Z collected 83 items / 8 errors
+2026-07-05T11:45:24.6116484Z 
+2026-07-05T11:45:24.6116837Z ==================================== ERRORS ====================================
+2026-07-05T11:45:24.6117984Z ___________________ ERROR collecting tests/test_chat_api.py ____________________
+2026-07-05T11:45:24.6119883Z ImportError while importing test module '/home/runner/work/career-coach-agent/career-coach-agent/backend/tests/test_chat_api.py'.
+2026-07-05T11:45:24.6121760Z Hint: make sure your test modules/packages have valid Python names.
+2026-07-05T11:45:24.6122806Z Traceback:
+2026-07-05T11:45:24.6124076Z ../../../../.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/importlib/__init__.py:126: in import_module
+2026-07-05T11:45:24.6125767Z     return _bootstrap._gcd_import(name[level:], package, level)
+2026-07-05T11:45:24.6126712Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-07-05T11:45:24.6127512Z tests/test_chat_api.py:16: in <module>
+2026-07-05T11:45:24.6128277Z     from app.api.chat import get_chat_service
+2026-07-05T11:45:24.6129082Z app/api/chat.py:34: in <module>
+2026-07-05T11:45:24.6129813Z     from app.bootstrap import build_chat_service
+2026-07-05T11:45:24.6131022Z app/bootstrap.py:31: in <module>
+2026-07-05T11:45:24.6132197Z     from app.repositories.conversation_store import PostgresConversationStore
+2026-07-05T11:45:24.6133369Z app/repositories/__init__.py:3: in <module>
+2026-07-05T11:45:24.6134325Z     from .conversation_store import PostgresConversationStore
+2026-07-05T11:45:24.6135351Z app/repositories/conversation_store.py:32: in <module>
+2026-07-05T11:45:24.6136567Z     from app.repositories.models.identity import Conversation, Message, Session
+2026-07-05T11:45:24.6137776Z app/repositories/models/__init__.py:34: in <module>
+2026-07-05T11:45:24.6138719Z     from app.repositories.models.knowledge import (
+2026-07-05T11:45:24.6139666Z app/repositories/models/knowledge.py:62: in <module>
+2026-07-05T11:45:24.6140535Z     from pgvector.sqlalchemy import Vector
+2026-07-05T11:45:24.6141391Z E   ModuleNotFoundError: No module named 'pgvector'
+2026-07-05T11:45:24.6142701Z __________________ ERROR collecting tests/test_chat_cancel.py __________________
+2026-07-05T11:45:24.6144669Z ImportError while importing test module '/home/runner/work/career-coach-agent/career-coach-agent/backend/tests/test_chat_cancel.py'.
+2026-07-05T11:45:24.6146628Z Hint: make sure your test modules/packages have valid Python names.
+2026-07-05T11:45:24.6147580Z Traceback:
+2026-07-05T11:45:24.6148824Z ../../../../.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/importlib/__init__.py:126: in import_module
+2026-07-05T11:45:24.6150519Z     return _bootstrap._gcd_import(name[level:], package, level)
+2026-07-05T11:45:24.6151475Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-07-05T11:45:24.6152409Z tests/test_chat_cancel.py:24: in <module>
+2026-07-05T11:45:24.6153228Z     from app.api.chat import get_chat_service
+2026-07-05T11:45:24.6154015Z app/api/chat.py:34: in <module>
+2026-07-05T11:45:24.6154752Z     from app.bootstrap import build_chat_service
+2026-07-05T11:45:24.6155853Z app/bootstrap.py:31: in <module>
+2026-07-05T11:45:24.6156905Z     from app.repositories.conversation_store import PostgresConversationStore
+2026-07-05T11:45:24.6158049Z app/repositories/__init__.py:17: in <module>
+2026-07-05T11:45:24.6158826Z     from .vector_search import (
+2026-07-05T11:45:24.6159586Z app/repositories/vector_search.py:55: in <module>
+2026-07-05T11:45:24.6160666Z     from app.repositories.models.knowledge import KbChunk, UserMemory
+2026-07-05T11:45:24.6161776Z app/repositories/models/__init__.py:34: in <module>
+2026-07-05T11:45:24.6162847Z     from app.repositories.models.knowledge import (
+2026-07-05T11:45:24.6163804Z app/repositories/models/knowledge.py:62: in <module>
+2026-07-05T11:45:24.6164695Z     from pgvector.sqlalchemy import Vector
+2026-07-05T11:45:24.6165541Z E   ModuleNotFoundError: No module named 'pgvector'
+2026-07-05T11:45:24.6166621Z __________________ ERROR collecting tests/test_embeddings.py ___________________
+2026-07-05T11:45:24.6168541Z ImportError while importing test module '/home/runner/work/career-coach-agent/career-coach-agent/backend/tests/test_embeddings.py'.
+2026-07-05T11:45:24.6170411Z Hint: make sure your test modules/packages have valid Python names.
+2026-07-05T11:45:24.6171338Z Traceback:
+2026-07-05T11:45:24.6172473Z ../../../../.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/importlib/__init__.py:126: in import_module
+2026-07-05T11:45:24.6174148Z     return _bootstrap._gcd_import(name[level:], package, level)
+2026-07-05T11:45:24.6175091Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-07-05T11:45:24.6175886Z tests/test_embeddings.py:24: in <module>
+2026-07-05T11:45:24.6176824Z     from app.repositories.models.knowledge import EMBEDDING_DIM
+2026-07-05T11:45:24.6177811Z app/repositories/__init__.py:17: in <module>
+2026-07-05T11:45:24.6178581Z     from .vector_search import (
+2026-07-05T11:45:24.6179339Z app/repositories/vector_search.py:55: in <module>
+2026-07-05T11:45:24.6180638Z     from app.repositories.models.knowledge import KbChunk, UserMemory
+2026-07-05T11:45:24.6182126Z app/repositories/models/__init__.py:34: in <module>
+2026-07-05T11:45:24.6183045Z     from app.repositories.models.knowledge import (
+2026-07-05T11:45:24.6183984Z app/repositories/models/knowledge.py:62: in <module>
+2026-07-05T11:45:24.6184878Z     from pgvector.sqlalchemy import Vector
+2026-07-05T11:45:24.6185695Z E   ModuleNotFoundError: No module named 'pgvector'
+2026-07-05T11:45:24.6186803Z ________________ ERROR collecting tests/test_identity_models.py ________________
+2026-07-05T11:45:24.6188789Z ImportError while importing test module '/home/runner/work/career-coach-agent/career-coach-agent/backend/tests/test_identity_models.py'.
+2026-07-05T11:45:24.6190806Z Hint: make sure your test modules/packages have valid Python names.
+2026-07-05T11:45:24.6191755Z Traceback:
+2026-07-05T11:45:24.6193117Z ../../../../.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/importlib/__init__.py:126: in import_module
+2026-07-05T11:45:24.6194670Z     return _bootstrap._gcd_import(name[level:], package, level)
+2026-07-05T11:45:24.6195166Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-07-05T11:45:24.6195616Z tests/test_identity_models.py:28: in <module>
+2026-07-05T11:45:24.6196054Z     from app.repositories.models import (
+2026-07-05T11:45:24.6196527Z app/repositories/__init__.py:17: in <module>
+2026-07-05T11:45:24.6196967Z     from .vector_search import (
+2026-07-05T11:45:24.6197385Z app/repositories/vector_search.py:55: in <module>
+2026-07-05T11:45:24.6197971Z     from app.repositories.models.knowledge import KbChunk, UserMemory
+2026-07-05T11:45:24.6198566Z app/repositories/models/__init__.py:34: in <module>
+2026-07-05T11:45:24.6199068Z     from app.repositories.models.knowledge import (
+2026-07-05T11:45:24.6199595Z app/repositories/models/knowledge.py:62: in <module>
+2026-07-05T11:45:24.6200071Z     from pgvector.sqlalchemy import Vector
+2026-07-05T11:45:24.6200552Z E   ModuleNotFoundError: No module named 'pgvector'
+2026-07-05T11:45:24.6201410Z _______________ ERROR collecting tests/test_knowledge_models.py ________________
+2026-07-05T11:45:24.6202587Z ImportError while importing test module '/home/runner/work/career-coach-agent/career-coach-agent/backend/tests/test_knowledge_models.py'.
+2026-07-05T11:45:24.6203599Z Hint: make sure your test modules/packages have valid Python names.
+2026-07-05T11:45:24.6204097Z Traceback:
+2026-07-05T11:45:24.6204759Z ../../../../.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/importlib/__init__.py:126: in import_module
+2026-07-05T11:45:24.6205620Z     return _bootstrap._gcd_import(name[level:], package, level)
+2026-07-05T11:45:24.6206164Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-07-05T11:45:24.6206726Z tests/test_knowledge_models.py:30: in <module>
+2026-07-05T11:45:24.6207191Z     from app.repositories.models import (
+2026-07-05T11:45:24.6207625Z app/repositories/__init__.py:17: in <module>
+2026-07-05T11:45:24.6208051Z     from .vector_search import (
+2026-07-05T11:45:24.6208454Z app/repositories/vector_search.py:55: in <module>
+2026-07-05T11:45:24.6209032Z     from app.repositories.models.knowledge import KbChunk, UserMemory
+2026-07-05T11:45:24.6209639Z app/repositories/models/__init__.py:34: in <module>
+2026-07-05T11:45:24.6210150Z     from app.repositories.models.knowledge import (
+2026-07-05T11:45:24.6210675Z app/repositories/models/knowledge.py:62: in <module>
+2026-07-05T11:45:24.6211165Z     from pgvector.sqlalchemy import Vector
+2026-07-05T11:45:24.6211631Z E   ModuleNotFoundError: No module named 'pgvector'
+2026-07-05T11:45:24.6212424Z _____________ ERROR collecting tests/test_p2_exit_verification.py ______________
+2026-07-05T11:45:24.6213519Z ImportError while importing test module '/home/runner/work/career-coach-agent/career-coach-agent/backend/tests/test_p2_exit_verification.py'.
+2026-07-05T11:45:24.6214560Z Hint: make sure your test modules/packages have valid Python names.
+2026-07-05T11:45:24.6215065Z Traceback:
+2026-07-05T11:45:24.6215705Z ../../../../.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/importlib/__init__.py:126: in import_module
+2026-07-05T11:45:24.6216776Z     return _bootstrap._gcd_import(name[level:], package, level)
+2026-07-05T11:45:24.6217279Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-07-05T11:45:24.6217733Z tests/test_p2_exit_verification.py:59: in <module>
+2026-07-05T11:45:24.6218282Z     from app.repositories.models import KbChunk, KbDocument, User
+2026-07-05T11:45:24.6218829Z app/repositories/__init__.py:17: in <module>
+2026-07-05T11:45:24.6219234Z     from .vector_search import (
+2026-07-05T11:45:24.6219638Z app/repositories/vector_search.py:55: in <module>
+2026-07-05T11:45:24.6220231Z     from app.repositories.models.knowledge import KbChunk, UserMemory
+2026-07-05T11:45:24.6220813Z app/repositories/models/__init__.py:34: in <module>
+2026-07-05T11:45:24.6221304Z     from app.repositories.models.knowledge import (
+2026-07-05T11:45:24.6221942Z app/repositories/models/knowledge.py:62: in <module>
+2026-07-05T11:45:24.6222437Z     from pgvector.sqlalchemy import Vector
+2026-07-05T11:45:24.6222893Z E   ModuleNotFoundError: No module named 'pgvector'
+2026-07-05T11:45:24.6223484Z _______________ ERROR collecting tests/test_structured_models.py _______________
+2026-07-05T11:45:24.6224544Z ImportError while importing test module '/home/runner/work/career-coach-agent/career-coach-agent/backend/tests/test_structured_models.py'.
+2026-07-05T11:45:24.6225553Z Hint: make sure your test modules/packages have valid Python names.
+2026-07-05T11:45:24.6226049Z Traceback:
+2026-07-05T11:45:24.6226734Z ../../../../.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/importlib/__init__.py:126: in import_module
+2026-07-05T11:45:24.6227597Z     return _bootstrap._gcd_import(name[level:], package, level)
+2026-07-05T11:45:24.6228094Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-07-05T11:45:24.6228534Z tests/test_structured_models.py:28: in <module>
+2026-07-05T11:45:24.6229196Z     from app.repositories.models import (
+2026-07-05T11:45:24.6229643Z app/repositories/__init__.py:17: in <module>
+2026-07-05T11:45:24.6230071Z     from .vector_search import (
+2026-07-05T11:45:24.6230480Z app/repositories/vector_search.py:55: in <module>
+2026-07-05T11:45:24.6231070Z     from app.repositories.models.knowledge import KbChunk, UserMemory
+2026-07-05T11:45:24.6231661Z app/repositories/models/__init__.py:34: in <module>
+2026-07-05T11:45:24.6232283Z     from app.repositories.models.knowledge import (
+2026-07-05T11:45:24.6232947Z app/repositories/models/knowledge.py:62: in <module>
+2026-07-05T11:45:24.6233434Z     from pgvector.sqlalchemy import Vector
+2026-07-05T11:45:24.7116913Z E   ModuleNotFoundError: No module named 'pgvector'
+2026-07-05T11:45:24.7118124Z _________________ ERROR collecting tests/test_vector_search.py _________________
+2026-07-05T11:45:24.7120043Z ImportError while importing test module '/home/runner/work/career-coach-agent/career-coach-agent/backend/tests/test_vector_search.py'.
+2026-07-05T11:45:24.7122248Z Hint: make sure your test modules/packages have valid Python names.
+2026-07-05T11:45:24.7123159Z Traceback:
+2026-07-05T11:45:24.7124347Z ../../../../.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/importlib/__init__.py:126: in import_module
+2026-07-05T11:45:24.7125946Z     return _bootstrap._gcd_import(name[level:], package, level)
+2026-07-05T11:45:24.7126860Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-07-05T11:45:24.7127635Z tests/test_vector_search.py:27: in <module>
+2026-07-05T11:45:24.7128660Z     from app.repositories.models import KbChunk, KbDocument, User, UserMemory
+2026-07-05T11:45:24.7129759Z app/repositories/__init__.py:17: in <module>
+2026-07-05T11:45:24.7130490Z     from .vector_search import (
+2026-07-05T11:45:24.7131218Z app/repositories/vector_search.py:55: in <module>
+2026-07-05T11:45:24.7132380Z     from app.repositories.models.knowledge import KbChunk, UserMemory
+2026-07-05T11:45:24.7133441Z app/repositories/models/__init__.py:34: in <module>
+2026-07-05T11:45:24.7134767Z     from app.repositories.models.knowledge import (
+2026-07-05T11:45:24.7135686Z app/repositories/models/knowledge.py:62: in <module>
+2026-07-05T11:45:24.7136543Z     from pgvector.sqlalchemy import Vector
+2026-07-05T11:45:24.7137378Z E   ModuleNotFoundError: No module named 'pgvector'
+2026-07-05T11:45:24.7138290Z =========================== short test summary info ============================
+2026-07-05T11:45:24.7139156Z ERROR tests/test_chat_api.py
+2026-07-05T11:45:24.7139788Z ERROR tests/test_chat_cancel.py
+2026-07-05T11:45:24.7140418Z ERROR tests/test_embeddings.py
+2026-07-05T11:45:24.7141062Z ERROR tests/test_identity_models.py
+2026-07-05T11:45:24.7141732Z ERROR tests/test_knowledge_models.py
+2026-07-05T11:45:24.7142603Z ERROR tests/test_p2_exit_verification.py
+2026-07-05T11:45:24.7143344Z ERROR tests/test_structured_models.py
+2026-07-05T11:45:24.7144037Z ERROR tests/test_vector_search.py
+2026-07-05T11:45:24.7145107Z !!!!!!!!!!!!!!!!!!! Interrupted: 8 errors during collection !!!!!!!!!!!!!!!!!!!!
+2026-07-05T11:45:24.7146402Z ============================== 8 errors in 2.44s ===============================
+2026-07-05T11:45:24.9469777Z ##[error]Process completed with exit code 2.

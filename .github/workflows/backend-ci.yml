@@ -51,14 +51,18 @@ jobs:
       # `sqlalchemy` + `asyncpg` back the P2-01 Postgres repository (app.main imports it,
       # so every test needs it importable; asyncpg is the prod dialect the pool-config
       # test builds a non-connecting engine against). `aiosqlite` is the in-memory
-      # driver the Postgres plumbing tests use instead of a live Postgres. All three are
-      # light (no torch/CUDA). mypy's ignore_missing_imports keeps still-un-installed
-      # libs as Any, and first-party code stays fully typed.
+      # driver the Postgres plumbing tests use instead of a live Postgres. `pgvector`
+      # (the pure-Python SQLAlchemy client lib — no torch/CUDA) supplies the
+      # `pgvector.sqlalchemy.Vector` column type that the P2-04/P2-06 knowledge models
+      # (app/repositories/models/knowledge.py) import at module load; since almost every
+      # test imports app.repositories transitively, it must be present or collection
+      # errors out for the whole suite. All four are light. mypy's ignore_missing_imports
+      # keeps still-un-installed libs as Any, and first-party code stays fully typed.
       - name: Install dependencies
         run: |
           uv sync --only-group dev
           uv pip install fastapi pydantic pydantic-settings "celery[redis]" openai \
-            sqlalchemy asyncpg aiosqlite
+            sqlalchemy asyncpg aiosqlite pgvector
 
       # --no-sync: run the tool in the curated venv above WITHOUT uv re-resolving
       # and installing the full project dependency tree (which would drag in the

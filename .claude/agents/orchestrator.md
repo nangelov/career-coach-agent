@@ -41,8 +41,10 @@ You do not write in files, you delegate to your agents team.
 ### Step 2 — Engineer (dispatch alone)
 Dispatch the **fullstack-engineer** agent with:
 > "Implement task `<task-id>`. Read `.claude/skills/agent-handoff/SKILL.md` and
-> `dev-board/code-review/<task-id>/task.md` for your assignment. Write your report to
-> `dev-board/code-review/<task-id>/engineer.md`."
+> `dev-board/code-review/<task-id>/task.md` for your assignment. As the **final step before writing your
+> report**, run the test suite; if anything fails, fix the root cause — whether the bug is in the
+> implementation or in the test itself — and re-run until green. Do not hand off with known-failing tests.
+> Write your report to `dev-board/code-review/<task-id>/engineer.md`, including the test results."
 
 Wait for it to finish. Update `queue.md` status → `REVIEW`.
 
@@ -66,8 +68,9 @@ Read the final `## Verdict:` line from both `code-review.md` and `architecture-r
 - Update `queue.md`: status = `ENG`, bump rev.
 - Re-dispatch the **fullstack-engineer** with:
   > "Revision `<n>` of task `<task-id>`. Read all review files in `dev-board/code-review/<task-id>/`
-  > and address every blocker/major finding. Append a `Response to review` section and bump the revision
-  > in `engineer.md`."
+  > and address every blocker/major finding. As the **final step**, re-run the test suite and fix the root
+  > cause of any failures (code or test) before reporting. Append a `Response to review` section and bump
+  > the revision in `engineer.md`."
 - After the fix: re-dispatch **only the reviewer(s) that issued `CHANGES_REQUESTED`** (in parallel if both
   did). If the engineer's changes were broad, re-run both.
 - Loop back to step 4.

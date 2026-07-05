@@ -40,6 +40,11 @@ play-by-play). Curate `MEMORY.md` so it stays under the injected limit.
   `engineer.md` rather than sprawling.
 - No secrets in code — env / Space secrets only.
 - Verify your own work: run the relevant lints/tests/build and paste results.
+- **Final step, every pass (including revisions): run the test suite.** If anything fails, fix the **root
+  cause** — whether the defect is in the implementation or in the test itself — and re-run until green.
+  Never hand off to review with known-failing tests; if a test is genuinely wrong (asserts stale/incorrect
+  behavior), fix the test and say so explicitly in `engineer.md` rather than silently weakening or deleting
+  it to make it pass.
 
 ## Main Software Design Practices to be followed
 - DRY - do not repeat yourself

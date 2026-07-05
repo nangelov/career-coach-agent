@@ -1,0 +1,455 @@
+﻿2026-07-05T11:44:59.8600333Z Current runner version: '2.335.1'
+2026-07-05T11:44:59.8623189Z ##[group]Runner Image Provisioner
+2026-07-05T11:44:59.8623962Z Hosted Compute Agent
+2026-07-05T11:44:59.8624542Z Version: 20260624.560
+2026-07-05T11:44:59.8625141Z Commit: 925d229a51159bc391ae97e54a2dd1fe20af789d
+2026-07-05T11:44:59.8625810Z Build Date: 2026-06-24T18:26:47Z
+2026-07-05T11:44:59.8626499Z Worker ID: {07449ca9-1861-4b3c-9f54-bb3083bd0a90}
+2026-07-05T11:44:59.8627143Z Azure Region: westus3
+2026-07-05T11:44:59.8627653Z ##[endgroup]
+2026-07-05T11:44:59.8628964Z ##[group]Operating System
+2026-07-05T11:44:59.8629549Z Ubuntu
+2026-07-05T11:44:59.8630049Z 24.04.4
+2026-07-05T11:44:59.8630570Z LTS
+2026-07-05T11:44:59.8631046Z ##[endgroup]
+2026-07-05T11:44:59.8631569Z ##[group]Runner Image
+2026-07-05T11:44:59.8632383Z Image: ubuntu-24.04
+2026-07-05T11:44:59.8632902Z Version: 20260628.225.1
+2026-07-05T11:44:59.8634096Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260628.225/images/ubuntu/Ubuntu2404-Readme.md
+2026-07-05T11:44:59.8635462Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260628.225
+2026-07-05T11:44:59.8636334Z ##[endgroup]
+2026-07-05T11:44:59.8637358Z ##[group]GITHUB_TOKEN Permissions
+2026-07-05T11:44:59.8639194Z Contents: read
+2026-07-05T11:44:59.8639730Z Metadata: read
+2026-07-05T11:44:59.8640314Z ##[endgroup]
+2026-07-05T11:44:59.8642417Z Secret source: Actions
+2026-07-05T11:44:59.8643465Z Prepare workflow directory
+2026-07-05T11:44:59.9097336Z Prepare all required actions
+2026-07-05T11:44:59.9154269Z Getting action download info
+2026-07-05T11:45:00.2025180Z Download action repository 'actions/checkout@v4' (SHA:34e114876b0b11c390a56381ad16ebd13914f8d5)
+2026-07-05T11:45:00.2671227Z Download action repository 'astral-sh/setup-uv@v5' (SHA:d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86)
+2026-07-05T11:45:01.4013603Z Complete job name: backend
+2026-07-05T11:45:01.4727999Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-07-05T11:45:01.4737387Z ##[group]Run actions/checkout@v4
+2026-07-05T11:45:01.4738296Z with:
+2026-07-05T11:45:01.4738904Z   repository: nangelov/career-coach-agent
+2026-07-05T11:45:01.4743541Z   token: ***
+2026-07-05T11:45:01.4744124Z   ssh-strict: true
+2026-07-05T11:45:01.4744702Z   ssh-user: git
+2026-07-05T11:45:01.4745280Z   persist-credentials: true
+2026-07-05T11:45:01.4745903Z   clean: true
+2026-07-05T11:45:01.4746491Z   sparse-checkout-cone-mode: true
+2026-07-05T11:45:01.4747164Z   fetch-depth: 1
+2026-07-05T11:45:01.4747709Z   fetch-tags: false
+2026-07-05T11:45:01.4748313Z   show-progress: true
+2026-07-05T11:45:01.4748889Z   lfs: false
+2026-07-05T11:45:01.4749535Z   submodules: false
+2026-07-05T11:45:01.4750140Z   set-safe-directory: true
+2026-07-05T11:45:01.4751049Z ##[endgroup]
+2026-07-05T11:45:01.5899487Z Syncing repository: nangelov/career-coach-agent
+2026-07-05T11:45:01.5901463Z ##[group]Getting Git version info
+2026-07-05T11:45:01.5902681Z Working directory is '/home/runner/work/career-coach-agent/career-coach-agent'
+2026-07-05T11:45:01.5903921Z [command]/usr/bin/git version
+2026-07-05T11:45:01.5904554Z git version 2.54.0
+2026-07-05T11:45:01.5913442Z ##[endgroup]
+2026-07-05T11:45:01.5921079Z Temporarily overriding HOME='/home/runner/work/_temp/dfdc55d5-445d-47cf-b620-02c9074567a1' before making global git config changes
+2026-07-05T11:45:01.5923465Z Adding repository directory to the temporary git global config as a safe directory
+2026-07-05T11:45:01.5927175Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/career-coach-agent/career-coach-agent
+2026-07-05T11:45:01.5976851Z Deleting the contents of '/home/runner/work/career-coach-agent/career-coach-agent'
+2026-07-05T11:45:01.5981672Z ##[group]Initializing the repository
+2026-07-05T11:45:01.5987655Z [command]/usr/bin/git init /home/runner/work/career-coach-agent/career-coach-agent
+2026-07-05T11:45:01.6094733Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-07-05T11:45:01.6096873Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-07-05T11:45:01.6098868Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-07-05T11:45:01.6100733Z hint: call:
+2026-07-05T11:45:01.6101575Z hint:
+2026-07-05T11:45:01.6102779Z hint: 	git config --global init.defaultBranch <name>
+2026-07-05T11:45:01.6104022Z hint:
+2026-07-05T11:45:01.6105209Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-07-05T11:45:01.6107213Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-07-05T11:45:01.6108784Z hint:
+2026-07-05T11:45:01.6109651Z hint: 	git branch -m <name>
+2026-07-05T11:45:01.6110735Z hint:
+2026-07-05T11:45:01.6112313Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-07-05T11:45:01.6130797Z Initialized empty Git repository in /home/runner/work/career-coach-agent/career-coach-agent/.git/
+2026-07-05T11:45:01.6144203Z [command]/usr/bin/git remote add origin https://github.com/nangelov/career-coach-agent
+2026-07-05T11:45:01.6181487Z ##[endgroup]
+2026-07-05T11:45:01.6182665Z ##[group]Disabling automatic garbage collection
+2026-07-05T11:45:01.6186530Z [command]/usr/bin/git config --local gc.auto 0
+2026-07-05T11:45:01.6213342Z ##[endgroup]
+2026-07-05T11:45:01.6214161Z ##[group]Setting up auth
+2026-07-05T11:45:01.6222054Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-07-05T11:45:01.6254707Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-07-05T11:45:01.6570144Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-07-05T11:45:01.6603327Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-07-05T11:45:01.6796804Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-07-05T11:45:01.6826495Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-07-05T11:45:01.6997279Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-07-05T11:45:01.7028778Z ##[endgroup]
+2026-07-05T11:45:01.7030366Z ##[group]Fetching the repository
+2026-07-05T11:45:01.7039605Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +fa1d972972ec2f3c1e1d80d54ec879856e8e0d66:refs/remotes/origin/version-2
+2026-07-05T11:45:02.5471235Z From https://github.com/nangelov/career-coach-agent
+2026-07-05T11:45:02.5474822Z  * [new ref]         fa1d972972ec2f3c1e1d80d54ec879856e8e0d66 -> origin/version-2
+2026-07-05T11:45:02.5507043Z ##[endgroup]
+2026-07-05T11:45:02.5509864Z ##[group]Determining the checkout info
+2026-07-05T11:45:02.5513103Z ##[endgroup]
+2026-07-05T11:45:02.5516411Z [command]/usr/bin/git sparse-checkout disable
+2026-07-05T11:45:02.5557844Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-07-05T11:45:02.5584285Z ##[group]Checking out the ref
+2026-07-05T11:45:02.5586825Z [command]/usr/bin/git checkout --progress --force -B version-2 refs/remotes/origin/version-2
+2026-07-05T11:45:02.5816169Z Switched to a new branch 'version-2'
+2026-07-05T11:45:02.5818039Z branch 'version-2' set up to track 'origin/version-2'.
+2026-07-05T11:45:02.5830070Z ##[endgroup]
+2026-07-05T11:45:02.5866195Z [command]/usr/bin/git log -1 --format=%H
+2026-07-05T11:45:02.5887447Z fa1d972972ec2f3c1e1d80d54ec879856e8e0d66
+2026-07-05T11:45:02.6219822Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-07-05T11:45:02.6225205Z ##[group]Run astral-sh/setup-uv@v5
+2026-07-05T11:45:02.6226240Z with:
+2026-07-05T11:45:02.6227013Z   enable-cache: true
+2026-07-05T11:45:02.6236456Z   github-token: ***
+2026-07-05T11:45:02.6237548Z   cache-dependency-glob: **/uv.lock
+**/requirements*.txt
+
+2026-07-05T11:45:02.6238841Z   prune-cache: true
+2026-07-05T11:45:02.6239749Z   ignore-nothing-to-cache: false
+2026-07-05T11:45:02.6240792Z   ignore-empty-workdir: false
+2026-07-05T11:45:02.6241752Z ##[endgroup]
+2026-07-05T11:45:02.7911495Z (node:2214) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-07-05T11:45:02.7916185Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-07-05T11:45:03.2158951Z Downloading uv from "https://github.com/astral-sh/uv/releases/download/0.11.26/uv-x86_64-unknown-linux-gnu.tar.gz" ...
+2026-07-05T11:45:03.6381327Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/9a7e378e-9433-4480-887a-1c0f0fc62180 -f /home/runner/work/_temp/7ca455b3-4c07-496c-bf4a-32adabccdb37
+2026-07-05T11:45:04.1084395Z Added /home/runner/.local/bin to the path
+2026-07-05T11:45:04.1086421Z Added /opt/hostedtoolcache/uv/0.11.26/x86_64 to the path
+2026-07-05T11:45:04.1109510Z Set UV_CACHE_DIR to /home/runner/work/_temp/setup-uv-cache
+2026-07-05T11:45:04.1109907Z Successfully installed uv version 0.11.26
+2026-07-05T11:45:04.1110336Z Searching files using cache dependency glob: **/uv.lock,**/requirements*.txt
+2026-07-05T11:45:04.1475510Z /home/runner/work/career-coach-agent/career-coach-agent/backend/uv.lock
+2026-07-05T11:45:04.1668989Z /home/runner/work/career-coach-agent/career-coach-agent/legacy-code/requirements.txt
+2026-07-05T11:45:04.1680055Z Found 2 files to hash.
+2026-07-05T11:45:04.2446419Z Trying to restore uv cache from GitHub Actions cache with key: setup-uv-1-x86_64-unknown-linux-gnu-3.12.3-6b5a1bcc9cdd1cb4ca67eca4759b62a02f9914d788d7aeed770e56bd9c5f2902
+2026-07-05T11:45:04.4294817Z Cache hit for: setup-uv-1-x86_64-unknown-linux-gnu-3.12.3-6b5a1bcc9cdd1cb4ca67eca4759b62a02f9914d788d7aeed770e56bd9c5f2902
+2026-07-05T11:45:04.4398333Z (node:2214) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-07-05T11:45:05.5333605Z Received 2340525 of 2340525 (100.0%), 2.6 MBs/sec
+2026-07-05T11:45:05.5334446Z Cache Size: ~2 MB (2340525 B)
+2026-07-05T11:45:05.5361502Z [command]/usr/bin/tar -xf /home/runner/work/_temp/ba3fef54-7af8-4e62-b1ed-9fb6ee761646/cache.tzst -P -C /home/runner/work/career-coach-agent/career-coach-agent --use-compress-program unzstd
+2026-07-05T11:45:05.5565764Z Cache restored successfully
+2026-07-05T11:45:05.5574286Z uv cache restored from GitHub Actions cache with key: setup-uv-1-x86_64-unknown-linux-gnu-3.12.3-6b5a1bcc9cdd1cb4ca67eca4759b62a02f9914d788d7aeed770e56bd9c5f2902
+2026-07-05T11:45:05.5697113Z ##[group]Run uv python install 3.11
+2026-07-05T11:45:05.5697524Z [36;1muv python install 3.11[0m
+2026-07-05T11:45:05.5819574Z shell: /usr/bin/bash -e {0}
+2026-07-05T11:45:05.5819874Z env:
+2026-07-05T11:45:05.5820124Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-07-05T11:45:05.5820437Z ##[endgroup]
+2026-07-05T11:45:05.7317066Z Downloading cpython-3.11.15-linux-x86_64-gnu (download) (29.5MiB)
+2026-07-05T11:45:06.4629946Z  Downloaded cpython-3.11.15-linux-x86_64-gnu (download)
+2026-07-05T11:45:06.4672499Z Installed Python 3.11.15 in 856ms
+2026-07-05T11:45:06.4673517Z  + cpython-3.11.15-linux-x86_64-gnu (python3.11)
+2026-07-05T11:45:06.4716983Z ##[group]Run uv sync --only-group dev
+2026-07-05T11:45:06.4717363Z [36;1muv sync --only-group dev[0m
+2026-07-05T11:45:06.4717994Z [36;1muv pip install fastapi pydantic pydantic-settings "celery[redis]" openai \[0m
+2026-07-05T11:45:06.4718476Z [36;1m  sqlalchemy asyncpg aiosqlite[0m
+2026-07-05T11:45:06.4737722Z shell: /usr/bin/bash -e {0}
+2026-07-05T11:45:06.4737980Z env:
+2026-07-05T11:45:06.4738227Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-07-05T11:45:06.4738523Z ##[endgroup]
+2026-07-05T11:45:06.6095431Z Using CPython 3.11.15
+2026-07-05T11:45:06.6095872Z Creating virtual environment at: .venv
+2026-07-05T11:45:08.7716635Z Resolved 206 packages in 2.14s
+2026-07-05T11:45:08.7717617Z warning: `pandas==3.0.4` is yanked (reason: "Reported segfaults with datetime-related functionality")
+2026-07-05T11:45:08.8413238Z Downloading ast-serialize (1.2MiB)
+2026-07-05T11:45:08.8417077Z Downloading mypy (14.2MiB)
+2026-07-05T11:45:08.8419676Z Downloading pygments (1.2MiB)
+2026-07-05T11:45:08.8422712Z Downloading ruff (11.0MiB)
+2026-07-05T11:45:09.0581079Z  Downloaded ast-serialize
+2026-07-05T11:45:09.1109500Z  Downloaded ruff
+2026-07-05T11:45:09.1636488Z  Downloaded pygments
+2026-07-05T11:45:09.2878800Z  Downloaded mypy
+2026-07-05T11:45:09.2881132Z Prepared 25 packages in 498ms
+2026-07-05T11:45:09.3083542Z Installed 25 packages in 20ms
+2026-07-05T11:45:09.3084028Z  + anyio==4.14.1
+2026-07-05T11:45:09.3084373Z  + ast-serialize==0.5.0
+2026-07-05T11:45:09.3084731Z  + attrs==26.1.0
+2026-07-05T11:45:09.3085054Z  + celery-types==0.26.0
+2026-07-05T11:45:09.3085400Z  + certifi==2026.6.17
+2026-07-05T11:45:09.3085740Z  + h11==0.16.0
+2026-07-05T11:45:09.3086048Z  + httpcore==1.0.9
+2026-07-05T11:45:09.3086368Z  + httpx==0.28.1
+2026-07-05T11:45:09.3086672Z  + idna==3.18
+2026-07-05T11:45:09.3087077Z  + iniconfig==2.3.0
+2026-07-05T11:45:09.3087413Z  + librt==0.11.0
+2026-07-05T11:45:09.3087720Z  + mypy==2.1.0
+2026-07-05T11:45:09.3088072Z  + mypy-extensions==1.1.0
+2026-07-05T11:45:09.3088487Z  + outcome==1.3.0.post0
+2026-07-05T11:45:09.3088835Z  + packaging==26.2
+2026-07-05T11:45:09.3089169Z  + pathspec==1.1.1
+2026-07-05T11:45:09.3089518Z  + pluggy==1.6.0
+2026-07-05T11:45:09.3089843Z  + pygments==2.20.0
+2026-07-05T11:45:09.3090173Z  + pytest==9.1.1
+2026-07-05T11:45:09.3090539Z  + pytest-asyncio==1.4.0
+2026-07-05T11:45:09.3090884Z  + ruff==0.15.20
+2026-07-05T11:45:09.3091218Z  + sniffio==1.3.1
+2026-07-05T11:45:09.3091551Z  + sortedcontainers==2.4.0
+2026-07-05T11:45:09.3092285Z  + trio==0.33.0
+2026-07-05T11:45:09.3092590Z  + typing-extensions==4.15.0
+2026-07-05T11:45:09.4889414Z Resolved 42 packages in 114ms
+2026-07-05T11:45:09.5185099Z Downloading sqlalchemy (3.2MiB)
+2026-07-05T11:45:09.5187312Z Downloading asyncpg (2.8MiB)
+2026-07-05T11:45:09.5187866Z Downloading pydantic-core (2.0MiB)
+2026-07-05T11:45:09.5199169Z Downloading openai (1.3MiB)
+2026-07-05T11:45:09.6480651Z  Downloaded pydantic-core
+2026-07-05T11:45:09.6873301Z  Downloaded asyncpg
+2026-07-05T11:45:09.7288925Z  Downloaded sqlalchemy
+2026-07-05T11:45:09.8067753Z  Downloaded openai
+2026-07-05T11:45:09.8069409Z Prepared 33 packages in 317ms
+2026-07-05T11:45:09.8352162Z Installed 33 packages in 28ms
+2026-07-05T11:45:09.8352712Z  + aiosqlite==0.22.1
+2026-07-05T11:45:09.8353062Z  + amqp==5.3.1
+2026-07-05T11:45:09.8353410Z  + annotated-doc==0.0.4
+2026-07-05T11:45:09.8353785Z  + annotated-types==0.7.0
+2026-07-05T11:45:09.8354157Z  + asyncpg==0.31.0
+2026-07-05T11:45:09.8354491Z  + billiard==4.2.4
+2026-07-05T11:45:09.8354831Z  + celery==5.6.3
+2026-07-05T11:45:09.8355194Z  + click==8.4.2
+2026-07-05T11:45:09.8355610Z  + click-didyoumean==0.3.1
+2026-07-05T11:45:09.8356039Z  + click-plugins==1.1.1.2
+2026-07-05T11:45:09.8356448Z  + click-repl==0.3.0
+2026-07-05T11:45:09.8356812Z  + distro==1.9.0
+2026-07-05T11:45:09.8357159Z  + fastapi==0.139.0
+2026-07-05T11:45:09.8357511Z  + greenlet==3.5.3
+2026-07-05T11:45:09.8357843Z  + jiter==0.16.0
+2026-07-05T11:45:09.8358235Z  + kombu==5.6.2
+2026-07-05T11:45:09.8359075Z  + openai==2.44.0
+2026-07-05T11:45:09.8359884Z  + prompt-toolkit==3.0.52
+2026-07-05T11:45:09.8360260Z  + pydantic==2.13.4
+2026-07-05T11:45:09.8360507Z  + pydantic-core==2.46.4
+2026-07-05T11:45:09.8360897Z  + pydantic-settings==2.14.2
+2026-07-05T11:45:09.8361141Z  + python-dateutil==2.9.0.post0
+2026-07-05T11:45:09.8361391Z  + python-dotenv==1.2.2
+2026-07-05T11:45:09.8361653Z  + redis==6.4.0
+2026-07-05T11:45:09.8362042Z  + six==1.17.0
+2026-07-05T11:45:09.8362321Z  + sqlalchemy==2.0.51
+2026-07-05T11:45:09.8362543Z  + starlette==1.3.1
+2026-07-05T11:45:09.8362751Z  + tqdm==4.68.3
+2026-07-05T11:45:09.8362971Z  + typing-inspection==0.4.2
+2026-07-05T11:45:09.8363207Z  + tzdata==2026.2
+2026-07-05T11:45:09.8363403Z  + tzlocal==5.4.4
+2026-07-05T11:45:09.8363646Z  + vine==5.1.0
+2026-07-05T11:45:09.8363835Z  + wcwidth==0.8.2
+2026-07-05T11:45:09.8427792Z ##[group]Run uv run --no-sync ruff check .
+2026-07-05T11:45:09.8428328Z [36;1muv run --no-sync ruff check .[0m
+2026-07-05T11:45:09.8450406Z shell: /usr/bin/bash -e {0}
+2026-07-05T11:45:09.8450664Z env:
+2026-07-05T11:45:09.8450934Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-07-05T11:45:09.8451232Z ##[endgroup]
+2026-07-05T11:45:09.8801260Z All checks passed!
+2026-07-05T11:45:09.8842064Z ##[group]Run uv run --no-sync ruff format --check .
+2026-07-05T11:45:09.8842463Z [36;1muv run --no-sync ruff format --check .[0m
+2026-07-05T11:45:09.8864469Z shell: /usr/bin/bash -e {0}
+2026-07-05T11:45:09.8865438Z env:
+2026-07-05T11:45:09.8865709Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-07-05T11:45:09.8866014Z ##[endgroup]
+2026-07-05T11:45:09.9203089Z 72 files already formatted
+2026-07-05T11:45:09.9239226Z ##[group]Run uv run --no-sync mypy app/ migrations/
+2026-07-05T11:45:09.9239603Z [36;1muv run --no-sync mypy app/ migrations/[0m
+2026-07-05T11:45:09.9258376Z shell: /usr/bin/bash -e {0}
+2026-07-05T11:45:09.9258630Z env:
+2026-07-05T11:45:09.9258870Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-07-05T11:45:09.9259169Z ##[endgroup]
+2026-07-05T11:45:21.4511423Z Success: no issues found in 49 source files
+2026-07-05T11:45:21.4739016Z ##[group]Run uv run --no-sync pytest
+2026-07-05T11:45:21.4739390Z [36;1muv run --no-sync pytest[0m
+2026-07-05T11:45:21.4761765Z shell: /usr/bin/bash -e {0}
+2026-07-05T11:45:21.4762216Z env:
+2026-07-05T11:45:21.4762462Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-07-05T11:45:21.4762766Z ##[endgroup]
+2026-07-05T11:45:24.6108960Z ============================= test session starts ==============================
+2026-07-05T11:45:24.6109749Z platform linux -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0
+2026-07-05T11:45:24.6110664Z rootdir: /home/runner/work/career-coach-agent/career-coach-agent/backend
+2026-07-05T11:45:24.6111696Z configfile: pyproject.toml
+2026-07-05T11:45:24.6112534Z testpaths: tests
+2026-07-05T11:45:24.6113091Z plugins: asyncio-1.4.0, anyio-4.14.1
+2026-07-05T11:45:24.6114513Z asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+2026-07-05T11:45:24.6116069Z collected 83 items / 8 errors
+2026-07-05T11:45:24.6116490Z 
+2026-07-05T11:45:24.6116841Z ==================================== ERRORS ====================================
+2026-07-05T11:45:24.6117987Z ___________________ ERROR collecting tests/test_chat_api.py ____________________
+2026-07-05T11:45:24.6119888Z ImportError while importing test module '/home/runner/work/career-coach-agent/career-coach-agent/backend/tests/test_chat_api.py'.
+2026-07-05T11:45:24.6121763Z Hint: make sure your test modules/packages have valid Python names.
+2026-07-05T11:45:24.6122813Z Traceback:
+2026-07-05T11:45:24.6124091Z ../../../../.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/importlib/__init__.py:126: in import_module
+2026-07-05T11:45:24.6125771Z     return _bootstrap._gcd_import(name[level:], package, level)
+2026-07-05T11:45:24.6126715Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-07-05T11:45:24.6127516Z tests/test_chat_api.py:16: in <module>
+2026-07-05T11:45:24.6128300Z     from app.api.chat import get_chat_service
+2026-07-05T11:45:24.6129086Z app/api/chat.py:34: in <module>
+2026-07-05T11:45:24.6129816Z     from app.bootstrap import build_chat_service
+2026-07-05T11:45:24.6131026Z app/bootstrap.py:31: in <module>
+2026-07-05T11:45:24.6132203Z     from app.repositories.conversation_store import PostgresConversationStore
+2026-07-05T11:45:24.6133373Z app/repositories/__init__.py:3: in <module>
+2026-07-05T11:45:24.6134329Z     from .conversation_store import PostgresConversationStore
+2026-07-05T11:45:24.6135354Z app/repositories/conversation_store.py:32: in <module>
+2026-07-05T11:45:24.6136571Z     from app.repositories.models.identity import Conversation, Message, Session
+2026-07-05T11:45:24.6137779Z app/repositories/models/__init__.py:34: in <module>
+2026-07-05T11:45:24.6138722Z     from app.repositories.models.knowledge import (
+2026-07-05T11:45:24.6139669Z app/repositories/models/knowledge.py:62: in <module>
+2026-07-05T11:45:24.6140539Z     from pgvector.sqlalchemy import Vector
+2026-07-05T11:45:24.6141407Z E   ModuleNotFoundError: No module named 'pgvector'
+2026-07-05T11:45:24.6142708Z __________________ ERROR collecting tests/test_chat_cancel.py __________________
+2026-07-05T11:45:24.6144674Z ImportError while importing test module '/home/runner/work/career-coach-agent/career-coach-agent/backend/tests/test_chat_cancel.py'.
+2026-07-05T11:45:24.6146632Z Hint: make sure your test modules/packages have valid Python names.
+2026-07-05T11:45:24.6147585Z Traceback:
+2026-07-05T11:45:24.6148829Z ../../../../.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/importlib/__init__.py:126: in import_module
+2026-07-05T11:45:24.6150523Z     return _bootstrap._gcd_import(name[level:], package, level)
+2026-07-05T11:45:24.6151479Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-07-05T11:45:24.6152417Z tests/test_chat_cancel.py:24: in <module>
+2026-07-05T11:45:24.6153231Z     from app.api.chat import get_chat_service
+2026-07-05T11:45:24.6154019Z app/api/chat.py:34: in <module>
+2026-07-05T11:45:24.6155028Z     from app.bootstrap import build_chat_service
+2026-07-05T11:45:24.6155857Z app/bootstrap.py:31: in <module>
+2026-07-05T11:45:24.6156910Z     from app.repositories.conversation_store import PostgresConversationStore
+2026-07-05T11:45:24.6158053Z app/repositories/__init__.py:17: in <module>
+2026-07-05T11:45:24.6158830Z     from .vector_search import (
+2026-07-05T11:45:24.6159589Z app/repositories/vector_search.py:55: in <module>
+2026-07-05T11:45:24.6160670Z     from app.repositories.models.knowledge import KbChunk, UserMemory
+2026-07-05T11:45:24.6161779Z app/repositories/models/__init__.py:34: in <module>
+2026-07-05T11:45:24.6162852Z     from app.repositories.models.knowledge import (
+2026-07-05T11:45:24.6163808Z app/repositories/models/knowledge.py:62: in <module>
+2026-07-05T11:45:24.6164699Z     from pgvector.sqlalchemy import Vector
+2026-07-05T11:45:24.6165545Z E   ModuleNotFoundError: No module named 'pgvector'
+2026-07-05T11:45:24.6166637Z __________________ ERROR collecting tests/test_embeddings.py ___________________
+2026-07-05T11:45:24.6168546Z ImportError while importing test module '/home/runner/work/career-coach-agent/career-coach-agent/backend/tests/test_embeddings.py'.
+2026-07-05T11:45:24.6170415Z Hint: make sure your test modules/packages have valid Python names.
+2026-07-05T11:45:24.6171342Z Traceback:
+2026-07-05T11:45:24.6172480Z ../../../../.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/importlib/__init__.py:126: in import_module
+2026-07-05T11:45:24.6174151Z     return _bootstrap._gcd_import(name[level:], package, level)
+2026-07-05T11:45:24.6175095Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-07-05T11:45:24.6175890Z tests/test_embeddings.py:24: in <module>
+2026-07-05T11:45:24.6176828Z     from app.repositories.models.knowledge import EMBEDDING_DIM
+2026-07-05T11:45:24.6177815Z app/repositories/__init__.py:17: in <module>
+2026-07-05T11:45:24.6178593Z     from .vector_search import (
+2026-07-05T11:45:24.6179353Z app/repositories/vector_search.py:55: in <module>
+2026-07-05T11:45:24.6180644Z     from app.repositories.models.knowledge import KbChunk, UserMemory
+2026-07-05T11:45:24.6182131Z app/repositories/models/__init__.py:34: in <module>
+2026-07-05T11:45:24.6183049Z     from app.repositories.models.knowledge import (
+2026-07-05T11:45:24.6183997Z app/repositories/models/knowledge.py:62: in <module>
+2026-07-05T11:45:24.6184882Z     from pgvector.sqlalchemy import Vector
+2026-07-05T11:45:24.6185699Z E   ModuleNotFoundError: No module named 'pgvector'
+2026-07-05T11:45:24.6186807Z ________________ ERROR collecting tests/test_identity_models.py ________________
+2026-07-05T11:45:24.6188793Z ImportError while importing test module '/home/runner/work/career-coach-agent/career-coach-agent/backend/tests/test_identity_models.py'.
+2026-07-05T11:45:24.6190813Z Hint: make sure your test modules/packages have valid Python names.
+2026-07-05T11:45:24.6191760Z Traceback:
+2026-07-05T11:45:24.6193135Z ../../../../.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/importlib/__init__.py:126: in import_module
+2026-07-05T11:45:24.6194674Z     return _bootstrap._gcd_import(name[level:], package, level)
+2026-07-05T11:45:24.6195169Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-07-05T11:45:24.6195619Z tests/test_identity_models.py:28: in <module>
+2026-07-05T11:45:24.6196057Z     from app.repositories.models import (
+2026-07-05T11:45:24.6196530Z app/repositories/__init__.py:17: in <module>
+2026-07-05T11:45:24.6196970Z     from .vector_search import (
+2026-07-05T11:45:24.6197388Z app/repositories/vector_search.py:55: in <module>
+2026-07-05T11:45:24.6197975Z     from app.repositories.models.knowledge import KbChunk, UserMemory
+2026-07-05T11:45:24.6198569Z app/repositories/models/__init__.py:34: in <module>
+2026-07-05T11:45:24.6199071Z     from app.repositories.models.knowledge import (
+2026-07-05T11:45:24.6199598Z app/repositories/models/knowledge.py:62: in <module>
+2026-07-05T11:45:24.6200076Z     from pgvector.sqlalchemy import Vector
+2026-07-05T11:45:24.6200771Z E   ModuleNotFoundError: No module named 'pgvector'
+2026-07-05T11:45:24.6201414Z _______________ ERROR collecting tests/test_knowledge_models.py ________________
+2026-07-05T11:45:24.6202592Z ImportError while importing test module '/home/runner/work/career-coach-agent/career-coach-agent/backend/tests/test_knowledge_models.py'.
+2026-07-05T11:45:24.6203604Z Hint: make sure your test modules/packages have valid Python names.
+2026-07-05T11:45:24.6204100Z Traceback:
+2026-07-05T11:45:24.6204763Z ../../../../.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/importlib/__init__.py:126: in import_module
+2026-07-05T11:45:24.6205624Z     return _bootstrap._gcd_import(name[level:], package, level)
+2026-07-05T11:45:24.6206168Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-07-05T11:45:24.6206730Z tests/test_knowledge_models.py:30: in <module>
+2026-07-05T11:45:24.6207195Z     from app.repositories.models import (
+2026-07-05T11:45:24.6207638Z app/repositories/__init__.py:17: in <module>
+2026-07-05T11:45:24.6208055Z     from .vector_search import (
+2026-07-05T11:45:24.6208459Z app/repositories/vector_search.py:55: in <module>
+2026-07-05T11:45:24.6209035Z     from app.repositories.models.knowledge import KbChunk, UserMemory
+2026-07-05T11:45:24.6209643Z app/repositories/models/__init__.py:34: in <module>
+2026-07-05T11:45:24.6210153Z     from app.repositories.models.knowledge import (
+2026-07-05T11:45:24.6210679Z app/repositories/models/knowledge.py:62: in <module>
+2026-07-05T11:45:24.6211169Z     from pgvector.sqlalchemy import Vector
+2026-07-05T11:45:24.6211634Z E   ModuleNotFoundError: No module named 'pgvector'
+2026-07-05T11:45:24.6212431Z _____________ ERROR collecting tests/test_p2_exit_verification.py ______________
+2026-07-05T11:45:24.6213524Z ImportError while importing test module '/home/runner/work/career-coach-agent/career-coach-agent/backend/tests/test_p2_exit_verification.py'.
+2026-07-05T11:45:24.6214576Z Hint: make sure your test modules/packages have valid Python names.
+2026-07-05T11:45:24.6215069Z Traceback:
+2026-07-05T11:45:24.6215709Z ../../../../.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/importlib/__init__.py:126: in import_module
+2026-07-05T11:45:24.6216781Z     return _bootstrap._gcd_import(name[level:], package, level)
+2026-07-05T11:45:24.6217282Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-07-05T11:45:24.6217736Z tests/test_p2_exit_verification.py:59: in <module>
+2026-07-05T11:45:24.6218287Z     from app.repositories.models import KbChunk, KbDocument, User
+2026-07-05T11:45:24.6218833Z app/repositories/__init__.py:17: in <module>
+2026-07-05T11:45:24.6219237Z     from .vector_search import (
+2026-07-05T11:45:24.6219642Z app/repositories/vector_search.py:55: in <module>
+2026-07-05T11:45:24.6220234Z     from app.repositories.models.knowledge import KbChunk, UserMemory
+2026-07-05T11:45:24.6220817Z app/repositories/models/__init__.py:34: in <module>
+2026-07-05T11:45:24.6221317Z     from app.repositories.models.knowledge import (
+2026-07-05T11:45:24.6221958Z app/repositories/models/knowledge.py:62: in <module>
+2026-07-05T11:45:24.6222440Z     from pgvector.sqlalchemy import Vector
+2026-07-05T11:45:24.6222896Z E   ModuleNotFoundError: No module named 'pgvector'
+2026-07-05T11:45:24.6223487Z _______________ ERROR collecting tests/test_structured_models.py _______________
+2026-07-05T11:45:24.6224549Z ImportError while importing test module '/home/runner/work/career-coach-agent/career-coach-agent/backend/tests/test_structured_models.py'.
+2026-07-05T11:45:24.6225557Z Hint: make sure your test modules/packages have valid Python names.
+2026-07-05T11:45:24.6226053Z Traceback:
+2026-07-05T11:45:24.6226738Z ../../../../.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/importlib/__init__.py:126: in import_module
+2026-07-05T11:45:24.6227600Z     return _bootstrap._gcd_import(name[level:], package, level)
+2026-07-05T11:45:24.6228097Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-07-05T11:45:24.6228713Z tests/test_structured_models.py:28: in <module>
+2026-07-05T11:45:24.6229200Z     from app.repositories.models import (
+2026-07-05T11:45:24.6229647Z app/repositories/__init__.py:17: in <module>
+2026-07-05T11:45:24.6230075Z     from .vector_search import (
+2026-07-05T11:45:24.6230483Z app/repositories/vector_search.py:55: in <module>
+2026-07-05T11:45:24.6231074Z     from app.repositories.models.knowledge import KbChunk, UserMemory
+2026-07-05T11:45:24.6231664Z app/repositories/models/__init__.py:34: in <module>
+2026-07-05T11:45:24.6232289Z     from app.repositories.models.knowledge import (
+2026-07-05T11:45:24.6232952Z app/repositories/models/knowledge.py:62: in <module>
+2026-07-05T11:45:24.6233438Z     from pgvector.sqlalchemy import Vector
+2026-07-05T11:45:24.7116966Z E   ModuleNotFoundError: No module named 'pgvector'
+2026-07-05T11:45:24.7118130Z _________________ ERROR collecting tests/test_vector_search.py _________________
+2026-07-05T11:45:24.7120085Z ImportError while importing test module '/home/runner/work/career-coach-agent/career-coach-agent/backend/tests/test_vector_search.py'.
+2026-07-05T11:45:24.7122257Z Hint: make sure your test modules/packages have valid Python names.
+2026-07-05T11:45:24.7123163Z Traceback:
+2026-07-05T11:45:24.7124352Z ../../../../.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/importlib/__init__.py:126: in import_module
+2026-07-05T11:45:24.7125951Z     return _bootstrap._gcd_import(name[level:], package, level)
+2026-07-05T11:45:24.7126863Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-07-05T11:45:24.7127638Z tests/test_vector_search.py:27: in <module>
+2026-07-05T11:45:24.7128664Z     from app.repositories.models import KbChunk, KbDocument, User, UserMemory
+2026-07-05T11:45:24.7129762Z app/repositories/__init__.py:17: in <module>
+2026-07-05T11:45:24.7130496Z     from .vector_search import (
+2026-07-05T11:45:24.7131221Z app/repositories/vector_search.py:55: in <module>
+2026-07-05T11:45:24.7132400Z     from app.repositories.models.knowledge import KbChunk, UserMemory
+2026-07-05T11:45:24.7133445Z app/repositories/models/__init__.py:34: in <module>
+2026-07-05T11:45:24.7134771Z     from app.repositories.models.knowledge import (
+2026-07-05T11:45:24.7135691Z app/repositories/models/knowledge.py:62: in <module>
+2026-07-05T11:45:24.7136547Z     from pgvector.sqlalchemy import Vector
+2026-07-05T11:45:24.7137382Z E   ModuleNotFoundError: No module named 'pgvector'
+2026-07-05T11:45:24.7138294Z =========================== short test summary info ============================
+2026-07-05T11:45:24.7139160Z ERROR tests/test_chat_api.py
+2026-07-05T11:45:24.7139793Z ERROR tests/test_chat_cancel.py
+2026-07-05T11:45:24.7140421Z ERROR tests/test_embeddings.py
+2026-07-05T11:45:24.7141066Z ERROR tests/test_identity_models.py
+2026-07-05T11:45:24.7141736Z ERROR tests/test_knowledge_models.py
+2026-07-05T11:45:24.7142609Z ERROR tests/test_p2_exit_verification.py
+2026-07-05T11:45:24.7143349Z ERROR tests/test_structured_models.py
+2026-07-05T11:45:24.7144055Z ERROR tests/test_vector_search.py
+2026-07-05T11:45:24.7145112Z !!!!!!!!!!!!!!!!!!! Interrupted: 8 errors during collection !!!!!!!!!!!!!!!!!!!!
+2026-07-05T11:45:24.7146408Z ============================== 8 errors in 2.44s ===============================
+2026-07-05T11:45:24.9469811Z ##[error]Process completed with exit code 2.
+2026-07-05T11:45:24.9604740Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-07-05T11:45:24.9605867Z Post job cleanup.
+2026-07-05T11:45:25.0376913Z [command]/usr/bin/git version
+2026-07-05T11:45:25.0410630Z git version 2.54.0
+2026-07-05T11:45:25.0467938Z Temporarily overriding HOME='/home/runner/work/_temp/4fd50813-94c5-47e1-8f7d-084b94e06fef' before making global git config changes
+2026-07-05T11:45:25.0469153Z Adding repository directory to the temporary git global config as a safe directory
+2026-07-05T11:45:25.0470784Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/career-coach-agent/career-coach-agent
+2026-07-05T11:45:25.0500184Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-07-05T11:45:25.0532002Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-07-05T11:45:25.0755627Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-07-05T11:45:25.0778809Z http.https://github.com/.extraheader
+2026-07-05T11:45:25.0792578Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-07-05T11:45:25.0821160Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-07-05T11:45:25.1036909Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-07-05T11:45:25.1078276Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-07-05T11:45:25.1466635Z Cleaning up orphan processes
+2026-07-05T11:45:25.1747516Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, astral-sh/setup-uv@v5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

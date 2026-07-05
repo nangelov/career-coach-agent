@@ -1,0 +1,10 @@
+﻿2026-07-05T11:45:05.5697097Z ##[group]Run uv python install 3.11
+2026-07-05T11:45:05.5697520Z [36;1muv python install 3.11[0m
+2026-07-05T11:45:05.5819557Z shell: /usr/bin/bash -e {0}
+2026-07-05T11:45:05.5819871Z env:
+2026-07-05T11:45:05.5820121Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-07-05T11:45:05.5820434Z ##[endgroup]
+2026-07-05T11:45:05.7317017Z Downloading cpython-3.11.15-linux-x86_64-gnu (download) (29.5MiB)
+2026-07-05T11:45:06.4629905Z  Downloaded cpython-3.11.15-linux-x86_64-gnu (download)
+2026-07-05T11:45:06.4672472Z Installed Python 3.11.15 in 856ms
+2026-07-05T11:45:06.4673507Z  + cpython-3.11.15-linux-x86_64-gnu (python3.11)

@@ -1,0 +1,7 @@
+﻿2026-07-05T11:45:09.9239214Z ##[group]Run uv run --no-sync mypy app/ migrations/
+2026-07-05T11:45:09.9239600Z [36;1muv run --no-sync mypy app/ migrations/[0m
+2026-07-05T11:45:09.9258367Z shell: /usr/bin/bash -e {0}
+2026-07-05T11:45:09.9258627Z env:
+2026-07-05T11:45:09.9258867Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-07-05T11:45:09.9259166Z ##[endgroup]
+2026-07-05T11:45:21.4511378Z Success: no issues found in 49 source files

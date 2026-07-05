@@ -66,7 +66,10 @@ orchestrator → fullstack-engineer ──▶ ┌─ code-reviewer ─┐ (PARAL
 
 1. **Orchestrator** writes `dev-board/code-review/<task-id>/task.md`, sets the `queue.md` row to `ENG`,
    dispatches the engineer with just the task id + "read the agent-handoff skill / your task.md".
-2. **fullstack-engineer** implements, writes `<task-id>/engineer.md`. Orchestrator sets status `REVIEW`.
+2. **fullstack-engineer** implements. **Final step before writing the report:** run the test suite; if any
+   test fails, fix the **root cause** — whether the defect is in the implementation or in the test itself —
+   and re-run until green. Never hand off to review with known-failing tests. Then writes
+   `<task-id>/engineer.md` (including the test results). Orchestrator sets status `REVIEW`.
 3. **code-reviewer AND system-architect run in parallel** — dispatch both in a single message. Each reads the
    diff + `engineer.md` and writes its own file (`code-review.md` / `architecture-review.md`) ending in a
    `Verdict:` line. Wait for both to finish.
@@ -74,8 +77,9 @@ orchestrator → fullstack-engineer ──▶ ┌─ code-reviewer ─┐ (PARAL
    - **Both `APPROVED`** → task is **DONE**: set `queue.md` to `DONE` and **check the item off in
      `dev-board/tasks.md`** (`[ ]` → `[x]`).
    - **Either (or both) `CHANGES_REQUESTED`** → status `ENG`; re-dispatch the engineer, which reads **every**
-     review file with findings, fixes them, appends a `Response to review` section, and bumps the revision in
-     `engineer.md`.
+     review file with findings, fixes them, **re-runs the test suite as the final step and fixes the root
+     cause of any failures (code or test) before reporting**, appends a `Response to review` section, and
+     bumps the revision in `engineer.md`.
 5. **Re-verify after a fix:** dispatch **only the reviewer(s) that requested changes** to re-check the new
    revision (in parallel if both did). The reviewer(s) that already `APPROVED` are not re-run unless the fix
    touched their concern — if the engineer's changes are broad, re-run both. Loop back to step 4.
@@ -132,6 +136,9 @@ A task is **DONE only when both `code-review.md` and `architecture-review.md` sh
 - decision + rationale (tie to design refs)
 ## How to verify
 - commands / steps
+## Tests (final step — mandatory)
+- Command(s) run + result (paste output/summary)
+- If any test failed: root cause (code bug vs. test bug) + the fix applied. Do not report DONE with red tests.
 ## Self-check
 - [ ] Meets acceptance criteria
 - [ ] No secrets committed; Router→Service→Agent/Repo layering respected

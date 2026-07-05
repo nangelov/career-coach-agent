@@ -8,4 +8,5 @@
 - [Hybrid search](project-hybrid-search.md) — blessed P2-06: RRF blend (caller-configurable weights), injectable encoder seam, vector-only user_memories, repo→llm injected not imported; for P2-exit/P4/P5
 - [Conversation persistence](project-conversation-persistence.md) — blessed P2-07: ConversationStore port + Postgres adapter, interim user_id seam (non-authZ, P3), best-effort persist-after-terminal + Redis-empty rehydrate, guests Redis-only
 - [Phase-exit verification](project-phase-exit-verification.md) — blessed P2-08 pattern for (T) tasks: tests-only, drive real seams, cite prior tests + close only genuine gaps, skip-not-fail live-DB, no product surface
+- [CI posture](project-ci-posture.md) — FIX-01/P0-09: live-DB integration deferred out of CI (skip-not-fail, expected-by-design), curated light install must list required libs (pgvector bug), DRY follow-up on duplicated list
 - [CR-01 audit rulings](project-cr01-audit-rulings.md) — rev 2 APPROVED, A3-A8 closed; blessed bootstrap.py root + AppStateKeys + _mixins; P3: remove client user_id, warm Redis eagerly
