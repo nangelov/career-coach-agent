@@ -23,3 +23,11 @@ into an extra (e.g. `[project.optional-dependencies] ml`) rather than reverting 
 a full sync. No `uv.lock` is committed (P0-02 decision; `.dockerignore` excludes
 it), so CI resolves latest-compatible versions — verify checks pass on latest tool
 releases, not just the floors.
+
+**Curated install must be widened whenever `app.main` (transitively) gains a new
+runtime import** — every test does `from app.main import app`, so a missing lib fails
+at *collection* (whole pytest run red), not just one test. P2-01 added
+`sqlalchemy asyncpg aiosqlite` to the `uv pip install` line for exactly this: the
+Postgres repo is imported by `app.main`'s lifespan. All three are light (no torch).
+Rule of thumb: if the module is on the import path of `app.main`, its lib belongs in
+the CI curated install.

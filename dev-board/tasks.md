@@ -71,14 +71,14 @@ We are using Github free tier.
 
 **Exit:** chat history survives restart for accounts; vector insert + similarity query verified.
 
-- [ ] **(B)** `repositories/postgres.py` (SQLAlchemy/SQLModel + JSONB + pgvector) and `repositories/redis.py` — services never touch drivers directly.
-- [ ] **(I)** Alembic init + migration env.
-- [ ] **(B)** Migration: identity/docs (JSONB) — `users`, `profiles`, `preferences`, `sessions`, `conversations`, `messages`, `message_feedback`, `feedback`.
-- [ ] **(B)** Migration: knowledge/vectors — `kb_documents`, `kb_chunks(embedding vector(4096))`, `user_memories(embedding vector(4096))` (dim fixed by `Qwen/Qwen3-Embedding-8B`).
-- [ ] **(B)** Migration: structured — `jobs`, `pdps`, dashboard (`goals`, `milestones`, `tasks`, `progress_entries`).
-- [ ] **(B)** `llm/embeddings.py` — `EmbeddingClient` (in-process `sentence-transformers` `Qwen/Qwen3-Embedding-8B`, 4096-dim) + pgvector write + similarity-search helpers.
-- [ ] **(B)** Persist P1 conversations to Postgres for **logged-in** users; guests stay Redis-only.
-- [ ] **(T)** Restart app → account chat history intact. Insert + cosine similarity query on a vector column returns expected neighbor.
+- [x] **(B)** `repositories/postgres.py` (SQLAlchemy/SQLModel + JSONB + pgvector) and `repositories/redis.py` — services never touch drivers directly.
+- [x] **(I)** Alembic init + migration env.
+- [x] **(B)** Migration: identity/docs (JSONB) — `users`, `profiles`, `preferences`, `sessions`, `conversations`, `messages`, `message_feedback`, `feedback`.
+- [x] **(B)** Migration: knowledge/vectors — `kb_documents`, `kb_chunks(embedding vector(4096))`, `user_memories(embedding vector(4096))` (dim fixed by `Qwen/Qwen3-Embedding-8B`).
+- [x] **(B)** Migration: structured — `jobs`, `pdps`, dashboard (`goals`, `milestones`, `tasks`, `progress_entries`).
+- [x] **(B)** `llm/embeddings.py` — `EmbeddingClient` (in-process `sentence-transformers` `Qwen/Qwen3-Embedding-8B`, 4096-dim) + pgvector write + similarity-search helpers - use Hybrid Search with weights.
+- [x] **(B)** Persist P1 conversations to Postgres for **logged-in** users; guests stay Redis-only.
+- [x] **(T)** Restart app → account chat history intact. Insert + cosine similarity query on a vector column returns expected neighbor - add extra weighting.
 
 ---
 

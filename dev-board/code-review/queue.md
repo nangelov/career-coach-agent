@@ -30,3 +30,12 @@ The orchestrator's board. One row per task. See `.claude/skills/agent-handoff/SK
 | P1-07-message-id | Stable message_id on every assistant message | P1 | DONE | 1 | APPROVED | APPROVED |
 | P1-08-frontend-chat | Next.js streaming chat page (stop, tool steps) | P1 | DONE | 1 | APPROVED | APPROVED |
 | P1-09-verify | P1 exit: chat/tool/stream/stop/failover; no ReAct parser | P1 | DONE | 1 | APPROVED | APPROVED |
+| P2-01-repositories | repositories/postgres.py foundation | P2 | DONE | 2 | APPROVED | APPROVED |
+| P2-02-alembic | Alembic init + async migration env | P2 | DONE | 1 | APPROVED | APPROVED |
+| P2-03-migration-identity | Migration: identity/docs (JSONB) tables | P2 | DONE | 1 | APPROVED | APPROVED |
+| P2-04-migration-knowledge | Migration: knowledge/vectors (pgvector) | P2 | DONE | 1 | APPROVED | APPROVED |
+| P2-05-migration-structured | Migration: structured (jobs, pdps, dashboard) | P2 | DONE | 1 | APPROVED | APPROVED |
+| P2-06-embeddings | llm/embeddings.py + pgvector hybrid search | P2 | DONE | 1 | APPROVED | APPROVED |
+| P2-07-persist-conversations | Persist chat to Postgres for logged-in users | P2 | DONE | 2 | APPROVED | APPROVED |
+| P2-08-verify | P2 exit: restart-intact history + weighted vector/hybrid search | P2 | DONE | 1 | APPROVED | APPROVED |
+| CR-01-design-practices-audit | Whole-codebase design-practices audit (P0-P2) | cross-cutting | DONE | 2 | APPROVED | APPROVED |

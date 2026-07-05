@@ -2,11 +2,16 @@
 
 ``client.py`` holds the ``LLMClient`` interface + the HF OpenAI-compatible
 implementation (P1-01).  ``router.py`` (P1-02) adds the failover router over an
-ordered list of clients.  The in-process embeddings client (``embeddings.py``)
-lands in a later task.
+ordered list of clients.  ``embeddings.py`` (P2-06) holds the in-process
+``EmbeddingClient`` interface + its ``sentence-transformers`` implementation.
 """
 
 from .client import HFOpenAICompatibleClient, LLMClient, ToolSchema
+from .embeddings import (
+    DEFAULT_QUERY_TASK,
+    EmbeddingClient,
+    SentenceTransformerEmbeddingClient,
+)
 from .errors import (
     LLMAllModelsFailedError,
     LLMConnectionError,
@@ -27,9 +32,11 @@ from .types import (
 )
 
 __all__ = [
+    "DEFAULT_QUERY_TASK",
     "ChatMessage",
     "CircuitBreaker",
     "CompletionResult",
+    "EmbeddingClient",
     "FunctionCall",
     "HFOpenAICompatibleClient",
     "LLMAllModelsFailedError",
@@ -42,6 +49,7 @@ __all__ = [
     "LLMTimeoutError",
     "RedisLike",
     "Role",
+    "SentenceTransformerEmbeddingClient",
     "StreamChunk",
     "ToolCall",
     "ToolCallDelta",

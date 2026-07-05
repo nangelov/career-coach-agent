@@ -40,6 +40,12 @@ injected limit.
 - **Acceptance**: every criterion in `task.md` is actually met and verifiable.
 - Stay in lane: whether the work matches the *planned architecture* is the system-architect's call — note
   design smells briefly but don't gate on them.
+  
+**Main Software Design Practices to be followed**
+- DRY - do not repeat yourself
+- SoC - Separation of concerns
+- KISS - keep it simple stupid
+- YAGNI - You Aren't Gonna Need It
 
 ## Severity gate
 - `blocker` (broken/unsafe) or `major` (significant defect) ⇒ **CHANGES_REQUESTED**.

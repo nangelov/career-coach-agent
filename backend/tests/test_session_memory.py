@@ -12,13 +12,13 @@ dependency-injection.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
 from app.llm.types import ChatMessage, StreamChunk
 from app.repositories.redis import RedisSessionMemory
 from app.schemas.chat import DoneEvent
 from app.services.chat import ChatService
+from tests.fakes import FakeRegistry, FakeRouter
 
 
 # --------------------------------------------------------------------------- #
@@ -196,40 +196,16 @@ async def test_two_sessions_are_isolated() -> None:
 # --------------------------------------------------------------------------- #
 # (e) ChatService works unchanged against the Redis-backed memory (DI swap)
 # --------------------------------------------------------------------------- #
-class _FakeRouter:
-    """Scripted router: one stream per turn."""
-
-    def __init__(self, scripts: Sequence[list[StreamChunk]]) -> None:
-        self._scripts = list(scripts)
-        self.calls: list[list[ChatMessage]] = []
-
-    async def stream(self, messages: Sequence[ChatMessage], **_: Any) -> AsyncIterator[StreamChunk]:
-        self.calls.append(list(messages))
-        for chunk in self._scripts.pop(0):
-            yield chunk
-
-    async def aclose(self) -> None:
-        pass
-
-
-class _FakeRegistry:
-    def schemas(self) -> list[dict[str, Any]]:
-        return []
-
-    async def execute(self, tool_call: Any) -> ChatMessage:  # pragma: no cover - unused here
-        raise AssertionError("no tool calls in this test")
-
-
 async def test_chat_service_persists_and_replays_via_redis_memory() -> None:
     fake = FakeListRedis()
     memory = RedisSessionMemory(fake, ttl_seconds=3600, max_messages=100)
-    router = _FakeRouter(
+    router = FakeRouter(
         [
             [StreamChunk(content="one", finish_reason="stop")],
             [StreamChunk(content="two", finish_reason="stop")],
         ]
     )
-    service = ChatService(router, _FakeRegistry(), memory)  # type: ignore[arg-type]
+    service = ChatService(router, FakeRegistry(), memory)  # type: ignore[arg-type]
 
     events1 = [e async for e in service.stream_turn("s1", "first")]
     assert any(isinstance(e, DoneEvent) for e in events1)

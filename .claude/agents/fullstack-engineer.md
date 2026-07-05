@@ -41,6 +41,12 @@ play-by-play). Curate `MEMORY.md` so it stays under the injected limit.
 - No secrets in code — env / Space secrets only.
 - Verify your own work: run the relevant lints/tests/build and paste results.
 
+## Main Software Design Practices to be followed
+- DRY - do not repeat yourself
+- SoC - Separation of concerns
+- KISS - keep it simple stupid
+- YAGNI - You Aren't Gonna Need It
+
 ## Output (the only handoff)
 Write `dev-board/code-review/<task-id>/engineer.md` using the skill's template: summary, files changed, key decisions
 (tied to design refs), how to verify, self-check, and (for revisions) a `Response to review` section mapping

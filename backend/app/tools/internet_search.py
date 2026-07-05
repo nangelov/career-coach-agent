@@ -14,6 +14,7 @@ interpreted as instructions — full guardrails land in P10.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from typing import Any
 
@@ -22,6 +23,8 @@ import httpx
 from app.config import Settings, settings
 
 from .base import Tool, ToolResult, ToolSchema
+
+logger = logging.getLogger(__name__)
 
 #: Default number of results returned when the model does not specify one.
 DEFAULT_MAX_RESULTS = 5
@@ -120,8 +123,15 @@ class InternetSearchTool(Tool):
         try:
             results = await self._search(query, max_results)
         except httpx.TimeoutException:
+            # Log the swallowed upstream failure (the tool must return a graceful
+            # ToolResult.error rather than crash the model loop) so real SearXNG outages
+            # are observable — matching the service-layer swallowed-failure convention.
+            logger.warning(
+                "internet_search request timed out (url=%s)", self._base_url, exc_info=True
+            )
             return ToolResult.error("Search request timed out.")
         except httpx.HTTPError as exc:
+            logger.warning("internet_search request failed (url=%s)", self._base_url, exc_info=True)
             return ToolResult.error(f"Search request failed: {exc}")
 
         return ToolResult.ok({"query": query, "results": results})

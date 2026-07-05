@@ -31,12 +31,12 @@ from typing import Any, cast
 
 from pydantic import BaseModel
 
-from app.llm.types import ChatMessage, ToolCall
+from app.llm.types import ChatMessage, ToolCall, ToolSchema
 
-#: A native tool definition in JSON-schema form (mirrors ``llm.client.ToolSchema`` —
-#: both are structurally just ``dict[str, Any]``, so registry schemas drop straight
-#: into the client's ``tools=`` parameter without any coupling to the provider SDK).
-ToolSchema = dict[str, Any]
+# ``ToolSchema`` (``dict[str, Any]``) is defined once in the SDK-free ``app.llm.types`` and
+# re-exported here so tool modules can keep importing it from ``app.tools.base`` without
+# pulling in the ``openai`` SDK that lives in ``app.llm.client``.
+__all__ = ["Tool", "ToolRegistry", "ToolResult", "ToolSchema"]
 
 
 class ToolResult(BaseModel):

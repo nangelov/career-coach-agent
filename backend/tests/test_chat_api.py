@@ -26,6 +26,7 @@ class _FakeService:
         message: str,
         *,
         history: Sequence[ChatMessage] | None = None,
+        user_id: str | None = None,
     ) -> AsyncIterator[ChatEvent]:
         yield StartEvent(message_id="m1")
         yield TokenEvent(content="Hi")

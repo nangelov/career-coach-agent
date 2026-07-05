@@ -1,0 +1,43 @@
+Alembic migration environment — Career Coach Agent v2
+=====================================================
+
+Async SQLAlchemy migrations for the Postgres schema (design §4 / §8).
+
+Layout
+------
+  backend/
+    alembic.ini                     # config; run alembic from backend/ (its cwd)
+    migrations/
+      env.py                        # async env; reads DATABASE_URL from app.config.Settings
+      script.py.mako                # migration file template
+      init/01_enable_pgvector.sql   # P0-07: enables the `vector` extension (NOT Alembic)
+      versions/                     # migration scripts (0001_baseline is a no-op)
+
+Connection config
+-----------------
+`env.py` injects `sqlalchemy.url` from `app.config.Settings.DATABASE_URL` — the same
+settings object the app uses — so Alembic and the app never drift. There is no URL in
+`alembic.ini`. Running any alembic command therefore needs the app's env vars set
+(`DATABASE_URL`, plus the other required settings). Locally these come from the root
+`.env`; in containers from compose / HF Space Secrets.
+
+pgvector extension
+------------------
+The `vector` extension is created once by `init/01_enable_pgvector.sql`, which the
+Postgres container runs on first init (before Alembic). Do NOT `CREATE EXTENSION` in an
+Alembic migration — assume it already exists.
+
+Common commands (run from `backend/`)
+-------------------------------------
+  alembic upgrade head            # apply all migrations
+  alembic downgrade -1            # revert the last migration
+  alembic downgrade base          # revert everything
+  alembic current                 # show the applied revision
+  alembic history                 # list revisions
+  alembic revision -m "add users" --autogenerate   # generate from ORM models
+
+In Docker / compose (explicit, separate from app startup):
+  docker compose run --rm backend alembic upgrade head
+
+Migrations are never auto-run from the FastAPI lifespan — schema management is an
+explicit, operator-driven step, kept distinct from the app's runtime connection pool.

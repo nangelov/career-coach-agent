@@ -19,10 +19,10 @@ Everything runs against fakes — no HF network, no real Redis.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import Sequence
 from typing import Any
 
-from app.llm.types import ChatMessage, StreamChunk, ToolCall, ToolCallDelta
+from app.llm.types import ChatMessage, StreamChunk, ToolCallDelta
 from app.repositories.redis import RedisSessionMemory
 from app.schemas.chat import (
     CancelledEvent,
@@ -33,59 +33,11 @@ from app.schemas.chat import (
 from app.services.cancellation import InMemoryCancelRegistry
 from app.services.chat import ChatService
 from app.services.session_memory import InMemorySessionMemory, SessionMemory
+from tests.fakes import FakeRegistry, FakeRouter
 
 # --------------------------------------------------------------------------- #
 # Fakes
 # --------------------------------------------------------------------------- #
-Script = list[StreamChunk] | Exception
-
-
-class FakeRouter:
-    """A scripted :class:`~app.llm.router.LLMRouter` stand-in (one script per call)."""
-
-    def __init__(
-        self, scripts: Sequence[Script] | None = None, *, always: Script | None = None
-    ) -> None:
-        self._scripts = list(scripts or [])
-        self._always = always
-        self.calls: list[list[ChatMessage]] = []
-
-    async def stream(
-        self,
-        messages: Sequence[ChatMessage],
-        *,
-        tools: Any = None,
-        tool_choice: Any = None,
-        temperature: Any = None,
-        max_tokens: Any = None,
-    ) -> AsyncIterator[StreamChunk]:
-        self.calls.append(list(messages))
-        script = self._always if self._always is not None else self._scripts.pop(0)
-        if isinstance(script, Exception):
-            raise script
-        for chunk in script:
-            yield chunk
-
-    async def aclose(self) -> None:
-        pass
-
-
-class FakeRegistry:
-    """Minimal tool registry: one canned tool result per executed call."""
-
-    def __init__(self, result: str = '{"ok": true}') -> None:
-        self._result = result
-
-    def schemas(self) -> list[dict[str, Any]]:
-        return []
-
-    async def execute(self, tool_call: ToolCall) -> ChatMessage:
-        return ChatMessage(
-            role="tool",
-            content=self._result,
-            name=tool_call.function.name,
-            tool_call_id=tool_call.id,
-        )
 
 
 class _CancelMidStream(InMemoryCancelRegistry):

@@ -42,18 +42,23 @@ jobs:
         run: uv python install 3.11
 
       # Curated install: the dev tool group + only the *light* runtime libs the
-      # backend currently imports (fastapi / pydantic / celery / openai). A full
-      # `uv sync` would pull the heavy ML stack (torch via sentence-transformers,
+      # backend currently imports (fastapi / pydantic / celery / openai / sqlalchemy).
+      # A full `uv sync` would pull the heavy ML stack (torch via sentence-transformers,
       # docling) which lint / type-check / these tests never exercise — wasteful on
       # a free CI tier. Revisit (e.g. split deps into a `ml` extra) when tests start
       # importing the ML modules. `openai` is a light HTTP SDK the LLM client (P1-01)
       # imports and type-checks against; keep it here so mypy sees its real types.
-      # mypy's ignore_missing_imports keeps still-un-installed libs as Any, and
-      # first-party code stays fully typed.
+      # `sqlalchemy` + `asyncpg` back the P2-01 Postgres repository (app.main imports it,
+      # so every test needs it importable; asyncpg is the prod dialect the pool-config
+      # test builds a non-connecting engine against). `aiosqlite` is the in-memory
+      # driver the Postgres plumbing tests use instead of a live Postgres. All three are
+      # light (no torch/CUDA). mypy's ignore_missing_imports keeps still-un-installed
+      # libs as Any, and first-party code stays fully typed.
       - name: Install dependencies
         run: |
           uv sync --only-group dev
-          uv pip install fastapi pydantic pydantic-settings "celery[redis]" openai
+          uv pip install fastapi pydantic pydantic-settings "celery[redis]" openai \
+            sqlalchemy asyncpg aiosqlite
 
       # --no-sync: run the tool in the curated venv above WITHOUT uv re-resolving
       # and installing the full project dependency tree (which would drag in the
@@ -65,7 +70,10 @@ jobs:
         run: uv run --no-sync ruff format --check .
 
       - name: Type-check (mypy --strict)
-        run: uv run --no-sync mypy app/
+        # Include migrations/ so the Alembic env.py (which imports app.*) is
+        # type-checked too. alembic itself is not in the curated install; mypy's
+        # ignore_missing_imports treats it as Any (same posture as langgraph/docling).
+        run: uv run --no-sync mypy app/ migrations/
 
       - name: Test (pytest)
         run: uv run --no-sync pytest

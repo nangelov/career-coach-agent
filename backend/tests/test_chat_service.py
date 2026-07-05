@@ -11,11 +11,10 @@ registry — no HF network, no Redis, no real tools. Covers:
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
 from app.llm.errors import LLMAllModelsFailedError
-from app.llm.types import ChatMessage, StreamChunk, ToolCall, ToolCallDelta
+from app.llm.types import StreamChunk, ToolCallDelta
 from app.schemas.chat import (
     ChatEvent,
     DoneEvent,
@@ -27,66 +26,11 @@ from app.schemas.chat import (
 )
 from app.services.chat import ChatService
 from app.services.session_memory import InMemorySessionMemory
+from tests.fakes import FakeRegistry, FakeRouter, Script
 
 # --------------------------------------------------------------------------- #
-# Fakes
+# Helpers
 # --------------------------------------------------------------------------- #
-#: A scripted stream: a list of StreamChunks, or an Exception to raise when opened.
-Script = list[StreamChunk] | Exception
-
-
-class FakeRouter:
-    """A scripted :class:`~app.llm.router.LLMRouter` stand-in.
-
-    Each call to :meth:`stream` consumes the next scripted response. Set
-    ``always`` to replay a single script indefinitely (for the cap test).
-    """
-
-    def __init__(
-        self, scripts: Sequence[Script] | None = None, *, always: Script | None = None
-    ) -> None:
-        self._scripts = list(scripts or [])
-        self._always = always
-        self.calls: list[list[ChatMessage]] = []
-
-    async def stream(
-        self,
-        messages: Sequence[ChatMessage],
-        *,
-        tools: Any = None,
-        tool_choice: Any = None,
-        temperature: Any = None,
-        max_tokens: Any = None,
-    ) -> AsyncIterator[StreamChunk]:
-        self.calls.append(list(messages))
-        script = self._always if self._always is not None else self._scripts.pop(0)
-        if isinstance(script, Exception):
-            raise script
-        for chunk in script:
-            yield chunk
-
-    async def aclose(self) -> None:
-        pass
-
-
-class FakeRegistry:
-    """A minimal tool registry: one canned tool result per executed call."""
-
-    def __init__(self, result: str = '{"ok": true}') -> None:
-        self._result = result
-        self.executed: list[ToolCall] = []
-
-    def schemas(self) -> list[dict[str, Any]]:
-        return []
-
-    async def execute(self, tool_call: ToolCall) -> ChatMessage:
-        self.executed.append(tool_call)
-        return ChatMessage(
-            role="tool",
-            content=self._result,
-            name=tool_call.function.name,
-            tool_call_id=tool_call.id,
-        )
 
 
 def _service(

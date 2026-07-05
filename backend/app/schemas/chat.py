@@ -50,14 +50,37 @@ class ChatRequest(BaseModel):
     optional escape hatch to seed/replay a conversation without server-side state
     (useful for stateless clients and tests); when omitted the server-side session
     memory is the source of truth.
+
+    ``user_id`` is an **interim** field (P2-07), following the same seam pattern as
+    the fields above. Real SSO/JWT auth is P3 — there is no verified identity in the
+    request path yet — so this is an explicit, documented stand-in for the
+    JWT-derived identity P3 will provide (concretely, the authenticated ``users.id``).
+    When ``None`` the turn is a **guest** turn: Redis-only working memory, **nothing**
+    persisted to Postgres (design §4: "Guests get NO persisted history") — byte-for-byte
+    the P1 behavior. When set, the turn is treated as logged-in and is *also* durably
+    persisted (:class:`~app.services.conversation_store.ConversationStore`) so account
+    history survives a restart. P3 will populate it from the verified session JWT rather
+    than trusting a client-sent value; until then it is not an authorization boundary.
+
+    ``session_id`` is capped at 64 chars to match the ``sessions.id`` /
+    ``conversations.session_id`` ``String(64)`` columns (P2-03): a longer value would fail
+    the Postgres insert on a logged-in turn, which — being best-effort — would silently drop
+    durable history. Real ids are 36-char ``crypto.randomUUID()`` (P1-08), well within bound.
     """
 
-    session_id: str = Field(..., min_length=1, max_length=200)
+    session_id: str = Field(..., min_length=1, max_length=64)
     message: str = Field(..., min_length=1, max_length=8000)
     history: list[ChatMessage] | None = Field(
         default=None,
         description="Optional client-supplied prior turns; when set, seeds this turn "
         "instead of the server-side session memory.",
+    )
+    user_id: str | None = Field(
+        default=None,
+        max_length=64,
+        description="Interim (P2-07) stand-in for the P3 JWT-derived user id. None → "
+        "guest (Redis-only, no Postgres history); set → logged-in (also persisted to "
+        "Postgres). Populated from the verified session JWT once P3 lands.",
     )
 
 

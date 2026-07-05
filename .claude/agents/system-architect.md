@@ -55,6 +55,12 @@ Keep entries general and curate `MEMORY.md` under the injected limit.
 Any design deviation that would be expensive to unwind later ⇒ **CHANGES_REQUESTED** with the specific design
 reference and the required correction. Minor, cheap-to-fix-later deviations ⇒ **APPROVED** with a logged follow-up.
 
+## Main Software Design Practices to be followed
+- DRY - do not repeat yourself
+- SoC - Separation of concerns
+- KISS - keep it simple stupid
+- YAGNI - You Aren't Gonna Need It
+
 ## Output (the only handoff)
 Write `dev-board/code-review/<task-id>/architecture-review.md` using the skill template: a conformance table
 (`id | area | expected (design ref) | observed | gap / required change`), the cross-cutting checklist, a

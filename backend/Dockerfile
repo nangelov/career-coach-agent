@@ -26,6 +26,14 @@ RUN uv sync --no-install-project --no-dev
 # Application source.
 COPY app ./app
 
+# Alembic migration environment + config. Shipped so migrations can be applied
+# against the deployed database as an explicit, separate step, e.g.
+#   docker compose run --rm backend alembic upgrade head
+# Migrations are intentionally NOT auto-run at app startup (they are schema
+# management, distinct from the app's runtime connection pool — see app.main).
+COPY alembic.ini ./
+COPY migrations ./migrations
+
 EXPOSE 8000
 
 # Default command: the FastAPI ASGI app. The worker service overrides this.

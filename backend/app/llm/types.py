@@ -18,6 +18,13 @@ from pydantic import BaseModel, Field
 #: Chat roles supported by the OpenAI-compatible chat-completions surface.
 Role = Literal["system", "user", "assistant", "tool"]
 
+#: A native tool definition in JSON-schema form (the OpenAI ``tools[]`` shape:
+#: ``{"type": "function", "function": {"name", "description", "parameters"}}``). Defined
+#: here — in the SDK-free vocabulary module — so both the LLM client (which passes it to
+#: the provider) and ``app/tools/`` (which produces it) share **one** authoritative alias
+#: without ``tools/`` having to import the ``openai`` SDK that lives in ``client.py``.
+ToolSchema = dict[str, Any]
+
 
 class FunctionCall(BaseModel):
     """The function a model asked to call: name + raw JSON-string arguments.

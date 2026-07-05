@@ -13,13 +13,12 @@ SSE framing: each event is emitted as ``event: <name>\\ndata: <json>\\n\\n`` whe
 The ``text/event-stream`` content type also opts the response out of gzip
 (Starlette excludes it), so tokens are not buffered by compression.
 
-Dependency wiring is intentionally lazy for P1: the :class:`ChatService` (and the
-:class:`~app.llm.router.LLMRouter` + Redis session memory / circuit-breaker it needs)
-is built on first use and cached on ``app.state``. The shared ``redis.asyncio`` pool
-now comes from :class:`~app.repositories.redis.RedisConnectionProvider` (§4) — both the
-session memory and the router's circuit-breaker acquire the *same* client from it; P2
-moves the rest of the composition to shared pools. Tests override
-:func:`get_chat_service` to inject a fake.
+Dependency wiring is intentionally lazy: the :class:`ChatService` is assembled by the
+composition root (:func:`app.bootstrap.build_chat_service`) on first use and cached on
+``app.state``. This router imports **no** repository/LLM types — it only holds the
+:func:`get_chat_service` dependency and the SSE plumbing, keeping the layering
+(Router → Service → Agent/Repository) clean. Tests override :func:`get_chat_service` to
+inject a fake, so the real router / Redis / HF wiring never runs in unit tests.
 """
 
 from __future__ import annotations
@@ -27,72 +26,31 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import AsyncIterator
-from typing import cast
 
-from fastapi import APIRouter, Depends, FastAPI, Path, Request
+from fastapi import APIRouter, Depends, Path, Request
 from fastapi.responses import StreamingResponse
 
-from app.config import settings
-from app.repositories.redis import (
-    CancelRedis,
-    RedisCancelRegistry,
-    RedisConnectionProvider,
-    RedisSessionMemory,
-    SessionRedis,
-)
+from app.app_state import AppStateKeys
+from app.bootstrap import build_chat_service
 from app.schemas.chat import ChatEvent, ChatRequest
 from app.services.chat import ChatService
-from app.tools.registry import build_default_registry
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
-#: Attribute on ``app.state`` caching the lazily-built singleton service.
-_SERVICE_ATTR = "chat_service"
-#: Attribute on ``app.state`` caching the shared Redis pool provider (closed on shutdown).
-_REDIS_PROVIDER_ATTR = "redis_provider"
-
-
-def build_chat_service(app: FastAPI) -> ChatService:
-    """Construct the default :class:`ChatService` from application settings.
-
-    The shared ``redis.asyncio`` connection pool (§4) is owned by a
-    :class:`~app.repositories.redis.RedisConnectionProvider` stashed on ``app.state``
-    so the lifespan can close it on shutdown. The **one** client from that pool is
-    shared by the router's circuit-breaker, the Redis-backed session memory, and the
-    Redis-backed cancel registry — no per-request/per-feature ``Redis()`` clients. The
-    tool registry is the P1-03 default. (P2 moves the remaining composition to shared
-    pools.)
-    """
-    from app.llm.router import LLMRouter, RedisLike
-
-    provider = RedisConnectionProvider.from_settings(settings)
-    app.state.redis_provider = provider
-    redis_client = provider.client()
-
-    # The one shared client implements the router's ``RedisLike`` seam, the session
-    # memory's ``SessionRedis`` seam, and the cancel registry's ``CancelRedis`` seam.
-    # redis-py's own method signatures are too loose (``Awaitable[Any] | Any`` returns)
-    # to structurally satisfy those strict Protocols under mypy, so cast at this single
-    # composition-root boundary.
-    llm_router = LLMRouter.from_settings(settings, redis_client=cast("RedisLike", redis_client))
-    registry = build_default_registry(settings)
-    memory = RedisSessionMemory.from_settings(cast(SessionRedis, redis_client), settings)
-    cancel = RedisCancelRegistry.from_settings(cast(CancelRedis, redis_client), settings)
-    return ChatService(llm_router, registry, memory, cancel)
-
 
 def get_chat_service(request: Request) -> ChatService:
     """FastAPI dependency: the app-scoped :class:`ChatService`, built once and cached.
 
-    Tests override this dependency to inject a fake service, so the real router /
-    Redis / HF wiring never runs in unit tests.
+    Delegates construction to the composition root (:func:`app.bootstrap.build_chat_service`)
+    and caches the singleton on ``app.state``. Tests override this dependency to inject a
+    fake service, so the real router / Redis / HF wiring never runs in unit tests.
     """
-    service: ChatService | None = getattr(request.app.state, _SERVICE_ATTR, None)
+    service: ChatService | None = getattr(request.app.state, AppStateKeys.CHAT_SERVICE, None)
     if service is None:
         service = build_chat_service(request.app)
-        setattr(request.app.state, _SERVICE_ATTR, service)
+        setattr(request.app.state, AppStateKeys.CHAT_SERVICE, service)
     return service
 
 
@@ -117,7 +75,10 @@ async def chat(
 
     async def event_stream() -> AsyncIterator[str]:
         async for event in service.stream_turn(
-            payload.session_id, payload.message, history=payload.history
+            payload.session_id,
+            payload.message,
+            history=payload.history,
+            user_id=payload.user_id,
         ):
             yield _format_sse(event)
 

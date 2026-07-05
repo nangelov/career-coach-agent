@@ -44,6 +44,7 @@ from app.schemas.chat import (
     ToolResultEvent,
 )
 from app.services.cancellation import CancelRegistry, InMemoryCancelRegistry
+from app.services.conversation_store import ConversationStore
 from app.services.session_memory import InMemorySessionMemory, SessionMemory
 from app.tools.base import ToolRegistry
 
@@ -119,10 +120,17 @@ class ChatService:
 
     Depends on the :class:`~app.llm.router.LLMRouter` (reliability/failover),
     :class:`~app.tools.base.ToolRegistry` (native tools), a
-    :class:`~app.services.session_memory.SessionMemory` (conversation history), and a
-    :class:`~app.services.cancellation.CancelRegistry` (stop/cancel signal) — all
-    injected, so tests drive it with fakes and the Redis-backed implementations are
-    wired at the composition root.
+    :class:`~app.services.session_memory.SessionMemory` (conversation history), a
+    :class:`~app.services.cancellation.CancelRegistry` (stop/cancel signal), and an
+    optional :class:`~app.services.conversation_store.ConversationStore` (durable
+    Postgres history for logged-in users) — all injected, so tests drive it with fakes and
+    the Redis/Postgres-backed implementations are wired at the composition root.
+
+    The ``ConversationStore`` is optional: when absent (``None``) — the guest path, or any
+    deployment without a Postgres provider — the service behaves exactly as in P1 (Redis
+    working memory only, no durable writes). When present, a turn from a logged-in user
+    (``user_id`` set on :meth:`stream_turn`) is *also* persisted to Postgres so the
+    conversation survives a restart / Redis eviction (design §4).
     """
 
     def __init__(
@@ -132,14 +140,32 @@ class ChatService:
         memory: SessionMemory | None = None,
         cancel: CancelRegistry | None = None,
         *,
+        conversations: ConversationStore | None = None,
         max_iterations: int = DEFAULT_MAX_ITERATIONS,
         system_prompt: str | None = DEFAULT_SYSTEM_PROMPT,
         cancel_check_interval: int = DEFAULT_CANCEL_CHECK_INTERVAL,
     ) -> None:
         self._router = router
         self._registry = registry
+        # ``memory``/``cancel`` are optional so unit tests can omit them and get the
+        # process-local in-memory doubles. But a *production* composition that silently
+        # falls back here would reintroduce v1's per-process global-state anti-pattern (the
+        # exact failure mode v2 exists to remove) with no signal — so warn loudly when the
+        # fallback is taken. (Kept optional rather than required to avoid churning the many
+        # unit tests that legitimately omit these; the warning gives the mis-wire signal.)
+        fallbacks = [
+            name for name, value in (("memory", memory), ("cancel", cancel)) if value is None
+        ]
+        if fallbacks:
+            logger.warning(
+                "ChatService using in-memory %s fallback(s) — process-local test double(s), "
+                "not for production. A production composition must inject the Redis-backed "
+                "adapters (see app.bootstrap.build_chat_service).",
+                ", ".join(fallbacks),
+            )
         self._memory = memory if memory is not None else InMemorySessionMemory()
         self._cancel = cancel if cancel is not None else InMemoryCancelRegistry()
+        self._conversations = conversations
         self._max_iterations = max(1, max_iterations)
         self._system_prompt = system_prompt
         self._cancel_check_interval = max(1, cancel_check_interval)
@@ -165,6 +191,7 @@ class ChatService:
         user_message: str,
         *,
         history: Sequence[ChatMessage] | None = None,
+        user_id: str | None = None,
     ) -> AsyncIterator[ChatEvent]:
         """Run one user turn to completion, yielding SSE-ready events.
 
@@ -174,6 +201,11 @@ class ChatService:
             history: Optional caller-supplied prior turns; when given it seeds this
                 turn instead of the server-side session memory (still persisted back
                 under ``session_id``).
+            user_id: Interim (P2-07) logged-in user id, or ``None`` for a guest. When set
+                and a :class:`~app.services.conversation_store.ConversationStore` is wired,
+                the turn is durably persisted to Postgres (and, if Redis working memory is
+                empty, its context is rehydrated from Postgres) so account history survives
+                a restart. ``None`` → guest → the unchanged P1 behavior (Redis only).
 
         Yields:
             :class:`ChatEvent` values: ``start`` → ``token``/``tool_call``/
@@ -185,7 +217,7 @@ class ChatService:
         # user-facing assistant answer — never regenerated mid-turn. uuid4 gives
         # uniqueness across turns and sessions.
         message_id = uuid4().hex
-        prior = list(history) if history is not None else await self._memory.load(session_id)
+        prior = await self._load_prior(session_id, history, user_id)
 
         base: list[ChatMessage] = []
         if self._system_prompt:
@@ -209,6 +241,9 @@ class ChatService:
                 # call (covers a long tool step completing just after a cancel).
                 if await self._cancel.is_requested(session_id):
                     yield await self._finish_cancelled(session_id, turn, message_id)
+                    # No assistant answer was produced this turn; persist the user's
+                    # question alone so a logged-in user's turn is not silently dropped.
+                    await self._persist_turn(user_id, session_id, user_msg, None)
                     return
 
                 result = _IterationResult()
@@ -220,26 +255,34 @@ class ChatService:
                     # Stopped mid-completion; persist the partial answer for continuity.
                     # It keeps the turn's ``message_id`` so a 👍/👎 on the cut-off answer
                     # the user actually saw resolves to this stored message (§5.5).
+                    partial_assistant: ChatMessage | None = None
                     if result.content:
-                        turn.produced.append(
-                            ChatMessage(
-                                role="assistant",
-                                content=result.content,
-                                message_id=message_id,
-                            )
+                        partial_assistant = ChatMessage(
+                            role="assistant",
+                            content=result.content,
+                            message_id=message_id,
                         )
+                        turn.produced.append(partial_assistant)
                     yield await self._finish_cancelled(session_id, turn, message_id)
+                    # Persist the partial turn for logged-in users too (parity with the
+                    # Redis persist-on-cancel above), after the terminal event.
+                    await self._persist_turn(user_id, session_id, user_msg, partial_assistant)
                     return
 
                 if not result.tool_calls:
                     # Plain answer → the turn is done. The user-facing assistant answer
                     # carries the turn's stable ``message_id`` so it survives the session-
                     # memory round trip and is feedback-addressable later (§5.5).
-                    turn.produced.append(
-                        ChatMessage(role="assistant", content=result.content, message_id=message_id)
+                    final_assistant = ChatMessage(
+                        role="assistant", content=result.content, message_id=message_id
                     )
+                    turn.produced.append(final_assistant)
                     await self._memory.append(session_id, turn.produced)
                     yield DoneEvent(message_id=message_id, finish_reason=result.finish_reason)
+                    # Durable persist happens *after* the terminal event is yielded so the
+                    # DB write never delays the user-visible stream; best-effort (logged,
+                    # never raised — see _persist_turn).
+                    await self._persist_turn(user_id, session_id, user_msg, final_assistant)
                     return
 
                 # The model asked for tools: record the request, run each tool,
@@ -271,6 +314,13 @@ class ChatService:
             yield ErrorEvent(
                 message="Reached the maximum number of tool-call steps without a final answer."
             )
+            # No assistant answer was produced, but persist the user's question alone (as the
+            # cancel-before-content path does) so a logged-in user's turn is not silently
+            # dropped from durable history on the iteration-cap path.
+            await self._persist_turn(user_id, session_id, user_msg, None)
+        # The terminal-error handlers below deliberately do NOT persist: an errored turn is a
+        # failure (all models down / unexpected error), and the except may itself be triggered
+        # by a datastore issue — attempting a DB write there would be futile and noisy.
         except LLMAllModelsFailedError:
             logger.warning("chat turn failed: all LLM models unavailable", exc_info=True)
             yield ErrorEvent(
@@ -282,6 +332,72 @@ class ChatService:
         except Exception:  # noqa: BLE001 - never leak an unhandled 500 mid-stream
             logger.exception("chat turn failed with an unexpected error")
             yield ErrorEvent(message="An unexpected error occurred. Please try again.")
+
+    async def _load_prior(
+        self,
+        session_id: str,
+        history: Sequence[ChatMessage] | None,
+        user_id: str | None,
+    ) -> list[ChatMessage]:
+        """Resolve the prior turns that seed this turn's context.
+
+        Precedence: an explicit caller-supplied ``history`` wins; otherwise the Redis
+        working memory; and — only for a logged-in user whose Redis memory is empty
+        (fresh Redis / TTL expired / app restarted) — the durable Postgres history. This
+        Postgres fallback is what makes account chat history survive a restart (design §4).
+        The fallback is best-effort: a load failure must not break the turn, so it logs and
+        falls back to an empty context rather than raising.
+        """
+        if history is not None:
+            return list(history)
+        prior = await self._memory.load(session_id)
+        if prior or not user_id or self._conversations is None:
+            return prior
+        try:
+            loaded = await self._conversations.load_history(user_id=user_id, session_id=session_id)
+        except Exception:  # noqa: BLE001 - a durable-history read must never break the turn
+            logger.warning(
+                "failed to rehydrate history from Postgres (session=%s)", session_id, exc_info=True
+            )
+            return []
+        # Seed the (empty) Redis working memory with what we just rehydrated so the *next*
+        # turn on this session finds the full context in Redis and does not skip this
+        # rehydration branch. Without this, only the first post-restart turn would see the
+        # pre-restart history: turn 2 would find Redis non-empty (holding just turn 1's new
+        # pair) and silently start from a truncated context, losing all pre-restart context.
+        if loaded:
+            await self._memory.append(session_id, loaded)
+        return loaded
+
+    async def _persist_turn(
+        self,
+        user_id: str | None,
+        session_id: str,
+        user_message: ChatMessage,
+        assistant_message: ChatMessage | None,
+    ) -> None:
+        """Durably persist a completed/cancelled turn for a logged-in user (best-effort).
+
+        A no-op for guests (``user_id is None``) or when no
+        :class:`~app.services.conversation_store.ConversationStore` is wired — that is the
+        unchanged P1 guest path (Redis only, nothing in Postgres). A persistence failure is
+        logged and swallowed: it must **never** break the user-visible SSE stream (which has
+        already delivered its terminal event by this point).
+        """
+        if not user_id or self._conversations is None:
+            return
+        try:
+            await self._conversations.persist_turn(
+                user_id=user_id,
+                session_id=session_id,
+                conversation_id=None,
+                user_message=user_message,
+                assistant_message=assistant_message,
+            )
+        except Exception:  # noqa: BLE001 - persistence must never break the stream
+            logger.warning(
+                "failed to persist turn to Postgres (session=%s)", session_id, exc_info=True
+            )
 
     async def _finish_cancelled(
         self, session_id: str, turn: _Turn, message_id: str

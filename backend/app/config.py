@@ -102,6 +102,15 @@ class Settings(BaseSettings):
             "Example: postgresql+asyncpg://user:password@localhost:5432/career_coach"
         ),
     )
+    POSTGRES_MAX_CONNECTIONS: int = Field(
+        default=5,
+        description=(
+            "Upper bound on the single shared SQLAlchemy async engine pool (§4). "
+            "Applied as pool_size with max_overflow=0 so the total number of Postgres "
+            "connections never exceeds this cap. All requests/agents acquire sessions "
+            "from this one pool via repositories/postgres.py; no per-request engines."
+        ),
+    )
     REDIS_URL: str = Field(
         default="redis://localhost:6379/0",
         description="Redis URL used for caching, Celery broker, and rate limiting.",

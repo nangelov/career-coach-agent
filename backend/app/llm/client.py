@@ -49,7 +49,14 @@ from .types import (
     StreamChunk,
     ToolCall,
     ToolCallDelta,
+    ToolSchema,
 )
+
+__all__ = [
+    "HFOpenAICompatibleClient",
+    "LLMClient",
+    "ToolSchema",
+]
 
 if TYPE_CHECKING:
     from openai.types.chat import (
@@ -57,12 +64,6 @@ if TYPE_CHECKING:
         ChatCompletionToolChoiceOptionParam,
         ChatCompletionToolParam,
     )
-
-#: A native tool definition in JSON-schema form (the OpenAI ``tools[]`` shape:
-#: ``{"type": "function", "function": {"name", "description", "parameters"}}``).
-#: The concrete schemas live in ``app/tools/`` (P1-03); this client only ferries
-#: them to the provider and returns the resulting ``tool_calls``.
-ToolSchema = dict[str, Any]
 
 
 class LLMClient(ABC):

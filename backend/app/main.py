@@ -1,8 +1,9 @@
 """FastAPI application factory, middleware, lifespan, and health check.
 
-This module owns the ASGI entry point.  Real DB/Redis connection pools are wired
-in P2; the lifespan here only structures the startup/shutdown sequence with logging
-stubs.  Auth, agents, tools, and the full router set arrive in later phases (P3+).
+This module owns the ASGI entry point.  The lifespan builds the shared Postgres pool
+eagerly (fail-fast) and closes all shared resources (Postgres pool, Redis pool, chat
+service) on shutdown; the concrete service composition lives in ``app.bootstrap``.
+Auth, agents, and the full router set arrive in later phases (P3+).
 
 Run with either invocation (the relative import below makes both work):
 
@@ -26,9 +27,27 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import Response
 
 from .api.chat import router as chat_router
+from .app_state import AppStateKeys
 from .config import settings
+from .repositories.postgres import PostgresConnectionProvider
 
 logger = logging.getLogger(__name__)
+
+
+async def _best_effort_aclose(obj: Any, label: str) -> None:
+    """Close a shared resource on shutdown, logging (never raising) on failure.
+
+    Shutdown cleanup must never mask the shutdown itself, so a close failure is swallowed
+    with a warning rather than propagated. A ``None`` object (the resource was never built)
+    is a no-op.
+    """
+    if obj is None:
+        return
+    try:
+        await obj.aclose()
+    except Exception:  # noqa: BLE001 - best-effort cleanup must not mask shutdown
+        logger.warning("%s close failed", label, exc_info=True)
+
 
 #: Header used to correlate a single request across logs and responses.
 REQUEST_ID_HEADER = "X-Request-ID"
@@ -62,39 +81,36 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan: startup then shutdown.
 
-    Startup initialises shared resources (DB pool, Redis) and shutdown closes
-    them cleanly.  Real pools land in P2 — for now these are structured logging
-    stubs so the wiring/order is correct and observable.
+    Startup initialises shared resources and shutdown closes them cleanly.  The single
+    shared Postgres async engine/pool (§4) is built and connectivity-checked here; the
+    shared Redis pool is built lazily by the composition root (``app.bootstrap``) on the
+    first chat request and closed below.
     """
     # --- startup -----------------------------------------------------------
     logger.info("Starting %s v%s (debug=%s)", app.title, APP_VERSION, settings.DEBUG)
-    # P2: initialise the async Postgres (asyncpg/SQLAlchemy) connection pool here.
-    logger.info("Postgres connection pool init — stubbed (implemented in P2)")
-    # P2: create the Redis client and PING to verify connectivity here.
-    logger.info("Redis connection/ping — stubbed (implemented in P2)")
+    # Build the one shared Postgres async engine/pool (§4) and verify connectivity
+    # (SELECT 1) — fail fast if the data layer is unreachable rather than serving with
+    # a broken DB. All requests/agents acquire sessions from this provider.
+    pg_provider = PostgresConnectionProvider.from_settings(settings)
+    setattr(app.state, AppStateKeys.PG_PROVIDER, pg_provider)
+    await pg_provider.verify_connectivity()
+    logger.info(
+        "Postgres connection pool ready (max %d, SELECT 1 ok)",
+        settings.POSTGRES_MAX_CONNECTIONS,
+    )
+    # Redis: the shared redis.asyncio pool is built lazily by app.bootstrap on the
+    # first chat request and closed on shutdown below.
+    logger.info("Redis connection pool — built lazily on first request (app.bootstrap)")
 
     yield
 
     # --- shutdown ----------------------------------------------------------
-    # Close the lazily-built chat service (and its LLM router / clients) if the
-    # first request ever constructed one. P2 will move this to shared-pool teardown.
-    chat_service = getattr(app.state, "chat_service", None)
-    if chat_service is not None:
-        try:
-            await chat_service.aclose()
-        except Exception:  # noqa: BLE001 - best-effort cleanup must not mask shutdown
-            logger.warning("chat service close failed", exc_info=True)
-    # P2: dispose the Postgres pool here.
-    logger.info("Postgres connection pool close — stubbed (implemented in P2)")
-    # Close the shared redis.asyncio pool (§4) if a request ever built the chat
-    # service (which owns the RedisConnectionProvider). P2 makes this the canonical
-    # shared-pool teardown for all Redis consumers.
-    redis_provider = getattr(app.state, "redis_provider", None)
-    if redis_provider is not None:
-        try:
-            await redis_provider.aclose()
-        except Exception:  # noqa: BLE001 - best-effort cleanup must not mask shutdown
-            logger.warning("redis pool close failed", exc_info=True)
+    # Close every shared resource best-effort (order: service → Postgres → Redis). Each is
+    # absent (None) if it was never built (e.g. no chat request ever ran); the helper skips
+    # those and never lets a close failure mask the shutdown.
+    await _best_effort_aclose(getattr(app.state, AppStateKeys.CHAT_SERVICE, None), "chat service")
+    await _best_effort_aclose(getattr(app.state, AppStateKeys.PG_PROVIDER, None), "postgres pool")
+    await _best_effort_aclose(getattr(app.state, AppStateKeys.REDIS_PROVIDER, None), "redis pool")
     logger.info("Shutdown complete")
 
 

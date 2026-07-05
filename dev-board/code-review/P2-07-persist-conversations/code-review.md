@@ -1,0 +1,22 @@
+# Code review — P2-07-persist-conversations · engineer revision 2
+
+## Verdict: APPROVED
+
+## Findings (revision 1 → revision 2 disposition)
+| id | severity | file:line | rev-1 issue | revision-2 status |
+|----|----------|-----------|-------------|-------------------|
+| C1 | major (gating) | backend/app/services/chat.py:320-354 (`_load_prior`) | Rehydrated Postgres history was never written back to Redis, so post-restart turn 2+ silently lost all pre-restart context. | **Resolved.** `_load_prior` now seeds the empty Redis memory with the rehydrated history (`await self._memory.append(session_id, loaded)`, lines 352-353) before returning it. New regression test `test_restart_preserves_context_across_multiple_turns` drives **two** post-restart turns and asserts turn 3's model call still carries `Q1`/`A1`. Verified independently: removing the seeding makes turn 3 collapse to `[system, Q2, A2, Q3]` and the test fails; with the fix it passes — a genuine guard, not a claim. |
+| C2 | minor | backend/app/schemas/chat.py:71 | `session_id` allowed `max_length=200` vs `String(64)` columns → oversized id silently drops durable history. | **Resolved.** `session_id` is now `Field(..., min_length=1, max_length=64)`, matching `sessions.id`/`conversations.session_id`; `user_id` also capped at 64. Alignment documented in the `ChatRequest` docstring. |
+| C3 | minor | backend/app/repositories/conversation_store.py:99-135 (`_resolve_conversation`) | SELECT-then-INSERT get-or-create with no DB uniqueness on `conversations.session_id` — concurrent first-turns could split history. | **Resolved by documentation (reasonable deferral).** A docstring block now states the "one in-flight stream per session" invariant that makes it safe today (per-session SSE turn + Redis cancel flag serialize first-turns) and the exact remedy (unique constraint / `ON CONFLICT` upsert) for a future phase that allows concurrent per-session turns. Adding a constraint now would need a migration for a phase-scoped invariant likely revisited with multi-conversation-per-session UI — documenting is the lower-risk, in-scope call the rev-1 finding permitted. |
+| C4 | nit | backend/app/repositories/conversation_store.py:137-168 (`load_history`) | No `LIMIT` — entire transcript loaded, unbounded vs the Redis cap. | **Resolved.** Query now `.order_by(created_at.desc(), role_rank.desc()).limit(settings.SESSION_MEMORY_MAX_MESSAGES)` then reverses to chronological, bounding rehydration to the same cap as Redis working memory. Ordering verified correct (assistant-before-user in DESC → user-before-assistant after reverse). |
+| C5 | nit | backend/app/services/chat.py:295-304 | Iteration-cap / terminal-error paths didn't persist the user's message for logged-in users, unlike the cancel path. | **Resolved.** Iteration-cap path now calls `_persist_turn(user_id, session_id, user_msg, None)` (line 304) for parity with the cancel-before-content path. Terminal-error handlers carry an explicit comment documenting their deliberate exclusion (an errored turn is a failure and the `except` may itself be a datastore fault, so a DB write there is futile) — a reasonable, documented exclusion. |
+
+## Notes
+- Re-verified locally on this machine (revision 2):
+  - `pytest tests/test_chat_persistence.py` → **9 passed** (incl. the new C1 two-turn regression).
+  - Full non-DB suite (`--ignore=tests/test_conversation_store.py`) → **101 passed, 31 skipped**, no regressions.
+  - `pytest tests/test_conversation_store.py` against live Postgres (`career-coach-agent-db-1`, migration 0002) → **4 passed** (not skipped).
+  - C1 regression test independently confirmed to **fail without** the seeding fix and **pass with** it.
+- All five rev-1 findings are genuinely resolved in code (not merely asserted in prose): C1's gating fix is present and test-guarded, C2's length alignment is in the schema, and C3/C4/C5 are addressed or reasonably-and-explicitly deferred with in-code documentation.
+- Feature fundamentals remain sound from rev 1: guest path byte-for-byte unchanged (explicit "persists nothing"/"never rehydrates" assertions), best-effort persist/rehydrate that never break the SSE stream (persist after the terminal event), clean Router→Service→Repo layering, and the stable `message_id` stamped onto the persisted assistant answer for the future feedback surface.
+- No new blocker/major issues introduced by the revision. Gate is clear.
