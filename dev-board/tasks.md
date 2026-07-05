@@ -54,16 +54,16 @@ We are using Github free tier.
 
 **Exit:** user chats, model calls a tool, answer streams token-by-token, stop works, killing the primary model endpoint transparently fails over. **`output_parser.py` is gone.**
 
-- [ ] **(B)** `llm/client.py` — `LLMClient` interface + HF OpenAI-compatible implementation; native tool-calling, **no ReAct text parsing**.
-- [ ] **(B)** `llm/router.py` — failover router (§6.6): ordered models, per-call timeout, retry/backoff for 5xx/429, Redis circuit-breaker + recovery probes.
-- [ ] **(B)** `tools/` — 1–2 native tools with JSON schemas (`current_date_and_time`, `internet_search`) as the canonical pattern.
-- [ ] **(B)** `POST /api/chat` — SSE streaming endpoint; model-driven tool-call loop.
-- [ ] **(B)** Redis-backed per-session memory (replaces global `ConversationBufferMemory`).
-- [ ] **(B)** Cancel/stop via Redis (`POST /api/chat/{session}/cancel`) — replaces in-process `active_requests` dict.
-- [ ] **(B)** Stable `message_id` on every assistant message (feedback foundation §5.5).
-- [ ] **(F)** Next.js chat page: streaming render, stop button, visible tool steps.
-- [ ] **(T)** Manual: chat → tool call → token stream → stop. Kill primary model → fails over to next.
-- [ ] **(T)** Confirm no ReAct parser exists in the new backend path.
+- [x] **(B)** `llm/client.py` — `LLMClient` interface + HF OpenAI-compatible implementation; native tool-calling, **no ReAct text parsing**.
+- [x] **(B)** `llm/router.py` — failover router (§6.6): ordered models, per-call timeout, retry/backoff for 5xx/429, Redis circuit-breaker + recovery probes.
+- [x] **(B)** `tools/` — 1–2 native tools with JSON schemas (`current_date_and_time`, `internet_search`) as the canonical pattern.
+- [x] **(B)** `POST /api/chat` — SSE streaming endpoint; model-driven tool-call loop.
+- [x] **(B)** Redis-backed per-session memory (replaces global `ConversationBufferMemory`).
+- [x] **(B)** Cancel/stop via Redis (`POST /api/chat/{session}/cancel`) — replaces in-process `active_requests` dict.
+- [x] **(B)** Stable `message_id` on every assistant message (feedback foundation §5.5).
+- [x] **(F)** Next.js chat page: streaming render, stop button, visible tool steps.
+- [x] **(T)** Manual: chat → tool call → token stream → stop. Kill primary model → fails over to next.
+- [x] **(T)** Confirm no ReAct parser exists in the new backend path.
 
 ---
 

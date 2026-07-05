@@ -25,6 +25,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 
+from .api.chat import router as chat_router
 from .config import settings
 
 logger = logging.getLogger(__name__)
@@ -75,10 +76,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
     # --- shutdown ----------------------------------------------------------
+    # Close the lazily-built chat service (and its LLM router / clients) if the
+    # first request ever constructed one. P2 will move this to shared-pool teardown.
+    chat_service = getattr(app.state, "chat_service", None)
+    if chat_service is not None:
+        try:
+            await chat_service.aclose()
+        except Exception:  # noqa: BLE001 - best-effort cleanup must not mask shutdown
+            logger.warning("chat service close failed", exc_info=True)
     # P2: dispose the Postgres pool here.
     logger.info("Postgres connection pool close — stubbed (implemented in P2)")
-    # P2: close the Redis client here.
-    logger.info("Redis connection close — stubbed (implemented in P2)")
+    # Close the shared redis.asyncio pool (§4) if a request ever built the chat
+    # service (which owns the RedisConnectionProvider). P2 makes this the canonical
+    # shared-pool teardown for all Redis consumers.
+    redis_provider = getattr(app.state, "redis_provider", None)
+    if redis_provider is not None:
+        try:
+            await redis_provider.aclose()
+        except Exception:  # noqa: BLE001 - best-effort cleanup must not mask shutdown
+            logger.warning("redis pool close failed", exc_info=True)
     logger.info("Shutdown complete")
 
 
@@ -114,6 +130,9 @@ def create_app() -> FastAPI:
     async def health() -> dict[str, str]:
         """Liveness/readiness probe — cheap, no external dependencies."""
         return {"status": "ok", "version": APP_VERSION}
+
+    # Feature routers (auth, profile, pdp, … arrive in later phases).
+    app.include_router(chat_router)
 
     return app
 

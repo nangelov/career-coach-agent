@@ -21,3 +21,12 @@ The orchestrator's board. One row per task. See `.claude/skills/agent-handoff/SK
 | P0-11-verify | P0 exit: all services healthy + checks | P0 | DONE | 1 | APPROVED | APPROVED |
 | P0-12-legacy-cleanup | Move v1 code into legacy-code/ | P0 | DONE | 1 | APPROVED | APPROVED |
 | P0-13-frontend-rename | Rename frontend-v2/ → frontend/ | P0 | DONE | 1 | APPROVED | APPROVED |
+| P1-01-llm-client | LLMClient interface + HF OpenAI-compatible impl | P1 | DONE | 1 | APPROVED | APPROVED |
+| P1-02-llm-router | LLM failover router (timeout/retry/circuit-breaker/resume) | P1 | DONE | 1 | APPROVED | APPROVED |
+| P1-03-tools | native tools: current_date_and_time, internet_search | P1 | DONE | 1 | APPROVED | APPROVED |
+| P1-04-chat-endpoint | POST /api/chat SSE + model-driven tool-call loop | P1 | DONE | 1 | APPROVED | APPROVED |
+| P1-05-session-memory | Redis-backed per-session memory | P1 | DONE | 1 | APPROVED | APPROVED |
+| P1-06-cancel-stream | Redis-backed cancel/stop for chat streams | P1 | DONE | 1 | APPROVED | APPROVED |
+| P1-07-message-id | Stable message_id on every assistant message | P1 | DONE | 1 | APPROVED | APPROVED |
+| P1-08-frontend-chat | Next.js streaming chat page (stop, tool steps) | P1 | DONE | 1 | APPROVED | APPROVED |
+| P1-09-verify | P1 exit: chat/tool/stream/stop/failover; no ReAct parser | P1 | DONE | 1 | APPROVED | APPROVED |

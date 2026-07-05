@@ -17,6 +17,11 @@ issues and their standard fixes:
 - **starlette 1.3+ `Request` is generic** (over `StateT`). Under strict `type-arg`,
   annotate as `Request[Any]`. Middleware `dispatch` must be fully typed:
   `async def dispatch(self, request: Request[Any], call_next: RequestResponseEndpoint) -> Response`.
+- **`base ** n` with a *variable* int exponent is typed `Any`** (negative exponents
+  yield float, so mypy widens `int ** int` → `Any`), which trips `no-any-return`
+  when the result is returned as `float`. Fix: make the base a float literal —
+  `x * (2.0 ** (n - 1))` — so the expression stays `float`. Seen in exponential
+  backoff helpers.
 
 Also: `ignore_missing_imports = true` keeps un-installed third-party libs (langgraph,
 docling, etc.) as `Any` so CI need not install the heavy ML stack to type-check

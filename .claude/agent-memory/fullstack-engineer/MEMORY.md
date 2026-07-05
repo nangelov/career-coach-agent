@@ -6,3 +6,5 @@
 - [mypy --strict gotchas](project-mypy-strict-gotchas.md) — pydantic.mypy plugin, celery-types, starlette Request[Any] needed to pass strict
 - [uv CI heavy deps](project-uv-ci-heavy-deps.md) — backend deps pull ~3GB ML/CUDA; curate CI installs + use `uv run --no-sync`
 - [Local venv is partial](project-local-venv-partial.md) — backend/.venv missing asyncpg/torch/etc; run check_*.py smoke-tests inside the backend container
+- [openai SDK omit sentinel](project-openai-sdk-omit-sentinel.md) — openai 2.x uses `omit` not NOT_GIVEN; literal stream=bool for overloads; cast message/tool params; inject MockTransport in tests
+- [Frontend Jest/jsdom gotchas](project-frontend-jest-jsdom.md) — jsdom lacks TextEncoder/TextDecoder + scrollIntoView; wrap post-await state updates in act(); no user-event dep

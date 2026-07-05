@@ -1,0 +1,20 @@
+# Code review — P1-02-llm-router · engineer revision 1
+
+## Verdict: APPROVED
+
+## Findings
+| id | severity | file:line | issue | required change |
+|----|----------|-----------|-------|-----------------|
+| C1 | minor | backend/app/llm/router.py:308-312 | Mid-stream resume prefills the buffered partial as a trailing `assistant` message and streams only the continuation. This is correct *only if* the HF OpenAI-compatible endpoint honors a trailing partial-assistant message as a continuation prefix. Many such servers (incl. vLLM without `continue_final_message`) instead start a fresh assistant turn, which in prod would re-greet / duplicate the prefix rather than continue. Engineer documented this as an assumption. | No change needed in this router unit (design §6.6-locked; mock-tested here). Add an integration test against the real endpoint in the P1-04/P4 wiring task to confirm continuation semantics, or gate resume behind the provider flag if the endpoint requires one. |
+| C2 | nit | backend/app/llm/router.py:70-83, 110-119 | `CircuitBreaker` docstring says "rolling-window TTL", but the window is fixed: `expire` is only set when `incr` returns 1, so the TTL is anchored to the first failure and does not slide with later failures. Behaviorally fine (fixed window is a reasonable choice). | Reword the docstring to "fixed window" or leave as-is; not blocking. |
+| C3 | nit | backend/app/llm/router.py:110-119 | `record_failure` does `incr` then a separate `expire` (two round trips). If the process dies between them the `:fails` key has no TTL and lives until the next `record_success`/threshold trip. Negligible on a single ephemeral Space. | Optional: use a Lua script / pipeline for atomic incr+expire when Redis usage hardens later. |
+
+## Notes
+- Correctness of the failover taxonomy is sound and well-tested: transient `5xx`/`429` retried on the same model with capped exponential backoff (injectable `sleep`), distinct from cross-model failover; `4xx`-non-429 re-raised without failover (`_is_client_error`); timeout/connection/first-token-deadline breaches fail over without wasted same-model retries. `LLMTimeoutError`/`LLMConnectionError` correctly skip same-model retry.
+- Streaming path is careful: same-model retry only permitted while `not emitted` (no risk of replaying already-streamed tokens); first-token deadline via `asyncio.wait_for` on `__anext__`; underlying generators closed in a `finally` with an `isinstance(..., AsyncGenerator)` guard — cleanup chain holds on early-break and cancellation.
+- Circuit-breaker is Redis-injected via a `RedisLike` structural Protocol — no `redis` import in `router.py`, no new CI dependency, tests use an in-memory FakeRedis. `from_settings` never constructs its own Redis client (takes it as an arg), consistent with §4 pool ownership.
+- `all-circuits-open` and `all-models-failed` both raise `LLMAllModelsFailedError` with a distinguishing message and `from last_error`; `attempted` flag correctly separates the two. `complete()`/`stream()` mirror the `LLMClient` surface as intended.
+- Security: no secrets in code (token/base-url/model list all from settings); Redis keys interpolate only config-sourced model ids, not user input; no arbitrary execution; no ReAct/regex text parsing (native structural routing on the first-party error hierarchy). Provider SDK stays isolated in `client.py` (router imports none).
+- Scope honored: `client.py` public interface untouched; `errors.py`/`config.py` additions are additive; no agent/graph or `api/chat.py` wiring; no tools. `pyproject` bump `openai>=2.0.0` and the CI curated-install `openai` addition are consistent with P1-01.
+- Verified locally (`cd backend`): `ruff check .` → all pass; `mypy app/` → success (21 files); `pytest -q tests/test_llm_router.py` → 10 passed. Tests cover every acceptance bullet including mid-stream resume (`"Hello world"` continuous, secondary receives the `assistant` prefill) and the first-token-deadline failover.
+- All findings are minor/nit; none gate. C1 is a real integration risk to carry forward into the endpoint-wiring task, but is out of scope for the router unit and is design-locked.

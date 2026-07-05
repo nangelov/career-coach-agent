@@ -42,16 +42,18 @@ jobs:
         run: uv python install 3.11
 
       # Curated install: the dev tool group + only the *light* runtime libs the
-      # backend currently imports (fastapi / pydantic / celery). A full `uv sync`
-      # would pull the heavy ML stack (torch via sentence-transformers, docling)
-      # which lint / type-check / the health test never exercise — wasteful on a
-      # free CI tier. Revisit (e.g. split deps into a `ml` extra) when tests start
-      # importing the ML modules. mypy's ignore_missing_imports keeps un-installed
-      # libs as Any, and first-party code stays fully typed.
+      # backend currently imports (fastapi / pydantic / celery / openai). A full
+      # `uv sync` would pull the heavy ML stack (torch via sentence-transformers,
+      # docling) which lint / type-check / these tests never exercise — wasteful on
+      # a free CI tier. Revisit (e.g. split deps into a `ml` extra) when tests start
+      # importing the ML modules. `openai` is a light HTTP SDK the LLM client (P1-01)
+      # imports and type-checks against; keep it here so mypy sees its real types.
+      # mypy's ignore_missing_imports keeps still-un-installed libs as Any, and
+      # first-party code stays fully typed.
       - name: Install dependencies
         run: |
           uv sync --only-group dev
-          uv pip install fastapi pydantic pydantic-settings "celery[redis]"
+          uv pip install fastapi pydantic pydantic-settings "celery[redis]" openai
 
       # --no-sync: run the tool in the curated venv above WITHOUT uv re-resolving
       # and installing the full project dependency tree (which would drag in the
