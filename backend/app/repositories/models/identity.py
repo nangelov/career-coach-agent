@@ -85,9 +85,7 @@ class User(CreatedAtMixin, Base):
     # endpoint that replaces v1's ``GET /get-feedback?key=<HF_TOKEN>``). Defaults to false;
     # granted out-of-band by a trusted operator (see docs/admin-access.md), never by any
     # self-service route, so no request can escalate its own privilege.
-    is_admin: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=false()
-    )
+    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false())
     # Free-form user settings document (§4: ``settings JSONB``).
     settings: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
 

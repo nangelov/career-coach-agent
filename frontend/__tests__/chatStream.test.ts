@@ -19,6 +19,7 @@ describe("createSSEParser", () => {
     const parser = createSSEParser();
     const frames = [
       'event: start\ndata: {"message_id": "m1"}\n\n',
+      'event: plan\ndata: {"intent": "job_search", "steps": ["find roles"], "workers": ["job_search"]}\n\n',
       'event: token\ndata: {"content": "Hel"}\n\n',
       'event: tool_call\ndata: {"id": "c1", "name": "clock", "arguments": "{}"}\n\n',
       'event: tool_result\ndata: {"tool_call_id": "c1", "name": "clock", "content": "{\\"now\\":\\"noon\\"}"}\n\n',
@@ -28,6 +29,12 @@ describe("createSSEParser", () => {
     ].join("");
     expect(parser.push(frames)).toEqual([
       { event: "start", message_id: "m1" },
+      {
+        event: "plan",
+        intent: "job_search",
+        steps: ["find roles"],
+        workers: ["job_search"],
+      },
       { event: "token", content: "Hel" },
       { event: "tool_call", id: "c1", name: "clock", arguments: "{}" },
       {
@@ -36,9 +43,82 @@ describe("createSSEParser", () => {
         name: "clock",
         content: '{"now":"noon"}',
       },
-      { event: "done", message_id: "m1", finish_reason: "stop" },
+      { event: "done", message_id: "m1", finish_reason: "stop", citations: [] },
       { event: "cancelled", message_id: "m1" },
       { event: "error", message: "boom" },
+    ]);
+  });
+
+  it("parses a plan event, defaulting missing steps/workers to empty arrays", () => {
+    const parser = createSSEParser();
+    expect(parser.push('event: plan\ndata: {"intent": "chat"}\n\n')).toEqual([
+      { event: "plan", intent: "chat", steps: [], workers: [] },
+    ]);
+  });
+
+  it("parses done.citations into a fully-typed SourceCitation list", () => {
+    const parser = createSSEParser();
+    const events = parser.push(
+      'event: done\ndata: {"message_id": "m1", "finish_reason": "stop", "citations": ' +
+        '[{"source_id": "s1", "title": "A Role", "url": "https://x/1", "snippet": "snip", "worker": "job_search"}]}\n\n',
+    );
+    expect(events).toEqual([
+      {
+        event: "done",
+        message_id: "m1",
+        finish_reason: "stop",
+        citations: [
+          {
+            source_id: "s1",
+            title: "A Role",
+            url: "https://x/1",
+            snippet: "snip",
+            worker: "job_search",
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("defaults done.citations to [] when absent and null-fills partial citations", () => {
+    const parser = createSSEParser();
+    // Missing citations field entirely.
+    expect(
+      parser.push('event: done\ndata: {"message_id": "m1"}\n\n'),
+    ).toEqual([
+      { event: "done", message_id: "m1", finish_reason: null, citations: [] },
+    ]);
+    // A citation carrying only a url — every other field defaults to null.
+    expect(
+      parser.push(
+        'event: done\ndata: {"message_id": "m2", "citations": [{"url": "https://x/2"}]}\n\n',
+      ),
+    ).toEqual([
+      {
+        event: "done",
+        message_id: "m2",
+        finish_reason: null,
+        citations: [
+          {
+            source_id: null,
+            title: null,
+            url: "https://x/2",
+            snippet: null,
+            worker: null,
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("tolerates a malformed (non-array) citations field, degrading to []", () => {
+    const parser = createSSEParser();
+    expect(
+      parser.push(
+        'event: done\ndata: {"message_id": "m1", "citations": "oops"}\n\n',
+      ),
+    ).toEqual([
+      { event: "done", message_id: "m1", finish_reason: null, citations: [] },
     ]);
   });
 
@@ -144,7 +224,7 @@ describe("streamChat", () => {
     expect(events).toEqual([
       { event: "start", message_id: "m1" },
       { event: "token", content: "Hi" },
-      { event: "done", message_id: "m1", finish_reason: "stop" },
+      { event: "done", message_id: "m1", finish_reason: "stop", citations: [] },
     ]);
   });
 

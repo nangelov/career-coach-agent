@@ -24,3 +24,14 @@ not a place to add product surface or redesign settled tasks.
 
 Self-contained per-file skip-fixtures/fakes (over a shared `conftest.py`) is the accepted
 integration-suite convention here; don't require refactoring sibling suites into shared fixtures.
+
+**Accepted deviations from tests-only (P4-10 rev 1, APPROVED):**
+- A **mechanical `ruff format` reformat** of pre-existing gate-red files (incl. product code like
+  `identity.py`) is acceptable *if* it is zero-logic (verify the diff — line-collapse only), **flagged
+  in the report** (not silent), and needed to hand off with all CI gates green. Don't reject it; log a
+  cheap "split into a cleanup commit" follow-up. Handoff-with-green-gates outranks strict tests-only.
+- Faking the **planner LLM decision** via the P4-03 `build_graph(planner=)` seam to drive a *specific*
+  route is the blessed way to prove routing e2e without live HF — the routing *mechanism* (Send fan-out,
+  edges, fan-in) stays real; the real planner-from-LLM-output is proven separately in `test_agent_planner`.
+  Composition across the two suites is complete; the live-HF planner path is a legitimate deferred
+  live-infra pass. See [[project-agent-graph]].

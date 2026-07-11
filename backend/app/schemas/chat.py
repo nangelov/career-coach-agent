@@ -10,11 +10,19 @@ contract to consume.
 SSE event vocabulary (the ``event:`` line ↔ the model's ``event`` field):
 
 * ``start``       — the assistant turn began; carries the ``message_id``.
+* ``plan``        — the planner's decision for this turn (intent + human-readable steps +
+  which workers run), emitted **before** token streaming so the UI can render the
+  "thinking"/worker steps (design §3 multi-agent graph; consumed by the paired (F) task
+  *"stream planner/worker steps to the UI"*). Additive to the P1 vocabulary — a client that
+  does not understand it simply ignores it.
 * ``token``       — one incremental content delta (token-by-token streaming).
-* ``tool_call``   — the model asked to run a tool; emitted just before execution.
-* ``tool_result`` — a tool finished; carries its output for UI visibility.
+* ``tool_call``   — a legacy P1 native tool-call event (the model asked to run a tool);
+  retained in the union for wire-compatibility but no longer emitted by the graph-driven
+  service, whose workers are graph nodes surfaced via ``plan`` instead.
+* ``tool_result`` — the paired legacy tool-result event; likewise retained, no longer emitted.
 * ``done``        — the turn completed successfully; repeats ``message_id`` +
-  ``finish_reason``.
+  ``finish_reason`` and now carries the ``citations`` backing the answer (design §3
+  *"synthesize, cite sources"*).
 * ``cancelled``   — the turn was stopped by a client ``POST /api/chat/{session}/cancel``
   (the "stop" button, P1-08); terminal, repeats ``message_id`` so any partial answer
   already streamed stays attributable/feedback-ready. Distinct from ``done`` so the UI
@@ -76,11 +84,46 @@ class ChatRequest(BaseModel):
 # --------------------------------------------------------------------------- #
 # Streamed events (the SSE vocabulary)
 # --------------------------------------------------------------------------- #
+class SourceCitation(BaseModel):
+    """One grounding source backing the answer, surfaced on ``done`` (design §3 "cite sources").
+
+    The **wire projection** of an internal :class:`app.agents.state.Citation`: the chat service
+    maps the graph's accumulated worker citations onto this DTO, so the schema layer stays
+    independent of the agent layer (Router → Service → Agent). All fields are optional — a
+    worker emits whatever provenance it has (a KB chunk id, a crawled URL, a job link).
+    """
+
+    source_id: str | None = None
+    title: str | None = None
+    url: str | None = None
+    snippet: str | None = None
+    #: Which worker contributed this source (``rag`` / ``web_search`` / ``job_search`` /
+    #: ``pdp_resume``) — the plain :class:`app.agents.state.WorkerName` value.
+    worker: str | None = None
+
+
 class StartEvent(BaseModel):
     """The assistant turn has begun."""
 
     event: Literal["start"] = "start"
     message_id: str
+
+
+class PlanEvent(BaseModel):
+    """The planner's routing decision for this turn (design §3 Planner).
+
+    Emitted once, right after ``start`` and before the first ``token``, so the client can show
+    the classified intent, the human-readable plan steps, and which workers the turn ran — the
+    "visible thinking / worker steps" the design calls for and the paired (F) task renders.
+    """
+
+    event: Literal["plan"] = "plan"
+    #: The classified :class:`app.agents.state.Intent` value (e.g. ``chat``, ``job_search``).
+    intent: str
+    #: Ordered, human-readable decomposition of the turn.
+    steps: list[str] = Field(default_factory=list)
+    #: The worker node names that ran this turn (:class:`app.agents.state.WorkerName` values).
+    workers: list[str] = Field(default_factory=list)
 
 
 class TokenEvent(BaseModel):
@@ -109,11 +152,18 @@ class ToolResultEvent(BaseModel):
 
 
 class DoneEvent(BaseModel):
-    """The assistant turn completed successfully."""
+    """The assistant turn completed successfully.
+
+    Carries the ``citations`` that back the streamed answer (design §3 Response Agent
+    *"synthesize, cite sources"*) — folded into the terminal event rather than a separate
+    frame since sources are only complete once the answer is. Empty when the turn ran no
+    grounding worker (a plain chat / smalltalk answer).
+    """
 
     event: Literal["done"] = "done"
     message_id: str
     finish_reason: str | None = None
+    citations: list[SourceCitation] = Field(default_factory=list)
 
 
 class CancelledEvent(BaseModel):
@@ -140,6 +190,7 @@ class ErrorEvent(BaseModel):
 #: ``event:`` name and the discriminator for the frontend.
 ChatEvent = (
     StartEvent
+    | PlanEvent
     | TokenEvent
     | ToolCallEvent
     | ToolResultEvent

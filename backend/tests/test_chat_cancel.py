@@ -15,14 +15,13 @@ Three layers, all with fakes/doubles — no real Redis, no HF network:
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
 import httpx
 from httpx import ASGITransport
 
 from app.api.chat import get_chat_service
-from app.llm.types import ChatMessage, StreamChunk, ToolCallDelta
+from app.llm.types import StreamChunk
 from app.main import app
 from app.repositories.redis import RedisCancelRegistry
 from app.schemas.chat import (
@@ -31,13 +30,12 @@ from app.schemas.chat import (
     DoneEvent,
     StartEvent,
     TokenEvent,
-    ToolCallEvent,
-    ToolResultEvent,
 )
 from app.security.dependencies import require_auth
 from app.services.cancellation import CancelRegistry, InMemoryCancelRegistry
 from app.services.chat import ChatService
 from app.services.session_memory import InMemorySessionMemory
+from tests.fakes import FakeGraphRunner
 
 
 # --------------------------------------------------------------------------- #
@@ -113,44 +111,12 @@ async def test_registry_sessions_are_isolated() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# ChatService cancellation
+# ChatService cancellation (graph-driven, P4-07)
 # --------------------------------------------------------------------------- #
-class _Router:
-    """Scripted router: one stream (list of chunks) per turn."""
-
-    def __init__(self, scripts: Sequence[list[StreamChunk]]) -> None:
-        self._scripts = list(scripts)
-        self.calls = 0
-
-    async def stream(self, messages: Sequence[ChatMessage], **_: Any) -> AsyncIterator[StreamChunk]:
-        idx = self.calls
-        self.calls += 1
-        for chunk in self._scripts[idx]:
-            yield chunk
-
-    async def aclose(self) -> None:
-        pass
-
-
-class _Registry:
-    """Tool registry returning one canned tool reply per executed call."""
-
-    def schemas(self) -> list[dict[str, Any]]:
-        return []
-
-    async def execute(self, tool_call: Any) -> ChatMessage:
-        return ChatMessage(
-            role="tool",
-            content='{"ok": true}',
-            name=tool_call.function.name,
-            tool_call_id=tool_call.id,
-        )
-
-
 class _TrippingCancel(CancelRegistry):
     """Cancel registry that reports "requested" after ``trip_after`` polls.
 
-    Simulates a cancel arriving mid-stream: the first ``trip_after`` calls to
+    Simulates a cancel arriving mid-turn: the first ``trip_after`` calls to
     :meth:`is_requested` return ``False``, subsequent ones return ``True`` (until a
     :meth:`clear`). Records clears so tests can assert the flag was cleaned up.
     """
@@ -172,16 +138,21 @@ class _TrippingCancel(CancelRegistry):
         self.cleared += 1
 
 
+def _service(runner: FakeGraphRunner, cancel: CancelRegistry, **kwargs: Any) -> ChatService:
+    return ChatService(runner, InMemorySessionMemory(), cancel, **kwargs)
+
+
 async def _collect(service: ChatService, session: str, message: str) -> list[ChatEvent]:
     return [event async for event in service.stream_turn(session, message)]
 
 
 async def test_cancel_mid_stream_stops_and_emits_cancelled() -> None:
-    # A long single completion; cancel trips after 2 polls (loop-top + one chunk).
-    router = _Router([[StreamChunk(content=f"tok{i}") for i in range(20)]])
+    # A long answer stream; two pre-stream checkpoints poll first (both False), then the cancel
+    # trips on the first in-stream poll → stops after ~one token.
+    runner = FakeGraphRunner([[StreamChunk(content=f"tok{i}") for i in range(20)]])
     cancel = _TrippingCancel(trip_after=2)
     memory = InMemorySessionMemory()
-    service = ChatService(router, _Registry(), memory, cancel, cancel_check_interval=1)  # type: ignore[arg-type]
+    service = ChatService(runner, memory, cancel, cancel_check_interval=1)
 
     events = await _collect(service, "s1", "hi")
 
@@ -200,45 +171,26 @@ async def test_cancel_mid_stream_stops_and_emits_cancelled() -> None:
     assert stored[-1].content == "".join(e.content for e in tokens)
 
 
-async def test_cancel_between_tool_round_trips_stops_before_next_call() -> None:
-    # 1st stream asks for a tool; the router requests cancel right after, so the
-    # iteration-boundary check stops the loop before a 2nd model call.
-    tool_stream = [
-        StreamChunk(
-            tool_call_deltas=[ToolCallDelta(index=0, id="call_1", name="now", arguments="{}")],
-            finish_reason="tool_calls",
-        ),
-    ]
-    answer_stream = [StreamChunk(content="should not be reached", finish_reason="stop")]
-    cancel = InMemoryCancelRegistry()
-
-    class _RouterThenCancel(_Router):
-        async def stream(
-            self, messages: Sequence[ChatMessage], **kw: Any
-        ) -> AsyncIterator[StreamChunk]:
-            first = self.calls == 0
-            async for chunk in super().stream(messages, **kw):
-                yield chunk
-            if first:
-                await cancel.request("s1")
-
-    router = _RouterThenCancel([tool_stream, answer_stream])
-    service = ChatService(router, _Registry(), InMemorySessionMemory(), cancel)  # type: ignore[arg-type]
+async def test_cancel_after_planning_stops_before_response_stream() -> None:
+    # A cancel observed at the post-planning checkpoint (poll #2) stops the turn before the
+    # responder stream is ever opened — the multi-agent analogue of the old tool-boundary check.
+    runner = FakeGraphRunner([[StreamChunk(content="should not be reached", finish_reason="stop")]])
+    cancel = _TrippingCancel(trip_after=1)
+    service = _service(runner, cancel)
 
     events = await _collect(service, "s1", "what time is it")
 
-    assert len([e for e in events if isinstance(e, ToolCallEvent)]) == 1
-    assert len([e for e in events if isinstance(e, ToolResultEvent)]) == 1
+    assert not any(isinstance(e, TokenEvent) for e in events)
     assert isinstance(events[-1], CancelledEvent)
     assert not any(isinstance(e, DoneEvent) for e in events)
-    # The 2nd (answer) stream was never opened.
-    assert router.calls == 1
+    # The responder stream was never opened (cancel observed before phase 2).
+    assert runner.stream_states == []
 
 
 async def test_turn_without_cancel_completes_normally() -> None:
-    router = _Router([[StreamChunk(content="hello", finish_reason="stop")]])
+    runner = FakeGraphRunner([[StreamChunk(content="hello", finish_reason="stop")]])
     cancel = InMemoryCancelRegistry()
-    service = ChatService(router, _Registry(), InMemorySessionMemory(), cancel)  # type: ignore[arg-type]
+    service = _service(runner, cancel)
 
     events = await _collect(service, "s1", "hi")
 
@@ -247,10 +199,10 @@ async def test_turn_without_cancel_completes_normally() -> None:
 
 
 async def test_cancel_does_not_cross_sessions() -> None:
-    router = _Router([[StreamChunk(content="hello", finish_reason="stop")]])
+    runner = FakeGraphRunner([[StreamChunk(content="hello", finish_reason="stop")]])
     cancel = InMemoryCancelRegistry()
     await cancel.request("other-session")
-    service = ChatService(router, _Registry(), InMemorySessionMemory(), cancel)  # type: ignore[arg-type]
+    service = _service(runner, cancel)
 
     events = await _collect(service, "s1", "hi")
 
@@ -261,10 +213,10 @@ async def test_cancel_does_not_cross_sessions() -> None:
 
 async def test_stale_flag_is_cleared_at_turn_start() -> None:
     # A cancel flag left set before the turn begins must not abort the new turn.
-    router = _Router([[StreamChunk(content="fresh answer", finish_reason="stop")]])
+    runner = FakeGraphRunner([[StreamChunk(content="fresh answer", finish_reason="stop")]])
     cancel = InMemoryCancelRegistry()
     await cancel.request("s1")  # stale flag from a prior, finished turn
-    service = ChatService(router, _Registry(), InMemorySessionMemory(), cancel)  # type: ignore[arg-type]
+    service = _service(runner, cancel)
 
     events = await _collect(service, "s1", "hi")
 

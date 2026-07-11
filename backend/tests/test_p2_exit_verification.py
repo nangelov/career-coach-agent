@@ -52,7 +52,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.api.chat import get_chat_service
 from app.config import settings
-from app.llm.router import LLMRouter
 from app.llm.types import StreamChunk
 from app.main import app
 from app.repositories.conversation_store import PostgresConversationStore
@@ -60,10 +59,9 @@ from app.repositories.models import KbChunk, KbDocument, User
 from app.repositories.models.knowledge import EMBEDDING_DIM
 from app.repositories.postgres import PostgresConnectionProvider
 from app.repositories.vector_search import hybrid_search_chunks
-from app.services.chat import ChatService
+from app.services.chat import ChatService, GraphTurnRunner
 from app.services.session_memory import InMemorySessionMemory
-from app.tools.base import ToolRegistry
-from tests.fakes import FakeRegistry, FakeRouter
+from tests.fakes import FakeGraphRunner
 
 # --------------------------------------------------------------------------- #
 # Live-Postgres gating (same skip-not-fail posture as the other integration suites)
@@ -140,16 +138,15 @@ async def session() -> AsyncIterator[AsyncSession]:
         await engine.dispose()
 
 
-def _service(router: FakeRouter, store: PostgresConversationStore) -> ChatService:
-    """Build a real :class:`ChatService` over the scripted LLM + a FRESH in-memory session.
+def _service(runner: FakeGraphRunner, store: PostgresConversationStore) -> ChatService:
+    """Build a real :class:`ChatService` over the scripted graph + a FRESH in-memory session.
 
     A fresh :class:`InMemorySessionMemory` per service models a process restart / Redis key
     loss: nothing carries over in working memory, so a logged-in turn must rehydrate from
-    Postgres. The scripted LLM / tool fakes (no HF, no token) live in ``tests.fakes``.
+    Postgres. The scripted graph-runner fake (no HF, no token) lives in ``tests.fakes``.
     """
     return ChatService(
-        cast(LLMRouter, router),
-        cast(ToolRegistry, FakeRegistry()),
+        cast(GraphTurnRunner, runner),
         InMemorySessionMemory(),
         conversations=store,
     )
@@ -183,13 +180,13 @@ async def test_restart_preserves_account_history_multi_turn_live_postgres(
     session_id = str(uuid.uuid4())
 
     # Pre-restart process: two turns, each persisted to Postgres.
-    pre = _service(FakeRouter([[StreamChunk(content="A1", finish_reason="stop")]]), store)
+    pre = _service(FakeGraphRunner([[StreamChunk(content="A1", finish_reason="stop")]]), store)
     await _drain(pre, session_id, "Q1", user_id=user_id)
-    pre = _service(FakeRouter([[StreamChunk(content="A2", finish_reason="stop")]]), store)
+    pre = _service(FakeGraphRunner([[StreamChunk(content="A2", finish_reason="stop")]]), store)
     await _drain(pre, session_id, "Q2", user_id=user_id)
 
     # "Restart": one fresh service (fresh working memory) drives both post-restart turns.
-    router = FakeRouter(
+    router = FakeGraphRunner(
         [
             [StreamChunk(content="A3", finish_reason="stop")],
             [StreamChunk(content="A4", finish_reason="stop")],
@@ -199,12 +196,14 @@ async def test_restart_preserves_account_history_multi_turn_live_postgres(
     await _drain(post, session_id, "Q3", user_id=user_id)  # rehydrates from Postgres + seeds
     await _drain(post, session_id, "Q4", user_id=user_id)  # reads the seeded working memory
 
-    # Turn 3 saw the rehydrated pre-restart context.
-    turn3 = [m.content for m in router.calls[0]]
-    assert "Q1" in turn3 and "A1" in turn3 and "Q2" in turn3 and "A2" in turn3 and "Q3" in turn3
+    # Turn 3 saw the rehydrated pre-restart context in its graph-state history.
+    turn3 = [m.content for m in router.plan_states[0].history]
+    assert "Q1" in turn3 and "A1" in turn3 and "Q2" in turn3 and "A2" in turn3
+    assert router.plan_states[0].user_message == "Q3"
     # Turn 4 still sees turn 1 — the re-seed carried pre-restart history forward post-restart.
-    turn4 = [m.content for m in router.calls[1]]
-    assert "Q1" in turn4 and "A1" in turn4 and "A3" in turn4 and "Q4" in turn4
+    turn4 = [m.content for m in router.plan_states[1].history]
+    assert "Q1" in turn4 and "A1" in turn4 and "A3" in turn4
+    assert router.plan_states[1].user_message == "Q4"
 
 
 async def test_restart_preserves_account_history_via_router_path_live_postgres(
@@ -245,16 +244,18 @@ async def test_restart_preserves_account_history_via_router_path_live_postgres(
             app.dependency_overrides.clear()
 
     # Pre-restart turn through the router (persisted to Postgres).
-    first = _service(FakeRouter([[StreamChunk(content="A1", finish_reason="stop")]]), store)
+    first = _service(FakeGraphRunner([[StreamChunk(content="A1", finish_reason="stop")]]), store)
     await post_turn(first, "Q1")
 
     # Restart: brand-new service (fresh working memory), same session + user + store.
-    restarted_router = FakeRouter([[StreamChunk(content="A2", finish_reason="stop")]])
+    restarted_router = FakeGraphRunner([[StreamChunk(content="A2", finish_reason="stop")]])
     await post_turn(_service(restarted_router, store), "Q2")
 
-    # The post-restart router turn rehydrated turn 1 from Postgres.
-    contents = [m.content for m in restarted_router.calls[0]]
-    assert "Q1" in contents and "A1" in contents and "Q2" in contents
+    # The post-restart router turn rehydrated turn 1 from Postgres into its graph-state history.
+    turn = restarted_router.plan_states[0]
+    contents = [m.content for m in turn.history]
+    assert "Q1" in contents and "A1" in contents
+    assert turn.user_message == "Q2"
 
 
 async def test_guest_restart_has_no_history_live_postgres(
@@ -269,16 +270,16 @@ async def test_guest_restart_has_no_history_live_postgres(
     store = PostgresConversationStore(provider)
     session_id = str(uuid.uuid4())
 
-    guest_router = FakeRouter([[StreamChunk(content="secret-answer", finish_reason="stop")]])
+    guest_router = FakeGraphRunner([[StreamChunk(content="secret-answer", finish_reason="stop")]])
     pre = _service(guest_router, store)
     await _drain(pre, session_id, "guest-question", user_id=None)
 
     # Restart: fresh service. A guest turn on the same session sees no prior context.
-    router = FakeRouter([[StreamChunk(content="ok", finish_reason="stop")]])
+    router = FakeGraphRunner([[StreamChunk(content="ok", finish_reason="stop")]])
     post = _service(router, store)
     await _drain(post, session_id, "again", user_id=None)
 
-    contents = [m.content for m in router.calls[0]]
+    contents = [m.content for m in router.plan_states[0].history]
     assert "guest-question" not in contents
     assert "secret-answer" not in contents
 

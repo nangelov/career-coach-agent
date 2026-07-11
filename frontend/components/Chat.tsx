@@ -14,6 +14,7 @@ import {
   cancelChat,
   streamChat,
   type ChatStreamEvent,
+  type SourceCitation,
 } from "@/lib/chatStream";
 
 type Role = "user" | "assistant";
@@ -26,12 +27,20 @@ interface ToolStep {
   result?: string;
 }
 
+interface TurnPlan {
+  intent: string;
+  steps: string[];
+  workers: string[];
+}
+
 interface ChatMessageView {
   key: string;
   role: Role;
   content: string;
   status: TurnStatus;
   toolSteps: ToolStep[];
+  plan?: TurnPlan;
+  citations: SourceCitation[];
   errorMessage?: string;
 }
 
@@ -119,6 +128,16 @@ export default function Chat() {
       switch (event.event) {
         case "start":
           break;
+        case "plan":
+          updateAssistant((m) => ({
+            ...m,
+            plan: {
+              intent: event.intent,
+              steps: event.steps,
+              workers: event.workers,
+            },
+          }));
+          break;
         case "token":
           updateAssistant((m) => ({ ...m, content: m.content + event.content }));
           break;
@@ -142,7 +161,11 @@ export default function Chat() {
           }));
           break;
         case "done":
-          updateAssistant((m) => ({ ...m, status: "done" }));
+          updateAssistant((m) => ({
+            ...m,
+            status: "done",
+            citations: event.citations,
+          }));
           break;
         case "cancelled":
           updateAssistant((m) => ({ ...m, status: "cancelled" }));
@@ -183,6 +206,7 @@ export default function Chat() {
       content: text,
       status: "done",
       toolSteps: [],
+      citations: [],
     };
     const assistantMessage: ChatMessageView = {
       key: randomId(),
@@ -190,6 +214,7 @@ export default function Chat() {
       content: "",
       status: "streaming",
       toolSteps: [],
+      citations: [],
     };
     setMessages((prev) => [...prev, userMessage, assistantMessage]);
     setInput("");
@@ -331,6 +356,9 @@ function AssistantBubble({ message }: { message: ChatMessageView }) {
   return (
     <div className="flex justify-start" data-testid="assistant-message">
       <div className="max-w-[80%] space-y-2">
+        {message.plan && message.plan.workers.length > 0 ? (
+          <PlanIndicator plan={message.plan} />
+        ) : null}
         {message.toolSteps.map((step) => (
           <ToolStepIndicator key={step.id} step={step} />
         ))}
@@ -338,6 +366,9 @@ function AssistantBubble({ message }: { message: ChatMessageView }) {
           <div className="whitespace-pre-wrap rounded-lg bg-gray-100 px-4 py-2 text-gray-900">
             {message.content}
           </div>
+        ) : null}
+        {message.citations.length > 0 ? (
+          <CitationList citations={message.citations} />
         ) : null}
         {message.status === "streaming" && !message.content ? (
           <div
@@ -383,4 +414,91 @@ function ToolStepIndicator({ step }: { step: ToolStep }) {
       )}
     </div>
   );
+}
+
+// The planner/worker "visible thinking" strip (design §3): the classified intent, which workers
+// ran, and — if the planner produced them — the human-readable steps. Reuses the amber tool-step
+// visual language. Only rendered when at least one worker ran (see AssistantBubble).
+function PlanIndicator({ plan }: { plan: TurnPlan }) {
+  return (
+    <div
+      className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm text-amber-800"
+      data-testid="plan-step"
+    >
+      <span>
+        🧭 Planning: <code className="font-mono">{plan.intent}</code> → running{" "}
+        {plan.workers.join(", ")}
+      </span>
+      {plan.steps.length > 0 ? (
+        <ul className="mt-1 list-disc pl-5 text-xs">
+          {plan.steps.map((step, i) => (
+            <li key={i}>{step}</li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+// Compact grounding-source list rendered under a finished answer (design §3 "cite sources").
+// Every field is optional, so each entry degrades: a linked title when a url+title exist, else a
+// plain title/snippet/source_id — whatever provenance the worker supplied.
+function CitationList({ citations }: { citations: SourceCitation[] }) {
+  return (
+    <div
+      className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600"
+      data-testid="citations"
+    >
+      <p className="mb-1 font-medium text-gray-500">Sources</p>
+      <ol className="list-decimal space-y-0.5 pl-5">
+        {citations.map((citation, i) => (
+          <li
+            key={`${citation.source_id ?? citation.url ?? "src"}-${i}`}
+            data-testid="citation"
+          >
+            <CitationEntry citation={citation} />
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+// Only http/https URLs are safe to render as a clickable anchor. Citation urls
+// originate from untrusted third-party content (search-result / crawled-page
+// urls the web-search worker forwards verbatim), so a `javascript:`/`data:`
+// scheme would become a DOM-XSS sink — React does not sanitize `href`. Anything
+// that isn't a parseable http(s) URL degrades to plain text below.
+function safeHttpUrl(url: string | null): string | null {
+  if (!url) {
+    return null;
+  }
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return url;
+    }
+  } catch {
+    // Not an absolute/parseable URL — treat as non-link.
+  }
+  return null;
+}
+
+function CitationEntry({ citation }: { citation: SourceCitation }) {
+  const label =
+    citation.title || citation.snippet || citation.url || citation.source_id;
+  const href = safeHttpUrl(citation.url);
+  if (href) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue-600 underline hover:text-blue-800"
+      >
+        {label || href}
+      </a>
+    );
+  }
+  return <span>{label || "Untitled source"}</span>;
 }

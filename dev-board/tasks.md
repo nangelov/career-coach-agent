@@ -104,15 +104,15 @@ We are using Github free tier.
 
 **Exit:** a query routes planner → ≥1 worker → responder, streams, and cites sources.
 
-- [ ] **(B)** `agents/state.py` — typed shared Pydantic state (ids, history slice, planner decisions, worker results, citations, safety verdicts).
-- [ ] **(B)** `agents/graph.py` — LangGraph wiring (recall → planner → workers → responder → guardrails → memory-writer).
-- [ ] **(B)** `agents/planner.py` — intent classify, decompose, route to workers, set iteration/token budget.
-- [ ] **(B)** `agents/rag_agent.py` — embed query, retrieve from pgvector, return grounded snippets + citations.
-- [ ] **(B)** `agents/web_searcher.py` — search + crawler; crawled content treated as **untrusted data**.
-- [ ] **(B)** `agents/responder.py` — synthesize, cite, format, stream.
-- [ ] **(B)** Minimal input guardrails wired here (completed in P10).
-- [ ] **(F)** Stream planner/worker steps to the UI.
-- [ ] **(T)** A query routes through planner → ≥1 worker → responder; streams; shows citations.
+- [x] **(B)** `agents/state.py` — typed shared Pydantic state (ids, history slice, planner decisions, worker results, citations, safety verdicts).
+- [x] **(B)** `agents/graph.py` — LangGraph wiring (recall → planner → workers → responder → guardrails → memory-writer).
+- [x] **(B)** `agents/planner.py` — intent classify, decompose, route to workers, set iteration/token budget.
+- [x] **(B)** `agents/rag_agent.py` — embed query, retrieve from pgvector, return grounded snippets + citations.
+- [x] **(B)** `agents/web_searcher.py` — search + crawler; crawled content treated as **untrusted data**.
+- [x] **(B)** `agents/responder.py` — synthesize, cite, format, stream.
+- [x] **(B)** Minimal input guardrails wired here (completed in P10).
+- [x] **(F)** Stream planner/worker steps to the UI.
+- [x] **(T)** A query routes through planner → ≥1 worker → responder; streams; shows citations.
 
 ---
 

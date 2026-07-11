@@ -54,7 +54,6 @@ from app.services.feedback import FeedbackReader
 from app.services.guest_upgrade import GuestUpgradeService
 from app.services.rate_limiting import RateLimitService
 from app.services.user_store import UserStore
-from app.tools.registry import build_default_registry
 
 
 def _shared_redis_client(app: FastAPI) -> Redis:
@@ -116,10 +115,14 @@ def build_chat_service(app: FastAPI) -> ChatService:
     """Construct the default :class:`ChatService` from application settings.
 
     Builds (and stashes on ``app.state``) the shared Redis pool provider, then wires the
-    LLM router, tool registry, session memory, cancel registry, and durable conversation
-    store over it. Called once per process (the result is cached by
+    multi-agent graph runner (:class:`~app.agents.graph.GraphTurnStreamer`) — the LLM router
+    driving both the planner and the responder, the in-process embedder and shared Postgres
+    pool backing the RAG worker — plus the session memory, cancel registry, and durable
+    conversation store. Called once per process (cached by
     :func:`app.api.chat.get_chat_service`).
     """
+    from app.agents.graph import GraphTurnStreamer
+    from app.llm.embeddings import SentenceTransformerEmbeddingClient
     from app.llm.router import LLMRouter, RedisLike
 
     redis_client = _shared_redis_client(app)
@@ -130,7 +133,6 @@ def build_chat_service(app: FastAPI) -> ChatService:
     # to structurally satisfy those strict Protocols under mypy, so cast at this single
     # composition-root boundary.
     llm_router = LLMRouter.from_settings(settings, redis_client=cast("RedisLike", redis_client))
-    registry = build_default_registry(settings)
     memory = RedisSessionMemory.from_settings(cast(SessionRedis, redis_client), settings)
     cancel = RedisCancelRegistry.from_settings(cast(CancelRedis, redis_client), settings)
 
@@ -147,7 +149,19 @@ def build_chat_service(app: FastAPI) -> ChatService:
         if pg_provider is not None
         else None
     )
-    return ChatService(llm_router, registry, memory, cancel, conversations=conversations)
+
+    # The compiled-once multi-agent graph (design §3): the single failover ``LLMRouter`` drives
+    # both the planner (``router=``) and the responder (``responder_router=``); the in-process
+    # sentence-transformers embedder (§6 item 3, lazy-loaded on first use) and the shared
+    # Postgres pool back the RAG worker's pgvector retrieval. The web-search worker lazily builds
+    # its settings-configured tool and fails soft when unconfigured, so no wiring is needed here.
+    runner = GraphTurnStreamer(
+        responder_router=llm_router,
+        router=llm_router,
+        embedder=SentenceTransformerEmbeddingClient(),
+        db=pg_provider,
+    )
+    return ChatService(runner, memory, cancel, conversations=conversations)
 
 
 def build_guest_auth_service(app: FastAPI) -> GuestAuthService:

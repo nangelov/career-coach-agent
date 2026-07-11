@@ -255,9 +255,7 @@ async def _login_user(client: httpx.AsyncClient, *, code: str, state: str) -> di
     """Drive a full mocked-SSO login and return the token fragment (real user session JWT)."""
     login = await client.get("/api/auth/login/google")
     assert login.status_code == 302
-    callback = await client.get(
-        "/api/auth/callback/google", params={"code": code, "state": state}
-    )
+    callback = await client.get("/api/auth/callback/google", params={"code": code, "state": state})
     assert callback.status_code == 302
     return _fragment(callback.headers["location"])
 
@@ -393,9 +391,7 @@ async def test_upgrade_preserves_session_and_begins_persisting(
 # --------------------------------------------------------------------------- 4. cross-user
 
 
-async def test_cross_user_access_is_denied(
-    client: httpx.AsyncClient, harness: _Harness
-) -> None:
+async def test_cross_user_access_is_denied(client: httpx.AsyncClient, harness: _Harness) -> None:
     """User A cannot chat into / cancel user B's session; A's own session still works (P3-04)."""
     a = await _login_user(client, code="code-A", state="state-1")
     b = await _login_user(client, code="code-B", state="state-2")
@@ -413,9 +409,7 @@ async def test_cross_user_access_is_denied(
     assert forbidden_chat.status_code == 403
 
     # A tries to cancel B's in-flight stream → 403 (closes the P1 "anyone can cancel" gap).
-    forbidden_cancel = await client.post(
-        f"/api/chat/{b['session_id']}/cancel", headers=a_headers
-    )
+    forbidden_cancel = await client.post(f"/api/chat/{b['session_id']}/cancel", headers=a_headers)
     assert forbidden_cancel.status_code == 403
 
     # A's own session is unaffected.

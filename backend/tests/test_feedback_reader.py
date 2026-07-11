@@ -30,9 +30,7 @@ async def test_empty_reader_returns_empty_list() -> None:
 
 
 async def test_orders_newest_first() -> None:
-    reader = InMemoryFeedbackReader(
-        [_entry("old", minutes_ago=30), _entry("new", minutes_ago=1)]
-    )
+    reader = InMemoryFeedbackReader([_entry("old", minutes_ago=30), _entry("new", minutes_ago=1)])
     result = await reader.list_feedback(limit=10)
     assert [e.id for e in result] == ["new", "old"]
 

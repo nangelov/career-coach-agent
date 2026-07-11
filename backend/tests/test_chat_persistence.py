@@ -1,8 +1,8 @@
 """Chat-service durable-persistence behaviour (P2-07).
 
 Drives :class:`~app.services.chat.ChatService` with a **fake**
-:class:`~app.services.conversation_store.ConversationStore` (plus the fake router/registry
-from the P1 suite's style) to assert the Postgres-persistence wiring *without* a live DB:
+:class:`~app.services.conversation_store.ConversationStore` (plus the scripted
+``GraphTurnRunner`` fake) to assert the Postgres-persistence wiring *without* a live DB:
 
 * a logged-in turn (``user_id`` set) is persisted (user + assistant, carrying ``message_id``),
 * a **guest** turn (no ``user_id``) persists **nothing** — an explicit assertion (§4),
@@ -19,7 +19,6 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from app.llm.router import LLMRouter
 from app.llm.types import ChatMessage, StreamChunk
 from app.schemas.chat import (
     CancelledEvent,
@@ -27,11 +26,10 @@ from app.schemas.chat import (
     DoneEvent,
 )
 from app.services.cancellation import CancelRegistry
-from app.services.chat import ChatService
+from app.services.chat import ChatService, GraphTurnRunner
 from app.services.conversation_store import ConversationStore
 from app.services.session_memory import InMemorySessionMemory, SessionMemory
-from app.tools.base import ToolRegistry
-from tests.fakes import FakeRegistry, FakeRouter
+from tests.fakes import FakeGraphRunner
 
 # --------------------------------------------------------------------------- #
 # Fakes
@@ -99,17 +97,16 @@ class _TrippingCancel(CancelRegistry):
 
 
 def _service(
-    router: FakeRouter,
+    runner: FakeGraphRunner,
     *,
     store: ConversationStore | None = None,
     memory: SessionMemory | None = None,
     cancel: CancelRegistry | None = None,
     **kwargs: Any,
 ) -> ChatService:
-    """Build a :class:`ChatService` from the fakes (casts confine the type seams here)."""
+    """Build a :class:`ChatService` from the fakes (cast confines the type seam here)."""
     return ChatService(
-        cast(LLMRouter, router),
-        cast(ToolRegistry, FakeRegistry()),
+        cast(GraphTurnRunner, runner),
         memory if memory is not None else InMemorySessionMemory(),
         cancel,
         conversations=store,
@@ -127,7 +124,7 @@ async def _collect(
 # Logged-in turn persists; guest turn does not
 # --------------------------------------------------------------------------- #
 async def test_logged_in_turn_persists_user_and_assistant() -> None:
-    router = FakeRouter([[StreamChunk(content="Hello!", finish_reason="stop")]])
+    router = FakeGraphRunner([[StreamChunk(content="Hello!", finish_reason="stop")]])
     store = FakeConversationStore()
     service = _service(router, store=store)
 
@@ -147,7 +144,7 @@ async def test_logged_in_turn_persists_user_and_assistant() -> None:
 
 
 async def test_guest_turn_persists_nothing() -> None:
-    router = FakeRouter([[StreamChunk(content="Hello!", finish_reason="stop")]])
+    router = FakeGraphRunner([[StreamChunk(content="Hello!", finish_reason="stop")]])
     store = FakeConversationStore()
     service = _service(router, store=store)
 
@@ -160,7 +157,7 @@ async def test_guest_turn_persists_nothing() -> None:
 
 async def test_no_store_wired_is_a_noop() -> None:
     # A logged-in turn with no ConversationStore behaves exactly like P1 (no crash).
-    router = FakeRouter([[StreamChunk(content="Hello!", finish_reason="stop")]])
+    router = FakeGraphRunner([[StreamChunk(content="Hello!", finish_reason="stop")]])
     service = _service(router)
 
     events = await _collect(service, "s1", "hi", user_id="user-1")
@@ -172,7 +169,7 @@ async def test_no_store_wired_is_a_noop() -> None:
 # Cancelled turn persists its partial answer
 # --------------------------------------------------------------------------- #
 async def test_cancelled_turn_persists_partial_answer() -> None:
-    router = FakeRouter([[StreamChunk(content=f"tok{i}") for i in range(20)]])
+    router = FakeGraphRunner([[StreamChunk(content=f"tok{i}") for i in range(20)]])
     store = FakeConversationStore()
     service = _service(
         router, store=store, cancel=_TrippingCancel(trip_after=2), cancel_check_interval=1
@@ -198,21 +195,23 @@ async def test_restart_rehydrates_history_from_store() -> None:
     store = FakeConversationStore()
 
     # Turn 1 on the "first process": persisted to the durable store.
-    router1 = FakeRouter([[StreamChunk(content="I am well", finish_reason="stop")]])
+    router1 = FakeGraphRunner([[StreamChunk(content="I am well", finish_reason="stop")]])
     service1 = _service(router1, store=store)
     _ = await _collect(service1, "s1", "how are you", user_id="user-1")
 
     # "Restart": a brand-new service with an EMPTY session memory (Redis lost the key),
     # same durable store. Turn 2 must see turn 1's context, loaded from the store.
-    router2 = FakeRouter([[StreamChunk(content="Great, thanks", finish_reason="stop")]])
+    router2 = FakeGraphRunner([[StreamChunk(content="Great, thanks", finish_reason="stop")]])
     service2 = _service(router2, store=store)
     _ = await _collect(service2, "s1", "and now", user_id="user-1")
 
-    # The (only) model call on the restarted service includes the rehydrated turn-1 pair.
-    contents = [m.content for m in router2.calls[0]]
-    assert "how are you" in contents
-    assert "I am well" in contents
-    assert "and now" in contents
+    # The (only) turn on the restarted service carries the rehydrated turn-1 pair as its
+    # graph-state history, with the new message as the current turn.
+    turn2 = router2.plan_states[0]
+    history = [m.content for m in turn2.history]
+    assert "how are you" in history
+    assert "I am well" in history
+    assert turn2.user_message == "and now"
 
 
 async def test_restart_preserves_context_across_multiple_turns() -> None:
@@ -228,13 +227,13 @@ async def test_restart_preserves_context_across_multiple_turns() -> None:
     store = FakeConversationStore()
 
     # Turn 1 on the "first process": persisted to the durable store.
-    router1 = FakeRouter([[StreamChunk(content="A1", finish_reason="stop")]])
+    router1 = FakeGraphRunner([[StreamChunk(content="A1", finish_reason="stop")]])
     _ = await _collect(_service(router1, store=store), "s1", "Q1", user_id="user-1")
 
     # "Restart": one fresh service with an EMPTY session memory (Redis lost the key) drives
     # both post-restart turns, so its Redis working memory persists between turn 2 and turn 3.
     memory = InMemorySessionMemory()
-    router2 = FakeRouter(
+    router2 = FakeGraphRunner(
         [
             [StreamChunk(content="A2", finish_reason="stop")],
             [StreamChunk(content="A3", finish_reason="stop")],
@@ -244,14 +243,15 @@ async def test_restart_preserves_context_across_multiple_turns() -> None:
     _ = await _collect(service, "s1", "Q2", user_id="user-1")  # turn 2 (rehydrates + seeds)
     _ = await _collect(service, "s1", "Q3", user_id="user-1")  # turn 3 (reads seeded Redis)
 
-    # Turn 3's model call must still include turn 1's rehydrated pair (would be missing if
+    # Turn 3's graph state must still include turn 1's rehydrated pair (would be missing if
     # turn 2 had not seeded Redis with the rehydrated history — the C1 defect).
-    turn3_contents = [m.content for m in router2.calls[1]]
-    assert "Q1" in turn3_contents
-    assert "A1" in turn3_contents
-    assert "Q2" in turn3_contents
-    assert "A2" in turn3_contents
-    assert "Q3" in turn3_contents
+    turn3 = router2.plan_states[1]
+    turn3_history = [m.content for m in turn3.history]
+    assert "Q1" in turn3_history
+    assert "A1" in turn3_history
+    assert "Q2" in turn3_history
+    assert "A2" in turn3_history
+    assert turn3.user_message == "Q3"
 
 
 async def test_no_rehydration_for_guest() -> None:
@@ -259,19 +259,19 @@ async def test_no_rehydration_for_guest() -> None:
     store = FakeConversationStore()
     store.seed("user-1", "s1", [ChatMessage(role="user", content="secret")])
 
-    router = FakeRouter([[StreamChunk(content="ok", finish_reason="stop")]])
+    router = FakeGraphRunner([[StreamChunk(content="ok", finish_reason="stop")]])
     service = _service(router, store=store)
     _ = await _collect(service, "s1", "hi", user_id=None)
 
-    contents = [m.content for m in router.calls[0]]
-    assert "secret" not in contents
+    history = [m.content for m in router.plan_states[0].history]
+    assert "secret" not in history
 
 
 # --------------------------------------------------------------------------- #
 # Persistence failures never break the stream
 # --------------------------------------------------------------------------- #
 async def test_persist_failure_does_not_break_stream() -> None:
-    router = FakeRouter([[StreamChunk(content="Hello!", finish_reason="stop")]])
+    router = FakeGraphRunner([[StreamChunk(content="Hello!", finish_reason="stop")]])
     service = _service(router, store=RaisingConversationStore())
 
     events = await _collect(service, "s1", "hi", user_id="user-1")
@@ -281,12 +281,13 @@ async def test_persist_failure_does_not_break_stream() -> None:
 
 
 async def test_rehydration_failure_falls_back_to_empty() -> None:
-    router = FakeRouter([[StreamChunk(content="Hello!", finish_reason="stop")]])
+    router = FakeGraphRunner([[StreamChunk(content="Hello!", finish_reason="stop")]])
     service = _service(router, store=RaisingConversationStore())
 
     events = await _collect(service, "s1", "hi", user_id="user-1")
 
-    # A load_history failure is swallowed: the turn proceeds with empty context.
+    # A load_history failure is swallowed: the turn proceeds with an empty history context.
     assert isinstance(events[-1], DoneEvent)
-    contents = [m.content for m in router.calls[0]]
-    assert "hi" in contents
+    turn = router.plan_states[0]
+    assert turn.history == []
+    assert turn.user_message == "hi"

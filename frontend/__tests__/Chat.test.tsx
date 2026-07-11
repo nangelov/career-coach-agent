@@ -45,7 +45,12 @@ describe("Chat", () => {
       onEvent({ event: "start", message_id: "m1" });
       onEvent({ event: "token", content: "Hello" });
       onEvent({ event: "token", content: " world" });
-      onEvent({ event: "done", message_id: "m1", finish_reason: "stop" });
+      onEvent({
+        event: "done",
+        message_id: "m1",
+        finish_reason: "stop",
+        citations: [],
+      });
     });
 
     render(<Chat />);
@@ -53,11 +58,153 @@ describe("Chat", () => {
 
     expect(await screen.findByText("Hello world")).toBeInTheDocument();
     expect(screen.getByTestId("user-message")).toHaveTextContent("hi");
+    // A no-worker / no-citation turn (e.g. smalltalk) shows no plan or citation UI.
+    expect(screen.queryByTestId("plan-step")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("citations")).not.toBeInTheDocument();
     // The request carried the client-generated session id + message.
     const [payload] = mockStreamChat.mock.calls[0];
     expect(payload.message).toBe("hi");
     expect(payload.session_id).toEqual(expect.any(String));
     expect(payload.session_id.length).toBeGreaterThan(0);
+  });
+
+  it("renders the planner/worker step indicator while a turn is in flight", async () => {
+    mockStreamChat.mockImplementation(async (_payload, onEvent) => {
+      onEvent({ event: "start", message_id: "m1" });
+      onEvent({
+        event: "plan",
+        intent: "job_search",
+        steps: ["Search for matching roles"],
+        workers: ["job_search"],
+      });
+      onEvent({ event: "token", content: "Here are some roles." });
+      onEvent({
+        event: "done",
+        message_id: "m1",
+        finish_reason: "stop",
+        citations: [],
+      });
+    });
+
+    render(<Chat />);
+    await send("find me a job");
+
+    const plan = await screen.findByTestId("plan-step");
+    expect(plan).toHaveTextContent(/job_search/);
+    expect(plan).toHaveTextContent(/Search for matching roles/);
+    expect(await screen.findByText("Here are some roles.")).toBeInTheDocument();
+  });
+
+  it("does not render a plan indicator for a turn that ran no workers", async () => {
+    mockStreamChat.mockImplementation(async (_payload, onEvent) => {
+      onEvent({ event: "start", message_id: "m1" });
+      onEvent({ event: "plan", intent: "chat", steps: [], workers: [] });
+      onEvent({ event: "token", content: "Hi there!" });
+      onEvent({
+        event: "done",
+        message_id: "m1",
+        finish_reason: "stop",
+        citations: [],
+      });
+    });
+
+    render(<Chat />);
+    await send("hello");
+
+    expect(await screen.findByText("Hi there!")).toBeInTheDocument();
+    expect(screen.queryByTestId("plan-step")).not.toBeInTheDocument();
+  });
+
+  it("renders a citation list under the finished answer", async () => {
+    mockStreamChat.mockImplementation(async (_payload, onEvent) => {
+      onEvent({ event: "start", message_id: "m1" });
+      onEvent({ event: "token", content: "Based on the sources…" });
+      onEvent({
+        event: "done",
+        message_id: "m1",
+        finish_reason: "stop",
+        citations: [
+          {
+            source_id: "s1",
+            title: "Senior Engineer at Acme",
+            url: "https://jobs.example/1",
+            snippet: null,
+            worker: "job_search",
+          },
+          {
+            source_id: "s2",
+            title: null,
+            url: null,
+            snippet: "A relevant knowledge-base excerpt.",
+            worker: "rag",
+          },
+        ],
+      });
+    });
+
+    render(<Chat />);
+    await send("what roles fit me");
+
+    const citations = await screen.findByTestId("citations");
+    // A linked title when a url is present…
+    const link = screen.getByRole("link", { name: /Senior Engineer at Acme/ });
+    expect(link).toHaveAttribute("href", "https://jobs.example/1");
+    // …and a plain snippet fallback when there is no url/title.
+    expect(citations).toHaveTextContent(/A relevant knowledge-base excerpt\./);
+  });
+
+  it("degrades an unsafe-scheme citation url to non-link text", async () => {
+    // A poisoned search result could carry a `javascript:` (or `data:`) url;
+    // React does not sanitize `href`, so it must never become a clickable anchor.
+    mockStreamChat.mockImplementation(async (_payload, onEvent) => {
+      onEvent({ event: "start", message_id: "m1" });
+      onEvent({ event: "token", content: "Answer." });
+      onEvent({
+        event: "done",
+        message_id: "m1",
+        finish_reason: "stop",
+        citations: [
+          {
+            source_id: "evil",
+            title: "Click me",
+            // eslint-disable-next-line no-script-url
+            url: "javascript:alert(document.cookie)",
+            snippet: null,
+            worker: "web_search",
+          },
+        ],
+      });
+    });
+
+    render(<Chat />);
+    await send("find me something");
+
+    const citations = await screen.findByTestId("citations");
+    // The label is still shown as provenance…
+    expect(citations).toHaveTextContent(/Click me/);
+    // …but never as a link (no anchor rendered for the unsafe scheme).
+    expect(
+      screen.queryByRole("link", { name: /Click me/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders no citation list when the answer has no sources", async () => {
+    mockStreamChat.mockImplementation(async (_payload, onEvent) => {
+      onEvent({ event: "start", message_id: "m1" });
+      onEvent({ event: "token", content: "Just chatting." });
+      onEvent({
+        event: "done",
+        message_id: "m1",
+        finish_reason: "stop",
+        citations: [],
+      });
+    });
+
+    render(<Chat />);
+    await send("hi");
+
+    expect(await screen.findByText("Just chatting.")).toBeInTheDocument();
+    expect(screen.queryByTestId("citations")).not.toBeInTheDocument();
   });
 
   it("shows a visible tool-step indicator distinct from the answer text", async () => {
@@ -76,7 +223,12 @@ describe("Chat", () => {
         content: '{"now":"noon"}',
       });
       onEvent({ event: "token", content: "It is noon." });
-      onEvent({ event: "done", message_id: "m1", finish_reason: "stop" });
+      onEvent({
+        event: "done",
+        message_id: "m1",
+        finish_reason: "stop",
+        citations: [],
+      });
     });
 
     render(<Chat />);

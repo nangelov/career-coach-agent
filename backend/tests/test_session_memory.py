@@ -18,7 +18,7 @@ from app.llm.types import ChatMessage, StreamChunk
 from app.repositories.redis import RedisSessionMemory
 from app.schemas.chat import DoneEvent
 from app.services.chat import ChatService
-from tests.fakes import FakeRegistry, FakeRouter
+from tests.fakes import FakeGraphRunner
 
 
 # --------------------------------------------------------------------------- #
@@ -199,13 +199,13 @@ async def test_two_sessions_are_isolated() -> None:
 async def test_chat_service_persists_and_replays_via_redis_memory() -> None:
     fake = FakeListRedis()
     memory = RedisSessionMemory(fake, ttl_seconds=3600, max_messages=100)
-    router = FakeRouter(
+    runner = FakeGraphRunner(
         [
             [StreamChunk(content="one", finish_reason="stop")],
             [StreamChunk(content="two", finish_reason="stop")],
         ]
     )
-    service = ChatService(router, FakeRegistry(), memory)  # type: ignore[arg-type]
+    service = ChatService(runner, memory)
 
     events1 = [e async for e in service.stream_turn("s1", "first")]
     assert any(isinstance(e, DoneEvent) for e in events1)
@@ -213,11 +213,13 @@ async def test_chat_service_persists_and_replays_via_redis_memory() -> None:
     events2 = [e async for e in service.stream_turn("s1", "second")]
     assert any(isinstance(e, DoneEvent) for e in events2)
 
-    # The second model call replays the first turn (loaded back out of Redis).
-    contents = [m.content for m in router.calls[1]]
-    assert "first" in contents
-    assert "one" in contents
-    assert "second" in contents
+    # The second turn's graph state replays the first turn (loaded back out of Redis) as its
+    # history slice, with the new message as the current turn.
+    second = runner.plan_states[1]
+    history = [m.content for m in second.history]
+    assert "first" in history
+    assert "one" in history
+    assert second.user_message == "second"
 
     # And the store holds the full four-message history under the session key.
     stored = await memory.load("s1")

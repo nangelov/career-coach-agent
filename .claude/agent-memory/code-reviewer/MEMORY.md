@@ -9,4 +9,6 @@
 - [Persistence/rehydration task checks](check-persistence-rehydration-tasks.md) — P2-07+ Postgres-persist + Redis-fallback: the rehydration-not-seeded-back bug (needs a 2-turn post-restart test), best-effort posture, load_history bounds
 - [Cross-cutting drift checks](check-cross-cutting-drift.md) — multi-task/audit reviews: app.state key literals, duplicated test fakes, best-effort logging convention, documented deferrals not to re-litigate
 - [Auth/session-JWT task checks](check-auth-session-jwt-tasks.md) — reviewing P3 auth tasks: joserfc token-codec security (alg-pin, exp-essential, typed claims), guest-creation abuse gap, session store layering
+- [LangGraph state/graph task checks](check-langgraph-state-tasks.md) — reviewing P4 agents/ typed-state + reducer tasks: verify reducer honored under real StateGraph fan-out (PEP563 gotcha), StrEnum-key safety, JSON round-trip
 - [Backend diff-vs-report reconcile](check-backend-diff-vs-report.md) — reconcile engineer.md "Files changed" vs actual git diff: unmentioned uv.lock churn, zero-diff "restores", overstated pre-existing structure
+- [Phase-exit verification task checks](check-phase-exit-verification-tasks.md) — reviewing P*-NN-verify tasks: discriminating streaming/citation/guardrail-spy assertions + confirm bundled "mechanical" reformats are truly zero-logic

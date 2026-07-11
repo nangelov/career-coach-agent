@@ -49,3 +49,13 @@ The orchestrator's board. One row per task. See `.claude/skills/agent-handoff/SK
 | P3-05-admin-feedback-auth | Replace v1 get-feedback token auth with real admin auth | P3 | DONE | 1 | APPROVED | APPROVED |
 | P3-06-login-ui | Login UI (Google/LinkedIn/guest) + bearer session handling | P3 | DONE | 1 | APPROVED | APPROVED |
 | P3-07-verify | P3 exit: guest/SSO/upgrade/cross-user-denied | P3 | DONE | 1 | APPROVED | APPROVED |
+| P4-01-agent-state | agents/state.py typed shared LangGraph state | P4 | DONE | 1 | APPROVED | APPROVED |
+| P4-02-agent-graph | agents/graph.py LangGraph wiring | P4 | DONE | 1 | APPROVED | APPROVED |
+| P4-03-planner | agents/planner.py intent classify/decompose/route/budget | P4 | DONE | 2 | APPROVED | APPROVED |
+| P4-04-rag-agent | agents/rag_agent.py embed/retrieve/cite | P4 | DONE | 1 | APPROVED | APPROVED |
+| P4-05-web-searcher | agents/web_searcher.py search + bounded crawl | P4 | DONE | 1 | APPROVED | APPROVED |
+| P4-06-responder | agents/responder.py synthesize/cite/format/stream | P4 | DONE | 1 | APPROVED | APPROVED |
+| P4-07-chat-graph-integration | Wire multi-agent graph into POST /api/chat | P4 | DONE | 1 | APPROVED | APPROVED |
+| P4-08-input-guardrails-minimal | Minimal input guardrails wired + routed | P4 | DONE | 1 | APPROVED | APPROVED |
+| P4-09-frontend-plan-citations | Stream planner/worker steps + citations to UI | P4 | DONE | 2 | APPROVED | APPROVED |
+| P4-10-verify | P4 exit: routing/streaming/citations/guardrail/regression | P4 | DONE | 1 | APPROVED | APPROVED |

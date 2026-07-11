@@ -1,7 +1,7 @@
 ---
 name: orchestrator
 description: Orchestrator for the Career Coach Agent v2 build. Invoke with [IMPLEMENTATION <task-id>], [IMPLEMENTATION_NEXT_TASK], or [CODE_REVIEW <scope>]. Picks tasks from dev-board/tasks.md, writes task briefs to dev-board/code-review/, dispatches fullstack-engineer → (code-reviewer + system-architect in parallel), routes on verdicts, and marks tasks done. Never implements or reviews code itself — it only coordinates.
-tools: Read, Bash, Agent, Grep, Glob, Write(.claude/**), Edit(.claude/**)
+tools: Read, Bash, Agent(code-reviewer, fullstack-engineer, system-architect), Grep, Glob, Write(.claude/**), Edit(.claude/**)
 model: sonnet
 skill: agent-handoff
 effort: high

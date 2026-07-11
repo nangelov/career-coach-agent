@@ -25,6 +25,19 @@ export interface StartEvent {
   message_id: string;
 }
 
+/**
+ * The planner's routing decision for the turn (backend `PlanEvent`), emitted once right after
+ * `start` and before the first `token`. Lets the UI show the classified intent, the
+ * human-readable plan steps, and which worker nodes ran (design §3 "visible thinking / worker
+ * steps"). `steps`/`workers` may be empty (e.g. smalltalk that ran no workers).
+ */
+export interface PlanEvent {
+  event: "plan";
+  intent: string;
+  steps: string[];
+  workers: string[];
+}
+
 export interface TokenEvent {
   event: "token";
   content: string;
@@ -44,10 +57,24 @@ export interface ToolResultEvent {
   content: string;
 }
 
+/**
+ * One grounding source backing the answer (backend `SourceCitation`), carried on `done`.
+ * Every field is optional/nullable — a worker emits whatever provenance it has (a KB chunk id,
+ * a crawled URL, a job link) — so the UI degrades gracefully per field (design §3 "cite sources").
+ */
+export interface SourceCitation {
+  source_id: string | null;
+  title: string | null;
+  url: string | null;
+  snippet: string | null;
+  worker: string | null;
+}
+
 export interface DoneEvent {
   event: "done";
   message_id: string;
   finish_reason: string | null;
+  citations: SourceCitation[];
 }
 
 export interface CancelledEvent {
@@ -84,6 +111,7 @@ export interface RateLimitedEvent {
 /** Every event the chat stream can yield; discriminated by `event`. */
 export type ChatStreamEvent =
   | StartEvent
+  | PlanEvent
   | TokenEvent
   | ToolCallEvent
   | ToolResultEvent
@@ -165,6 +193,36 @@ function str(value: unknown): string {
   return value == null ? "" : String(value);
 }
 
+/** Coerce to a `string | null` field: preserve null/undefined (a source may omit any field). */
+function nullableStr(value: unknown): string | null {
+  return value == null ? null : String(value);
+}
+
+/** Coerce an arbitrary value to a `string[]`, tolerating a missing/non-array field. */
+function strArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(str) : [];
+}
+
+/**
+ * Parse the `done` frame's `citations` into `SourceCitation[]`, defensively: a missing,
+ * non-array, or malformed entry degrades to `[]` / null fields rather than throwing.
+ */
+function parseCitations(value: unknown): SourceCitation[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((raw) => {
+    const item = (raw ?? {}) as Record<string, unknown>;
+    return {
+      source_id: nullableStr(item.source_id),
+      title: nullableStr(item.title),
+      url: nullableStr(item.url),
+      snippet: nullableStr(item.snippet),
+      worker: nullableStr(item.worker),
+    };
+  });
+}
+
 function toChatEvent(
   name: string,
   data: Record<string, unknown>,
@@ -172,6 +230,13 @@ function toChatEvent(
   switch (name) {
     case "start":
       return { event: "start", message_id: str(data.message_id) };
+    case "plan":
+      return {
+        event: "plan",
+        intent: str(data.intent),
+        steps: strArray(data.steps),
+        workers: strArray(data.workers),
+      };
     case "token":
       return { event: "token", content: str(data.content) };
     case "tool_call":
@@ -194,6 +259,7 @@ function toChatEvent(
         message_id: str(data.message_id),
         finish_reason:
           data.finish_reason == null ? null : String(data.finish_reason),
+        citations: parseCitations(data.citations),
       };
     case "cancelled":
       return { event: "cancelled", message_id: str(data.message_id) };
