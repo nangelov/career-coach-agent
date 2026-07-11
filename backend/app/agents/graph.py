@@ -67,7 +67,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph._node import StateNode
@@ -100,8 +100,12 @@ from app.llm.types import StreamChunk
 #: shared :class:`AgentState` via each field's reducer (or last-write-wins).
 NodeUpdate = dict[str, Any]
 #: A LangGraph node accepting our state — the type of the ``planner`` test seam and the
-#: shape every node ``def`` in this module satisfies.
-PlannerNode = StateNode[AgentState, Any]
+#: shape every node ``def`` in this module satisfies. The explicit ``TypeAlias`` marker is
+#: load-bearing: ``langgraph`` is deliberately absent from CI's curated venv, so
+#: ``StateNode`` resolves to ``Any`` there (``ignore_missing_imports``). Without the marker,
+#: an ``Any``-inferred module variable is not recognized as a type alias and mypy's
+#: ``valid-type`` check rejects using ``PlannerNode`` in annotations.
+PlannerNode: TypeAlias = StateNode[AgentState, Any]
 
 # --------------------------------------------------------------------------- #
 # Node names (single source of truth for edges + routing).                    #

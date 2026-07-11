@@ -12,3 +12,4 @@
 - [LangGraph state/graph task checks](check-langgraph-state-tasks.md) — reviewing P4 agents/ typed-state + reducer tasks: verify reducer honored under real StateGraph fan-out (PEP563 gotcha), StrEnum-key safety, JSON round-trip
 - [Backend diff-vs-report reconcile](check-backend-diff-vs-report.md) — reconcile engineer.md "Files changed" vs actual git diff: unmentioned uv.lock churn, zero-diff "restores", overstated pre-existing structure
 - [Phase-exit verification task checks](check-phase-exit-verification-tasks.md) — reviewing P*-NN-verify tasks: discriminating streaming/citation/guardrail-spy assertions + confirm bundled "mechanical" reformats are truly zero-logic
+- [Curated CI venv mypy](project-curated-ci-venv-mypy.md) — CI mypy runs against a narrow curated venv, not full dev venv; reproduce there + verify each fix load-bearing (find_spec present/absent)

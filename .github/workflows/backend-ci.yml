@@ -96,13 +96,17 @@ jobs:
       # `alembic` is added here (light — pure-Python, pulls only SQLAlchemy/Mako,
       # already present) so the migration step below can run `alembic upgrade head`
       # in this curated venv via --no-sync, without triggering a full project sync
-      # that would drag in the heavy ML stack. Keep this list in sync with the
-      # backend/Makefile `install` target (they must produce the same venv).
+      # that would drag in the heavy ML stack. `joserfc` is the light, pure-Python JWT
+      # library app/security/tokens.py signs/verifies session tokens with (a real
+      # always-used runtime dep, same "light" category as sqlalchemy/asyncpg/alembic —
+      # not a heavy/optional ML lib); it must be curated in so mypy sees its real return
+      # types and `warn_return_any` doesn't flag `jwt.encode(...) -> Any`. Keep this list
+      # in sync with the backend/Makefile `install` target (they must produce the same venv).
       - name: Install dependencies
         run: |
           uv sync --only-group dev
           uv pip install fastapi pydantic pydantic-settings "celery[redis]" openai \
-            sqlalchemy asyncpg aiosqlite pgvector alembic
+            sqlalchemy asyncpg aiosqlite pgvector alembic joserfc
 
       # --no-sync: run the tool in the curated venv above WITHOUT uv re-resolving
       # and installing the full project dependency tree (which would drag in the

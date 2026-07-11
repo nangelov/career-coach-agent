@@ -59,3 +59,4 @@ The orchestrator's board. One row per task. See `.claude/skills/agent-handoff/SK
 | P4-08-input-guardrails-minimal | Minimal input guardrails wired + routed | P4 | DONE | 1 | APPROVED | APPROVED |
 | P4-09-frontend-plan-citations | Stream planner/worker steps + citations to UI | P4 | DONE | 2 | APPROVED | APPROVED |
 | P4-10-verify | P4 exit: routing/streaming/citations/guardrail/regression | P4 | DONE | 1 | APPROVED | APPROVED |
+| FIX-02-mypy-ci-curated-deps | Fix mypy failing in CI's curated venv (joserfc + PlannerNode alias) | cross-cutting | DONE | 1 | APPROVED | APPROVED |
