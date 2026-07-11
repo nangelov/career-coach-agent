@@ -25,20 +25,91 @@ from __future__ import annotations
 from typing import cast
 
 from fastapi import FastAPI
+from redis.asyncio import Redis
 
 from app.app_state import AppStateKeys
 from app.config import settings
 from app.repositories.conversation_store import PostgresConversationStore
+from app.repositories.feedback_store import PostgresFeedbackReader
 from app.repositories.postgres import PostgresConnectionProvider
 from app.repositories.redis import (
     CancelRedis,
+    LimiterRedis,
     RedisCancelRegistry,
     RedisConnectionProvider,
+    RedisOAuthStateStore,
+    RedisRateLimiter,
     RedisSessionMemory,
+    RedisSessionStore,
+    RedisUpgradeTicketStore,
     SessionRedis,
+    StoreRedis,
 )
+from app.repositories.user_store import PostgresUserStore
+from app.security.oidc import AuthlibOIDCClient
+from app.security.tokens import SessionTokenCodec
+from app.services.auth import GuestAuthService, SessionAuthenticator, SsoAuthService
 from app.services.chat import ChatService
+from app.services.feedback import FeedbackReader
+from app.services.guest_upgrade import GuestUpgradeService
+from app.services.rate_limiting import RateLimitService
+from app.services.user_store import UserStore
 from app.tools.registry import build_default_registry
+
+
+def _shared_redis_client(app: FastAPI) -> Redis:
+    """Return the single shared Redis client, building the pool provider on first use.
+
+    The :class:`~app.repositories.redis.RedisConnectionProvider` is stashed on ``app.state``
+    and **reused** across every composition entry point (chat, auth, …) so the whole process
+    shares one bounded pool (§4) — the second builder to run must not create a second pool.
+    The lifespan (``app.main``) closes whatever provider is present on shutdown.
+    """
+    provider: RedisConnectionProvider | None = getattr(app.state, AppStateKeys.REDIS_PROVIDER, None)
+    if provider is None:
+        provider = RedisConnectionProvider.from_settings(settings)
+        setattr(app.state, AppStateKeys.REDIS_PROVIDER, provider)
+    return provider.client()
+
+
+def _require_pg_provider(app: FastAPI, feature: str) -> PostgresConnectionProvider:
+    """Return the shared Postgres provider or fail loudly if the lifespan never built it.
+
+    Features that *require* Postgres (SSO user upsert, admin authz, feedback read) cannot
+    degrade to Redis-only, so a missing provider is a wiring bug for that endpoint — raise
+    rather than silently disable it. The lifespan (``app.main``) builds this eagerly at
+    startup, so in a correctly-wired process it is always present.
+    """
+    provider: PostgresConnectionProvider | None = getattr(app.state, AppStateKeys.PG_PROVIDER, None)
+    if provider is None:
+        raise RuntimeError(
+            f"Postgres provider is not initialised — the application lifespan must run "
+            f"before {feature} can be served."
+        )
+    return provider
+
+
+def build_user_store(app: FastAPI) -> UserStore:
+    """Construct the Postgres-backed :class:`UserStore` (SSO upsert + admin authz, §7.1/§7).
+
+    The one ``users``-table adapter, shared by the SSO login flow (upsert on callback) and
+    the ``require_admin`` dependency (``is_admin`` lookup). Requires the shared Postgres pool
+    the lifespan built. Called once per process (cached on ``app.state`` by
+    ``app.security.dependencies.get_user_store``).
+    """
+    provider = _require_pg_provider(app, "user store")
+    return PostgresUserStore.from_provider(provider)
+
+
+def build_feedback_reader(app: FastAPI) -> FeedbackReader:
+    """Construct the Postgres-backed :class:`FeedbackReader` (admin feedback read, P3-05).
+
+    Backs the admin-only ``GET /api/feedback`` endpoint that replaces v1's
+    ``GET /get-feedback?key=<HF_TOKEN>``. Requires the shared Postgres pool. Called once per
+    process (cached on ``app.state`` by ``app.api.feedback.get_feedback_reader``).
+    """
+    provider = _require_pg_provider(app, "feedback read")
+    return PostgresFeedbackReader.from_provider(provider)
 
 
 def build_chat_service(app: FastAPI) -> ChatService:
@@ -51,9 +122,7 @@ def build_chat_service(app: FastAPI) -> ChatService:
     """
     from app.llm.router import LLMRouter, RedisLike
 
-    provider = RedisConnectionProvider.from_settings(settings)
-    setattr(app.state, AppStateKeys.REDIS_PROVIDER, provider)
-    redis_client = provider.client()
+    redis_client = _shared_redis_client(app)
 
     # The one shared client implements the router's ``RedisLike`` seam, the session
     # memory's ``SessionRedis`` seam, and the cancel registry's ``CancelRedis`` seam.
@@ -79,3 +148,98 @@ def build_chat_service(app: FastAPI) -> ChatService:
         else None
     )
     return ChatService(llm_router, registry, memory, cancel, conversations=conversations)
+
+
+def build_guest_auth_service(app: FastAPI) -> GuestAuthService:
+    """Construct the :class:`GuestAuthService` from application settings (§7.1 / §9).
+
+    Wires the Redis-backed session store (over the *same* shared pool the chat service uses)
+    and the backend session-JWT codec. Guests are Redis-only, so no Postgres wiring is
+    needed here. Called once per process (cached by ``app.api.auth.get_guest_auth_service``).
+    """
+    redis_client = _shared_redis_client(app)
+    store = RedisSessionStore.from_settings(cast(StoreRedis, redis_client), settings)
+    tokens = SessionTokenCodec.from_settings(settings)
+    return GuestAuthService.from_settings(store, tokens, settings)
+
+
+def build_sso_auth_service(app: FastAPI) -> SsoAuthService:
+    """Construct the :class:`SsoAuthService` (OIDC login) from application settings (§7.1).
+
+    Wires the Authlib OIDC client, the Redis-backed OAuth-state store and session store
+    (over the *same* shared pool as the rest of the app), the Postgres-backed user store
+    (over the shared Postgres pool the lifespan built), and the session-JWT codec. Unlike a
+    guest, a logged-in user is persisted to Postgres, so this requires the Postgres provider
+    to exist — the lifespan builds it eagerly at startup. Called once per process (cached by
+    ``app.api.auth.get_sso_auth_service``).
+    """
+    redis_client = _shared_redis_client(app)
+    states = RedisOAuthStateStore.from_settings(cast(StoreRedis, redis_client), settings)
+    sessions = RedisSessionStore.from_settings(cast(StoreRedis, redis_client), settings)
+    tokens = SessionTokenCodec.from_settings(settings)
+    oidc = AuthlibOIDCClient.from_settings(settings)
+
+    # Logged-in users must be persisted (the users/sessions FKs require the row): a missing
+    # Postgres provider is a wiring bug for this endpoint (unlike guests, SSO cannot degrade
+    # to Redis-only) — ``build_user_store`` fails loudly. The same ``users`` adapter backs
+    # admin authz, so both go through one builder.
+    users = build_user_store(app)
+    upgrades = build_guest_upgrade_service(app)
+    return SsoAuthService.from_settings(
+        oidc, states, users, sessions, tokens, settings, upgrades=upgrades
+    )
+
+
+def build_guest_upgrade_service(app: FastAPI) -> GuestUpgradeService:
+    """Construct the :class:`GuestUpgradeService` (guest→account carry-over) from settings.
+
+    Wires the Redis-backed upgrade-ticket store, session store and session memory (over the
+    *same* shared pool as the rest of the app) plus — when the lifespan has built the shared
+    Postgres pool — the durable conversation store, so an upgraded guest's prior transcript
+    is backfilled into Postgres. The conversation store is optional: without a Postgres
+    provider the session still carries over (Redis working memory only), the backfill is just
+    skipped. Used both by the ``POST /api/auth/upgrade`` endpoint and by the SSO service's
+    callback. Called once per process (cached by ``app.api.auth.get_guest_upgrade_service``).
+    """
+    redis_client = _shared_redis_client(app)
+    tickets = RedisUpgradeTicketStore.from_settings(cast(StoreRedis, redis_client), settings)
+    sessions = RedisSessionStore.from_settings(cast(StoreRedis, redis_client), settings)
+    memory = RedisSessionMemory.from_settings(cast(SessionRedis, redis_client), settings)
+
+    pg_provider: PostgresConnectionProvider | None = getattr(
+        app.state, AppStateKeys.PG_PROVIDER, None
+    )
+    conversations = (
+        PostgresConversationStore.from_settings(pg_provider, settings)
+        if pg_provider is not None
+        else None
+    )
+    return GuestUpgradeService.from_settings(tickets, sessions, memory, conversations, settings)
+
+
+def build_rate_limit_service(app: FastAPI) -> RateLimitService:
+    """Construct the :class:`RateLimitService` (guest/user rate limits) from settings (§6.8/§7).
+
+    Wires the Redis-backed fixed-window limiter (over the *same* shared pool as the rest of
+    the app) with the guest caps (10 messages + 1 upload per session) and the generous
+    per-user window limits sourced from ``app/config.py``. Redis-only — no Postgres wiring is
+    needed. Called once per process (cached by ``app.api.chat.get_rate_limit_service``).
+    """
+    redis_client = _shared_redis_client(app)
+    limiter = RedisRateLimiter.from_settings(cast(LimiterRedis, redis_client), settings)
+    return RateLimitService.from_settings(limiter, settings)
+
+
+def build_session_authenticator(app: FastAPI) -> SessionAuthenticator:
+    """Construct the :class:`SessionAuthenticator` (verify/logout) from settings (§7.1).
+
+    The reusable auth primitive behind ``require_auth`` and ``POST /api/auth/logout``: the
+    session-JWT codec plus the Redis-backed session store (over the shared pool). Works for
+    both guest and logged-in sessions — any request bearing a valid, non-revoked token
+    resolves to a :class:`~app.schemas.auth.CurrentUser`. Called once per process (cached by
+    ``app.api.auth.get_session_authenticator``).
+    """
+    redis_client = _shared_redis_client(app)
+    sessions = RedisSessionStore.from_settings(cast(StoreRedis, redis_client), settings)
+    tokens = SessionTokenCodec.from_settings(settings)
+    return SessionAuthenticator.from_deps(tokens, sessions)

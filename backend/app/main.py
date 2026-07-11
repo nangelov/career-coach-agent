@@ -26,7 +26,9 @@ from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 
+from .api.auth import router as auth_router
 from .api.chat import router as chat_router
+from .api.feedback import router as feedback_router
 from .app_state import AppStateKeys
 from .config import settings
 from .repositories.postgres import PostgresConnectionProvider
@@ -147,8 +149,10 @@ def create_app() -> FastAPI:
         """Liveness/readiness probe — cheap, no external dependencies."""
         return {"status": "ok", "version": APP_VERSION}
 
-    # Feature routers (auth, profile, pdp, … arrive in later phases).
+    # Feature routers (profile, pdp, … arrive in later phases).
     app.include_router(chat_router)
+    app.include_router(auth_router)
+    app.include_router(feedback_router)
 
     return app
 

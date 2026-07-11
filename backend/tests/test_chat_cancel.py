@@ -34,6 +34,7 @@ from app.schemas.chat import (
     ToolCallEvent,
     ToolResultEvent,
 )
+from app.security.dependencies import require_auth
 from app.services.cancellation import CancelRegistry, InMemoryCancelRegistry
 from app.services.chat import ChatService
 from app.services.session_memory import InMemorySessionMemory
@@ -283,16 +284,45 @@ class _FakeService:
 
 
 async def test_cancel_endpoint_returns_promptly_and_delegates() -> None:
+    from tests.fakes import fake_current_user
+
     fake = _FakeService()
     app.dependency_overrides[get_chat_service] = lambda: fake
+    # Authenticated caller owning session "demo" (own-data-only, P3-04).
+    app.dependency_overrides[require_auth] = lambda: fake_current_user("demo")
     try:
         transport = ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.post("/api/chat/demo/cancel")
     finally:
-        app.dependency_overrides.pop(get_chat_service, None)
+        app.dependency_overrides.clear()
 
     assert response.status_code == 202
     assert response.json()["session"] == "demo"
     # Delegated to the service without opening any stream.
     assert fake.cancelled == ["demo"]
+
+
+async def test_cancel_endpoint_rejects_other_users_session() -> None:
+    from tests.fakes import fake_current_user
+
+    fake = _FakeService()
+    app.dependency_overrides[get_chat_service] = lambda: fake
+    # Caller owns "mine" but tries to cancel someone else's "demo" → 403, no delegation.
+    app.dependency_overrides[require_auth] = lambda: fake_current_user("mine")
+    try:
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post("/api/chat/demo/cancel")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+    assert fake.cancelled == []
+
+
+async def test_cancel_endpoint_requires_auth() -> None:
+    transport = ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/api/chat/demo/cancel")
+    assert response.status_code == 401

@@ -42,3 +42,10 @@ The orchestrator's board. One row per task. See `.claude/skills/agent-handoff/SK
 | FIX-01-backend-test-deps | Fix failing backend test collection (missing deps) | cross-cutting | DONE | 1 | APPROVED | APPROVED |
 | P2-09-integration-verify | Full integration verification against a live container | P2 | DONE | 1 | APPROVED | APPROVED |
 | P2-10-ci-postgres-service | Postgres(+pgvector) service container in backend CI | P2 | DONE | 1 | APPROVED | APPROVED |
+| P3-01-guest-session | POST /api/auth/guest anonymous session | P3 | DONE | 1 | APPROVED | APPROVED |
+| P3-02-sso-oidc | SSO OIDC (Google/LinkedIn) + session JWT + logout | P3 | DONE | 1 | APPROVED | APPROVED |
+| P3-03-guest-upgrade | Guest -> account upgrade preserves session | P3 | DONE | 1 | APPROVED | APPROVED |
+| P3-04-authz-ratelimits | AuthZ own-data-only + Redis rate limits | P3 | DONE | 1 | APPROVED | APPROVED |
+| P3-05-admin-feedback-auth | Replace v1 get-feedback token auth with real admin auth | P3 | DONE | 1 | APPROVED | APPROVED |
+| P3-06-login-ui | Login UI (Google/LinkedIn/guest) + bearer session handling | P3 | DONE | 1 | APPROVED | APPROVED |
+| P3-07-verify | P3 exit: guest/SSO/upgrade/cross-user-denied | P3 | DONE | 1 | APPROVED | APPROVED |

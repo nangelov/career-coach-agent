@@ -179,6 +179,72 @@ class Settings(BaseSettings):
         default="",
         description="LinkedIn OAuth 2.0 client secret — set via env or HF Space Secret.",
     )
+    OAUTH_REDIRECT_BASE_URL: str = Field(
+        default="http://localhost:8000",
+        description=(
+            "Public base URL of *this backend* (scheme + host, no trailing slash). The OIDC "
+            "redirect (callback) URI is derived from it as "
+            "``<base>/api/auth/callback/{provider}`` (§7.1 'redirect URIs locked to the "
+            "Space domain') — never hard-coded per provider. In HF Spaces set this to the "
+            "Space domain; the exact same value must be registered in the provider console."
+        ),
+    )
+    OAUTH_POST_LOGIN_REDIRECT: str = Field(
+        default="http://localhost:3000/auth/callback",
+        description=(
+            "Frontend URL the browser is redirected to after a successful OIDC callback. "
+            "The minted session JWT is appended in the URL *fragment* "
+            "(``#access_token=...&token_type=bearer&...``) so the Next.js client reads it "
+            "client-side and it never reaches server logs / the Referer header."
+        ),
+    )
+    OAUTH_METADATA_URLS: dict[str, str] = Field(
+        default={
+            "google": "https://accounts.google.com/.well-known/openid-configuration",
+            "linkedin": "https://www.linkedin.com/oauth/.well-known/openid-configuration",
+        },
+        description=(
+            "Per-provider OIDC discovery (``.well-known/openid-configuration``) URLs. These "
+            "are public provider constants (not secrets); overridable via env for testing / "
+            "future providers. The set of keys is the set of supported providers."
+        ),
+    )
+    OAUTH_SCOPES: str = Field(
+        default="openid email profile",
+        description=(
+            "Space-separated OIDC scopes requested at login — kept minimal (§7.1). "
+            "LinkedIn *profile import* (extra scopes + stored token) is a separate opt-in "
+            "feature, deliberately not requested here."
+        ),
+    )
+    OAUTH_STATE_TTL_SECONDS: int = Field(
+        default=600,
+        description=(
+            "TTL for a pending OIDC login transaction (state → PKCE verifier + nonce), "
+            "stored server-side between ``/login`` and ``/callback``. Short (10 min) — it "
+            "only needs to outlive the user's time on the provider consent screen. The "
+            "record is single-use (consumed on callback) to prevent replay."
+        ),
+    )
+    USER_SESSION_TTL_SECONDS: int = Field(
+        default=86_400,
+        description=(
+            "TTL for the Redis-backed session **record** of a logged-in user (§4 "
+            "``sessions`` / §7.1). Distinct from the bearer JWT lifetime "
+            "(JWT_EXPIRE_MINUTES): the JWT is the short-lived credential while this record "
+            "anchors the server-side session and is what ``POST /api/auth/logout`` deletes "
+            "for immediate revocation. Kept >= the JWT lifetime."
+        ),
+    )
+    UPGRADE_TICKET_TTL_SECONDS: int = Field(
+        default=300,
+        description=(
+            "TTL for a guest→account upgrade ticket (P3-03), stored server-side by "
+            "``POST /api/auth/upgrade`` and consumed at ``/login`` to carry the guest's "
+            "active session across SSO. Short (5 min) — it only needs to outlive the "
+            "click-to-login window. Single-use (consumed on ``/login``) to prevent replay."
+        ),
+    )
 
     # -------------------------------------------------------------------------
     # External APIs
@@ -218,11 +284,65 @@ class Settings(BaseSettings):
     )
     GUEST_MAX_MESSAGES: int = Field(
         default=10,
-        description="Maximum chat messages a guest session may send before SSO is required.",
+        description=(
+            "Maximum chat messages a guest session may send before SSO is required "
+            "(§6 Decision 8: '10 messages + 1 document upload per guest session'). "
+            "Enforced in Redis, keyed on the guest session_id, over the guest window below."
+        ),
     )
     GUEST_MAX_UPLOADS: int = Field(
         default=1,
-        description="Maximum document uploads a guest session may perform.",
+        description=(
+            "Maximum document uploads a guest session may perform (§6 Decision 8). "
+            "Enforced in Redis, keyed on the guest session_id, over the guest window below."
+        ),
+    )
+    GUEST_RATE_LIMIT_WINDOW_SECONDS: int = Field(
+        default=86_400,
+        description=(
+            "Window (seconds) over which the guest message/upload caps apply — the guest "
+            "session lifetime (default 24h, matching GUEST_SESSION_TTL_SECONDS). A guest's "
+            "10-message / 1-upload budget is a per-session cap: the Redis counter is created "
+            "on the first action and expires with the session, so an abandoned guest's "
+            "counters self-clean. Kept equal to the guest session TTL by default."
+        ),
+    )
+    USER_MAX_MESSAGES_PER_WINDOW: int = Field(
+        default=120,
+        description=(
+            "Per-user chat-message rate limit over USER_RATE_LIMIT_WINDOW_SECONDS (§7 "
+            "'per-session/user rate limits in Redis'). Logged-in users are limited far more "
+            "generously than guests (default 120/hour vs a guest's 10/session): a fixed-window "
+            "counter keyed on users.id that resets each window, guarding against abuse without "
+            "throttling normal use."
+        ),
+    )
+    USER_MAX_UPLOADS_PER_WINDOW: int = Field(
+        default=20,
+        description=(
+            "Per-user document-upload rate limit over USER_RATE_LIMIT_WINDOW_SECONDS. "
+            "Generous relative to a guest's single upload (default 20/hour), keyed on users.id."
+        ),
+    )
+    USER_RATE_LIMIT_WINDOW_SECONDS: int = Field(
+        default=3_600,
+        description=(
+            "Fixed window (seconds, default 1h) for the per-user message/upload rate limits. "
+            "The Redis counter is created on the first action of a window and expires after "
+            "this many seconds, so the user's budget resets each window (unlike the guest cap, "
+            "which is per-session)."
+        ),
+    )
+    GUEST_SESSION_TTL_SECONDS: int = Field(
+        default=86_400,
+        description=(
+            "TTL for the Redis-backed guest session **record** created by "
+            "POST /api/auth/guest (§7.1 / §9). Distinct from the bearer JWT lifetime "
+            "(JWT_EXPIRE_MINUTES): the JWT is the short-lived credential, while this record "
+            "anchors the server-side guest session and its rate-limit state (P3-04) for "
+            "the whole guest window. Kept >= the JWT lifetime so the session (and its "
+            "10-message / 1-upload counters) survives a token refresh."
+        ),
     )
 
 

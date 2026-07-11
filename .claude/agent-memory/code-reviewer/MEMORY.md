@@ -8,4 +8,5 @@
 - [CI Postgres service-container task checks](check-ci-service-container-tasks.md) — reviewing GHA `services:` Postgres+pgvector tasks: reproduce fresh-container CI flow, mypy-strict regression from adding alembic, install-list sync, secrets posture, isolation
 - [Persistence/rehydration task checks](check-persistence-rehydration-tasks.md) — P2-07+ Postgres-persist + Redis-fallback: the rehydration-not-seeded-back bug (needs a 2-turn post-restart test), best-effort posture, load_history bounds
 - [Cross-cutting drift checks](check-cross-cutting-drift.md) — multi-task/audit reviews: app.state key literals, duplicated test fakes, best-effort logging convention, documented deferrals not to re-litigate
+- [Auth/session-JWT task checks](check-auth-session-jwt-tasks.md) — reviewing P3 auth tasks: joserfc token-codec security (alg-pin, exp-essential, typed claims), guest-creation abuse gap, session store layering
 - [Backend diff-vs-report reconcile](check-backend-diff-vs-report.md) — reconcile engineer.md "Files changed" vs actual git diff: unmentioned uv.lock churn, zero-diff "restores", overstated pre-existing structure

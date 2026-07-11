@@ -43,24 +43,20 @@ from app.llm.types import ChatMessage
 class ChatRequest(BaseModel):
     """A single user turn.
 
-    Interim shape (P1-04): the conversation is keyed by ``session_id`` and stored
-    behind the :class:`~app.services.session_memory.SessionMemory` seam (an
-    in-memory implementation for now). P1-05 swaps in a Redis-backed store behind
-    the **same** interface without changing this public contract. ``history`` is an
-    optional escape hatch to seed/replay a conversation without server-side state
-    (useful for stateless clients and tests); when omitted the server-side session
-    memory is the source of truth.
+    The conversation is keyed by ``session_id`` and stored behind the
+    :class:`~app.services.session_memory.SessionMemory` seam (Redis-backed). ``history`` is
+    an optional escape hatch to seed/replay a conversation without server-side state (useful
+    for stateless clients and tests); when omitted the server-side session memory is the
+    source of truth.
 
-    ``user_id`` is an **interim** field (P2-07), following the same seam pattern as
-    the fields above. Real SSO/JWT auth is P3 — there is no verified identity in the
-    request path yet — so this is an explicit, documented stand-in for the
-    JWT-derived identity P3 will provide (concretely, the authenticated ``users.id``).
-    When ``None`` the turn is a **guest** turn: Redis-only working memory, **nothing**
-    persisted to Postgres (design §4: "Guests get NO persisted history") — byte-for-byte
-    the P1 behavior. When set, the turn is treated as logged-in and is *also* durably
-    persisted (:class:`~app.services.conversation_store.ConversationStore`) so account
-    history survives a restart. P3 will populate it from the verified session JWT rather
-    than trusting a client-sent value; until then it is not an authorization boundary.
+    **Identity is never taken from the request body (P3-04, §7 AuthZ).** The caller's
+    ``user_id`` (and whether the turn is guest vs. logged-in) is derived server-side from the
+    verified session JWT (``require_auth`` → :class:`~app.schemas.auth.CurrentUser`), *not*
+    from a client-sent field — a client cannot claim to be another user. The router also
+    enforces that ``session_id`` matches the caller's own session
+    (:func:`~app.security.dependencies.authorize_session_access`), so a caller cannot post
+    into someone else's conversation. There is deliberately **no** ``user_id`` field here
+    (the P2 interim stand-in was removed once real auth landed).
 
     ``session_id`` is capped at 64 chars to match the ``sessions.id`` /
     ``conversations.session_id`` ``String(64)`` columns (P2-03): a longer value would fail
@@ -74,13 +70,6 @@ class ChatRequest(BaseModel):
         default=None,
         description="Optional client-supplied prior turns; when set, seeds this turn "
         "instead of the server-side session memory.",
-    )
-    user_id: str | None = Field(
-        default=None,
-        max_length=64,
-        description="Interim (P2-07) stand-in for the P3 JWT-derived user id. None → "
-        "guest (Redis-only, no Postgres history); set → logged-in (also persisted to "
-        "Postgres). Populated from the verified session JWT once P3 lands.",
     )
 
 

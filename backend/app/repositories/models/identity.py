@@ -37,12 +37,14 @@ from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
     String,
     Text,
     UniqueConstraint,
+    false,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -79,6 +81,13 @@ class User(CreatedAtMixin, Base):
     # admin/support lookups; not unique (a person may sign in via two providers).
     email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Administrator flag (§7 AuthZ) — gates admin-only endpoints (e.g. the feedback-read
+    # endpoint that replaces v1's ``GET /get-feedback?key=<HF_TOKEN>``). Defaults to false;
+    # granted out-of-band by a trusted operator (see docs/admin-access.md), never by any
+    # self-service route, so no request can escalate its own privilege.
+    is_admin: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false()
+    )
     # Free-form user settings document (§4: ``settings JSONB``).
     settings: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
 

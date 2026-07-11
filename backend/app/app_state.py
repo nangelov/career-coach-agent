@@ -30,3 +30,17 @@ class AppStateKeys(StrEnum):
     REDIS_PROVIDER = "redis_provider"
     #: The app-scoped :class:`~app.services.chat.ChatService`, built once and cached.
     CHAT_SERVICE = "chat_service"
+    #: The app-scoped :class:`~app.services.auth.GuestAuthService`, built once and cached.
+    AUTH_SERVICE = "auth_service"
+    #: The app-scoped :class:`~app.services.auth.SsoAuthService` (OIDC login), built once.
+    SSO_AUTH_SERVICE = "sso_auth_service"
+    #: The app-scoped :class:`~app.services.auth.SessionAuthenticator` (verify/logout), cached.
+    SESSION_AUTHENTICATOR = "session_authenticator"
+    #: The app-scoped :class:`~app.services.guest_upgrade.GuestUpgradeService` (P3-03), cached.
+    GUEST_UPGRADE_SERVICE = "guest_upgrade_service"
+    #: The app-scoped :class:`~app.services.rate_limiting.RateLimitService` (P3-04), cached.
+    RATE_LIMIT_SERVICE = "rate_limit_service"
+    #: The app-scoped :class:`~app.services.user_store.UserStore` (admin authz, P3-05), cached.
+    USER_STORE = "user_store"
+    #: The app-scoped :class:`~app.services.feedback.FeedbackReader` (admin read, P3-05), cached.
+    FEEDBACK_READER = "feedback_reader"

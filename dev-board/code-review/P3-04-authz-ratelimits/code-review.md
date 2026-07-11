@@ -1,0 +1,19 @@
+# Code review — P3-04-authz-ratelimits · engineer revision 1
+
+## Verdict: APPROVED
+
+## Findings
+| id | severity | file:line | issue | required change |
+|----|----------|-----------|-------|-----------------|
+| C1 | minor | app/api/auth.py:92 | Guest-creation abuse gap: `POST /api/auth/guest` is (correctly) unauthenticated and mints a fresh `session_id` each call, and the 10-msg cap is keyed on that session_id — so a guest resets its message budget simply by requesting a new guest session. The per-session cap does not bound session *creation*. | No change required in this task (no task owns session-creation rate; edge/proxy layer may cover it). Note for a future hardening task — flagged as a known deferral, not a gate. |
+| C2 | nit | app/api/chat.py:96 | The message is counted (fixed-window `INCR`) before the stream opens, so a turn that then fails mid-stream still consumes one of the 10 guest messages. | Acceptable fixed-window semantics; if user-facing fairness matters later, consider only counting on successful `done`. No change needed now. |
+| C3 | nit | app/services/rate_limiting.py:33 (upload path) | The `UPLOAD` action is enforced only at the service layer (unit-tested 1-ok/2nd-denied); no HTTP route exercises it yet (upload route is P5). | None — engineer correctly built the port/policy ahead of the P5 route rather than a speculative endpoint (YAGNI-respecting). Note only. |
+
+## Notes
+- **Rate-limit boundary conditions are correct.** `RedisRateLimiter.hit` (repositories/redis.py:405) and `InMemoryRateLimiter.hit` both compute `allowed = count <= limit` on the post-increment value: for guest messages `limit=10` the 10th hit (count=10) is allowed and the 11th (count=11) is denied; for uploads `limit=1` the 1st is allowed and the 2nd denied. Verified against `test_guest_message_limit_tenth_ok_eleventh_denied` and `test_guest_upload_limit_first_ok_second_denied`, plus the API-boundary `test_guest_eleventh_message_is_rate_limited` (10×200 then 429 with "Sign in" + `Retry-After`). Fixed-window `EXPIRE`-only-on-first-hit is correct and tested (`expire_calls == [(...,60)]`).
+- **AuthZ coverage is complete for the endpoints that exist.** The only user-scoped data routes are `POST /api/chat` and `POST /api/chat/{session}/cancel`; both now require `require_auth` and call the single centralized `authorize_session_access` (403 when `session_id != token.sid`). The auth router endpoints act only on the caller's own token/session (guest-create is intentionally anonymous; upgrade/logout derive identity from the verified token) — no cross-user data route is left unprotected. Confirmed by grepping all `@router` handlers.
+- **Identity is correctly sourced from the token, not the body.** `ChatRequest.user_id` was removed and the turn's `user_id` now comes from `current_user.user_id` (chat.py:105) — closes the P2-documented authZ hole. Good.
+- **Ordering is correct and tested.** AuthZ (403) runs before rate-limit enforcement, so a rejected cross-session request never consumes the caller's budget (`test_rejected_cross_session_request_does_not_consume_budget`). Rate-limit key is always derived from the verified token identity (guest→`session_id`, user→`user_id`), never the request body, so a caller cannot charge another principal's budget.
+- **Layering respected.** Router (thin) → `RateLimitService` (policy) → `RateLimiter` port with the Redis adapter in `repositories/redis.py`; deps live in `security/` below `api/`; wiring at the composition root (`bootstrap.build_rate_limit_service`), state key added to the `AppStateKeys` StrEnum. Consistent with the established P3 idioms.
+- **Non-atomic `INCR`+`EXPIRE`** is documented in-code with a `ttl<0 → fall back to window` guard on the retry-after path; acceptable KISS posture, not a gate.
+- Ran `pytest tests/test_rate_limiting.py tests/test_authz_ratelimit_api.py tests/test_chat_cancel.py -q` → 24 passed.

@@ -14,3 +14,7 @@
 - [Cache→durable rehydration must seed cache](project-cache-rehydration-seedback.md) — on cache miss, write the durable-store load back into cache; multi-turn restart test; cap read to cache bound; align field/column lengths
 - [Settings loads .env from CWD](project-settings-env-loading.md) — env_file=".env" resolves to backend/ (empty); root .env lacks DATABASE_URL; live-DB make targets must source root .env (LIVE_DB_ENV)
 - [Composition-root conventions](project-composition-root.md) — wiring in app/bootstrap.py (thin API layer); AppStateKeys StrEnum; from_settings injection; shared models/_mixins.py; ToolSchema single home; tests/fakes.py
+- [Auth session-JWT conventions](project-auth-session-jwt.md) — joserfc (not authlib.jose); SessionTokenCodec in app/security/tokens.py; generic SessionStore/SessionRecord port; shared Redis pool via bootstrap helper
+- [Extending an ABC port breaks fakes](project-abc-port-extension-breaks-fakes.md) — new abstractmethod breaks all fakes; prefer composing from existing port methods (e.g. loop persist_turn for backfill)
+- [Auth-gating an open endpoint + tests](project-auth-protected-endpoint-tests.md) — identity from token not body; authz before rate-limit; API tests override require_auth + get_rate_limit_service (fakes in tests/fakes.py)
+- [Postgres now() constant in a txn](project-pg-now-constant-in-txn.md) — same-transaction rows share created_at; ordering tests must set explicit spaced timestamps, not rely on insert order

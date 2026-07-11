@@ -218,22 +218,31 @@ async def test_restart_preserves_account_history_via_router_path_live_postgres(
     user rehydrates the first turn from Postgres. Asserted on the fresh service's recorded
     model call.
     """
+    from app.security.dependencies import get_rate_limit_service, require_auth
+    from tests.fakes import fake_current_user, unlimited_rate_limit_service
+
     store = PostgresConversationStore(provider)
     session_id = str(uuid.uuid4())
     transport = ASGITransport(app=app)
 
     async def post_turn(service: ChatService, message: str) -> None:
         app.dependency_overrides[get_chat_service] = lambda: service
+        # P3-04: identity comes from the verified token, not the request body. Stand in the
+        # logged-in caller (own session) and an uncapped limiter so the router path runs.
+        app.dependency_overrides[require_auth] = lambda: fake_current_user(
+            session_id, role="user", user_id=user_id
+        )
+        app.dependency_overrides[get_rate_limit_service] = unlimited_rate_limit_service
         try:
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.post(
                     "/api/chat",
-                    json={"session_id": session_id, "message": message, "user_id": user_id},
+                    json={"session_id": session_id, "message": message},
                 )
                 assert resp.status_code == 200  # fully reads (drains) the SSE body
                 assert "event: done" in resp.text
         finally:
-            app.dependency_overrides.pop(get_chat_service, None)
+            app.dependency_overrides.clear()
 
     # Pre-restart turn through the router (persisted to Postgres).
     first = _service(FakeRouter([[StreamChunk(content="A1", finish_reason="stop")]]), store)

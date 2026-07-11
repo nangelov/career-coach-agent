@@ -1,0 +1,18 @@
+# Code review — P3-07-verify · engineer revision 1
+
+## Verdict: APPROVED
+
+## Findings
+| id | severity | file:line | issue | required change |
+|----|----------|-----------|-------|-----------------|
+| C1 | nit | backend/tests/test_p3_exit_verification.py:140-161, 254-262 | The OIDC fake mints `state` from an internal counter (`state-1`, `state-2`) and tests hard-code those values in login order, so the flows are coupled to the fake's call sequence — a future reorder of logins would silently break the state match. | Optional: read the `state` back from the `login` redirect's query string instead of hard-coding it, to decouple the assertions from the fake's counter. Not gating (module is self-contained and each `_Harness` resets the fake). |
+| C2 | nit | backend/tests/test_p3_exit_verification.py:341-390 | "Begins persisting" (criterion 3) is proven only via the guest→user upgrade backfill (`_RecordingConversationStore.persisted`), not by a post-upgrade chat turn persisting — the `_FakeChatService` doesn't persist. | None required. Logged-in per-turn persistence is a P2 concern already verified (P2-08); the backfill is the correct mechanism for *begins* persisting at the upgrade boundary. Note only. |
+| C3 | nit | backend/tests/test_p3_exit_verification.py:176, 205-213 | Guest message cap is hard-coded to 10 in the harness rather than driven from the real config, so this proves the *enforcement path* but not that production config = 10. | None required — config-value verification is P3-04's domain; 10 matches the design (§6.8). Note only. |
+
+## Notes
+- **Scope is correct and honest.** New file only (`backend/tests/test_p3_exit_verification.py`, untracked); no product code, schema, or endpoints changed — matches the verification-only mandate. `git status` confirms no other backend product file was modified for this task.
+- **This is a genuine exit proof, not a per-task rerun.** The `_Harness` wires one shared `InMemorySessionStore` behind the *real* `SessionAuthenticator` and leaves `require_auth` un-overridden, so tokens minted by the guest/SSO/upgrade services are verified against live session records through the real authN → authZ → rate-limit → route path. This closes the seam the per-task suites skip (they override `require_auth`). Confirmed against `dependencies.py` (`require_auth`, `authorize_session_access`) and `chat.py` — the asserted 401/403/429 behaviors and the token-derived `user_id=current_user.user_id` all reflect real handler logic, not tautologies.
+- **Cross-user (criterion 4) is sound.** The 403 on both `POST /api/chat` and `POST /api/chat/{session}/cancel` comes from the real `authorize_session_access` dependency (not the fake), and the test additionally asserts the rejected calls never reached the service (`invocations == [a session only]`) — proving rejection at the boundary. Correctly exercises the P1 "anyone can cancel" gap closure.
+- **No security concerns.** Test-only; no secrets, no network (in-memory ports + no-network OIDC fake), no arbitrary execution. Untrusted-input paths not relevant here.
+- **Verified locally:** `pytest tests/test_p3_exit_verification.py` → 6 passed; full suite `pytest -q` → 198 passed, 43 skipped (skips are live-Postgres, no DB reachable — matches engineer's report); `ruff check` and `mypy` clean. The engineer's reported results reproduce exactly.
+- The `_MultiUserOIDCClient` and `_FakeChatService` are kept local to the module rather than widening the shared `tests/fakes.py` — a reasonable YAGNI call since no other suite needs multi-user identity, and it keeps the exit proof self-contained/auditable.

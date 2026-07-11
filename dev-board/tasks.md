@@ -88,15 +88,15 @@ We are using Github free tier.
 
 **Exit:** guest and logged-in flows work; guest→account upgrade carries the session; access control enforced.
 
-- [ ] **(B)** `POST /api/auth/guest` → anonymous Redis session (TTL, no history).
-- [ ] **(B)** SSO via Authlib OIDC (Google + LinkedIn), backend-owned: `GET /api/auth/login/{provider}` + `GET /api/auth/callback/{provider}` with **PKCE**.
-- [ ] **(B)** Mint short-lived session JWT; FastAPI verify dependency; `POST /api/auth/logout`.
-- [ ] **(I)** OAuth apps for Google + LinkedIn; client secret + JWT signing key in **HF Space Secrets**; redirect URIs locked to Space domain; minimal scopes (`openid email profile`).
-- [ ] **(B)** Guest → account upgrade preserves the active session.
-- [ ] **(B)** AuthZ: users access only their own data; per-session/user rate limits in Redis.
-- [ ] **(B)** Replace v1 `GET /get-feedback?key=<HF_TOKEN>` with real admin auth.
-- [ ] **(F)** Login UI (Google/LinkedIn buttons, guest button) + session handling (Bearer token).
-- [ ] **(T)** Guest flow, SSO flow, upgrade-preserves-session, cross-user access denied.
+- [x] **(B)** `POST /api/auth/guest` → anonymous Redis session (TTL, no history).
+- [x] **(B)** SSO via Authlib OIDC (Google + LinkedIn), backend-owned: `GET /api/auth/login/{provider}` + `GET /api/auth/callback/{provider}` with **PKCE**.
+- [x] **(B)** Mint short-lived session JWT; FastAPI verify dependency; `POST /api/auth/logout`.
+- [x] **(I)** OAuth apps for Google + LinkedIn; client secret + JWT signing key in **HF Space Secrets**; redirect URIs locked to Space domain; minimal scopes (`openid email profile`).
+- [x] **(B)** Guest → account upgrade preserves the active session.
+- [x] **(B)** AuthZ: users access only their own data; per-session/user rate limits in Redis.
+- [x] **(B)** Replace v1 `GET /get-feedback?key=<HF_TOKEN>` with real admin auth.
+- [x] **(F)** Login UI (Google/LinkedIn buttons, guest button) + session handling (Bearer token).
+- [x] **(T)** Guest flow, SSO flow, upgrade-preserves-session, cross-user access denied.
 
 ---
 

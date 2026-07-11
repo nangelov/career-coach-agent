@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import Chat from "@/components/Chat";
+import { saveSession } from "@/lib/auth";
 import {
   cancelChat,
   streamChat,
@@ -18,7 +19,16 @@ const mockCancelChat = cancelChat as jest.MockedFunction<typeof cancelChat>;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  window.localStorage.clear();
   window.sessionStorage.clear();
+  // Chat is auth-gated (P3-06): seed a valid guest session so the chat UI renders.
+  saveSession({
+    accessToken: "test-token",
+    tokenType: "bearer",
+    sessionId: "guest-session-1",
+    role: "guest",
+    expiresAt: Date.now() + 3_600_000,
+  });
 });
 
 async function send(text: string) {
@@ -128,5 +138,53 @@ describe("Chat", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(/all models are unavailable/i);
+  });
+
+  it("carries the seeded session id and bearer token on the request", async () => {
+    mockStreamChat.mockResolvedValue(undefined);
+
+    render(<Chat />);
+    await send("hi");
+
+    const [payload, , options] = mockStreamChat.mock.calls[0];
+    expect(payload.session_id).toBe("guest-session-1");
+    expect(options).toMatchObject({ token: "test-token" });
+  });
+
+  it("shows an upgrade prompt (not a raw error) when rate-limited", async () => {
+    mockStreamChat.mockImplementation(async (_payload, onEvent) => {
+      onEvent({
+        event: "rate_limited",
+        message: "Guest limit reached: at most 10 messages. Sign in to continue.",
+        retryAfter: null,
+      });
+    });
+
+    render(<Chat />);
+    await send("hi");
+
+    const prompt = await screen.findByTestId("upgrade-prompt");
+    expect(prompt).toHaveTextContent(/sign in to continue/i);
+    // Guests get sign-in options to upgrade rather than a dead-end error.
+    expect(
+      screen.getByRole("button", { name: /sign in with google/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("falls back to the login screen when the session expires (401)", async () => {
+    mockStreamChat.mockImplementation(async (_payload, onEvent) => {
+      onEvent({
+        event: "auth_error",
+        message: "Your session has expired. Please sign in again.",
+      });
+    });
+
+    render(<Chat />);
+    await send("hi");
+
+    expect(
+      await screen.findByRole("button", { name: /continue as guest/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/expired/i);
   });
 });

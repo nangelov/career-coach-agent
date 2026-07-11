@@ -2,13 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import Login from "@/components/Login";
+import UpgradePrompt from "@/components/UpgradePrompt";
+import {
+  clearSession,
+  loadSession,
+  logout,
+  type Session,
+} from "@/lib/auth";
 import {
   cancelChat,
   streamChat,
   type ChatStreamEvent,
 } from "@/lib/chatStream";
-
-const SESSION_STORAGE_KEY = "cc.session_id";
 
 type Role = "user" | "assistant";
 type TurnStatus = "streaming" | "done" | "cancelled" | "error";
@@ -43,24 +49,37 @@ export default function Chat() {
   const [messages, setMessages] = useState<ChatMessageView[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [loginMessage, setLoginMessage] = useState<string | null>(null);
+  const [rateLimit, setRateLimit] = useState<{ message: string } | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
 
-  // Generate/persist a client-side session id. There is no auth/session-creation
-  // endpoint yet (that is P3), so the frontend owns id generation for now.
+  // Resolve the session client-side (localStorage is unavailable during SSR). The backend
+  // owns session creation now (P3-01/P3-02) — the frontend no longer mints an id.
   useEffect(() => {
-    let sid = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
-    if (!sid) {
-      sid = randomId();
-      window.sessionStorage.setItem(SESSION_STORAGE_KEY, sid);
-    }
-    setSessionId(sid);
+    setSession(loadSession());
+    setAuthChecked(true);
   }, []);
 
   useEffect(() => {
     // Optional-chain the method itself: jsdom does not implement scrollIntoView.
     scrollAnchorRef.current?.scrollIntoView?.({ behavior: "smooth" });
   }, [messages]);
+
+  const handleAuthenticated = useCallback((next: Session) => {
+    setLoginMessage(null);
+    setSession(next);
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    if (session) {
+      await logout(session);
+    }
+    setSession(null);
+    setMessages([]);
+    setRateLimit(null);
+  }, [session]);
 
   // Update the assistant message of the turn in flight (always the last message).
   const updateAssistant = useCallback(
@@ -77,6 +96,23 @@ export default function Chat() {
     },
     [],
   );
+
+  // Remove the trailing empty assistant placeholder (used when a turn never streams —
+  // e.g. rate-limited/expired before the first token).
+  const dropPendingAssistant = useCallback(() => {
+    setMessages((prev) => {
+      const last = prev.length - 1;
+      if (
+        last >= 0 &&
+        prev[last].role === "assistant" &&
+        prev[last].content === "" &&
+        prev[last].status === "streaming"
+      ) {
+        return prev.slice(0, last);
+      }
+      return prev;
+    });
+  }, []);
 
   const handleEvent = useCallback(
     (event: ChatStreamEvent) => {
@@ -118,16 +154,29 @@ export default function Chat() {
             errorMessage: event.message,
           }));
           break;
+        case "auth_error":
+          // Expired/invalid session: drop the credential and fall back to the login screen.
+          clearSession();
+          dropPendingAssistant();
+          setLoginMessage(event.message);
+          setSession(null);
+          break;
+        case "rate_limited":
+          // Show the upgrade prompt (not a raw error); the turn never started.
+          dropPendingAssistant();
+          setRateLimit({ message: event.message });
+          break;
       }
     },
-    [updateAssistant],
+    [dropPendingAssistant, updateAssistant],
   );
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
-    if (!text || isStreaming || !sessionId) {
+    if (!text || isStreaming || !session) {
       return;
     }
+    setRateLimit(null);
     const userMessage: ChatMessageView = {
       key: randomId(),
       role: "user",
@@ -147,22 +196,23 @@ export default function Chat() {
     setIsStreaming(true);
     try {
       await streamChat(
-        { session_id: sessionId, message: text },
+        { session_id: session.sessionId, message: text },
         handleEvent,
+        { token: session.accessToken },
       );
     } finally {
       setIsStreaming(false);
     }
-  }, [handleEvent, input, isStreaming, sessionId]);
+  }, [handleEvent, input, isStreaming, session]);
 
   const handleStop = useCallback(async () => {
-    if (!sessionId || !isStreaming) {
+    if (!session || !isStreaming) {
       return;
     }
     // The backend sets a cancel flag and returns 202; the active stream then
     // emits a terminal `cancelled` event and closes on its own.
-    await cancelChat(sessionId);
-  }, [isStreaming, sessionId]);
+    await cancelChat(session.sessionId, { token: session.accessToken });
+  }, [isStreaming, session]);
 
   const onInputKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
@@ -171,10 +221,33 @@ export default function Chat() {
     }
   };
 
+  // Avoid a hydration flash / premature login screen before the session is resolved.
+  if (!authChecked) {
+    return null;
+  }
+
+  if (!session) {
+    return (
+      <Login onAuthenticated={handleAuthenticated} message={loginMessage ?? undefined} />
+    );
+  }
+
   return (
     <div className="mx-auto flex h-screen w-full max-w-3xl flex-col p-4">
-      <header className="border-b border-gray-200 pb-3">
+      <header className="flex items-center justify-between border-b border-gray-200 pb-3">
         <h1 className="text-xl font-semibold">Career Coach</h1>
+        <div className="flex items-center gap-3 text-sm text-gray-500">
+          <span data-testid="session-role">
+            {session.role === "guest" ? "Guest" : "Signed in"}
+          </span>
+          <button
+            type="button"
+            className="rounded-md border border-gray-300 px-3 py-1 font-medium text-gray-700 hover:bg-gray-50"
+            onClick={() => void handleLogout()}
+          >
+            Log out
+          </button>
+        </div>
       </header>
 
       <div
@@ -194,6 +267,16 @@ export default function Chat() {
         )}
         <div ref={scrollAnchorRef} />
       </div>
+
+      {rateLimit ? (
+        <div className="pt-3">
+          <UpgradePrompt
+            session={session}
+            message={rateLimit.message}
+            onDismiss={() => setRateLimit(null)}
+          />
+        </div>
+      ) : null}
 
       <form
         className="flex items-end gap-2 border-t border-gray-200 pt-3"
@@ -224,7 +307,7 @@ export default function Chat() {
           <button
             type="submit"
             className="rounded-md bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-            disabled={!input.trim() || !sessionId}
+            disabled={!input.trim()}
           >
             Send
           </button>

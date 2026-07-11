@@ -162,6 +162,57 @@ describe("streamChat", () => {
     expect(events[0].event).toBe("error");
   });
 
+  it("attaches the bearer token when provided", async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(
+      fakeStreamResponse([
+        'event: done\ndata: {"message_id": "m1", "finish_reason": "stop"}\n\n',
+      ]),
+    );
+    await streamChat(
+      { session_id: "s1", message: "hi" },
+      () => {},
+      { fetchImpl: fetchImpl as unknown as typeof fetch, token: "tok-123" },
+    );
+    const [, init] = fetchImpl.mock.calls[0];
+    expect(init.headers.Authorization).toBe("Bearer tok-123");
+  });
+
+  it("surfaces a 401 as a terminal auth_error event", async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue({ ok: false, status: 401 } as unknown as Response);
+    const events: ChatStreamEvent[] = [];
+    await streamChat(
+      { session_id: "s1", message: "hi" },
+      (e) => events.push(e),
+      { fetchImpl: fetchImpl as unknown as typeof fetch },
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0].event).toBe("auth_error");
+  });
+
+  it("surfaces a 429 as a rate_limited event carrying the backend detail + retry", async () => {
+    const fetchImpl = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      headers: { get: (name: string) => (name === "Retry-After" ? "30" : null) },
+      json: async () => ({ detail: "Guest limit reached. Sign in to continue." }),
+    } as unknown as Response);
+    const events: ChatStreamEvent[] = [];
+    await streamChat(
+      { session_id: "s1", message: "hi" },
+      (e) => events.push(e),
+      { fetchImpl: fetchImpl as unknown as typeof fetch },
+    );
+    expect(events).toEqual([
+      {
+        event: "rate_limited",
+        message: "Guest limit reached. Sign in to continue.",
+        retryAfter: 30,
+      },
+    ]);
+  });
+
   it("surfaces a rejected fetch (network failure) as a terminal error event", async () => {
     const fetchImpl = jest.fn().mockRejectedValue(new Error("offline"));
     const events: ChatStreamEvent[] = [];

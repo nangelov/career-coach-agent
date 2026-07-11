@@ -32,8 +32,16 @@ from fastapi.responses import StreamingResponse
 
 from app.app_state import AppStateKeys
 from app.bootstrap import build_chat_service
+from app.schemas.auth import CurrentUser
 from app.schemas.chat import ChatEvent, ChatRequest
+from app.security.dependencies import (
+    authorize_session_access,
+    get_rate_limit_service,
+    rate_limit_exceeded_http,
+    require_auth,
+)
 from app.services.chat import ChatService
+from app.services.rate_limiting import RateLimitAction, RateLimitExceeded, RateLimitService
 
 logger = logging.getLogger(__name__)
 
@@ -63,22 +71,38 @@ def _format_sse(event: ChatEvent) -> str:
 @router.post("/chat")
 async def chat(
     payload: ChatRequest,
+    current_user: CurrentUser = Depends(require_auth),
     service: ChatService = Depends(get_chat_service),
+    rate_limiter: RateLimitService = Depends(get_rate_limit_service),
 ) -> StreamingResponse:
-    """Stream a chat turn as Server-Sent Events.
+    """Stream a chat turn as Server-Sent Events (authenticated, own-session, rate-limited).
 
-    The response is a live ``text/event-stream``: ``start`` → ``token`` /
-    ``tool_call`` / ``tool_result`` (repeated as the model works) → ``done`` on
-    success, or a single terminal ``error`` event. The service never raises into the
-    response body, so the stream always ends cleanly (no mid-stream 500).
+    Requires a valid bearer token (guest or user). Before any streaming begins the router
+    (1) enforces **own-data-only** access — the request's ``session_id`` must be the caller's
+    own session (else ``403``) — and (2) applies the Redis-backed **rate limit** for the
+    caller's tier (guest: 10 messages/session; user: generous per-window), returning ``429``
+    with an upgrade prompt when over budget. The turn's ``user_id`` is taken from the verified
+    token, never from the request body (§7 AuthZ), so a client cannot act as another user.
+
+    The response is a live ``text/event-stream``: ``start`` → ``token`` / ``tool_call`` /
+    ``tool_result`` (repeated as the model works) → ``done`` on success, or a single terminal
+    ``error`` event. The service never raises into the response body, so the stream always
+    ends cleanly (no mid-stream 500).
     """
+    # Own-data-only first (a rejected cross-session request must not consume the rate budget),
+    # then count this message against the caller's tier before opening the stream.
+    authorize_session_access(payload.session_id, current_user)
+    try:
+        await rate_limiter.enforce(RateLimitAction.MESSAGE, current_user)
+    except RateLimitExceeded as exc:
+        raise rate_limit_exceeded_http(exc) from exc
 
     async def event_stream() -> AsyncIterator[str]:
         async for event in service.stream_turn(
             payload.session_id,
             payload.message,
             history=payload.history,
-            user_id=payload.user_id,
+            user_id=current_user.user_id,
         ):
             yield _format_sse(event)
 
@@ -97,19 +121,19 @@ async def chat(
 @router.post("/chat/{session}/cancel", status_code=202)
 async def cancel_chat(
     session: str = Path(..., min_length=1, max_length=200),
+    current_user: CurrentUser = Depends(require_auth),
     service: ChatService = Depends(get_chat_service),
 ) -> dict[str, str]:
     """Request cancellation of the in-flight chat turn for ``session`` (design §9).
 
-    Sets a Redis-backed cancel flag and returns **promptly** — it does not block
-    waiting for the stream to stop. The in-flight ``POST /api/chat`` turn for the same
-    ``session_id`` observes the flag at its next checkpoint and ends its SSE stream with
-    a terminal ``cancelled`` event. Idempotent: cancelling an idle session is a no-op
-    that still returns 202 (the flag self-expires via TTL).
-
-    .. note::
-       No auth/ownership check yet — anyone who knows a ``session_id`` can cancel it.
-       Per-session/user access control + rate limits land with the P3 AuthZ task.
+    Requires a valid bearer token and enforces **own-data-only** access: a caller may only
+    cancel *their own* session (else ``403``) — closing the P1 gap where anyone who knew a
+    ``session_id`` could cancel it. Sets a Redis-backed cancel flag and returns **promptly**
+    — it does not block waiting for the stream to stop. The in-flight ``POST /api/chat`` turn
+    for the same ``session_id`` observes the flag at its next checkpoint and ends its SSE
+    stream with a terminal ``cancelled`` event. Idempotent: cancelling an idle session is a
+    no-op that still returns 202 (the flag self-expires via TTL).
     """
+    authorize_session_access(session, current_user)
     await service.request_cancel(session)
     return {"status": "cancelling", "session": session}

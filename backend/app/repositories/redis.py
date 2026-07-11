@@ -34,8 +34,13 @@ from redis.asyncio import ConnectionPool, Redis
 
 from app.config import Settings, settings
 from app.llm.types import ChatMessage
+from app.schemas.auth import SessionRecord
 from app.services.cancellation import CancelRegistry
+from app.services.oauth_state_store import OAuthStateRecord, OAuthStateStore
+from app.services.rate_limiting import RateLimiter, RateLimitResult
 from app.services.session_memory import SessionMemory
+from app.services.session_store import SessionStore
+from app.services.upgrade_ticket_store import UpgradeTicketStore
 
 
 @runtime_checkable
@@ -53,6 +58,35 @@ class SessionRedis(Protocol):
     async def ltrim(self, name: str, start: int, end: int) -> Any: ...
     async def expire(self, name: str, time: int) -> Any: ...
     async def delete(self, *names: str) -> Any: ...
+
+
+@runtime_checkable
+class StoreRedis(Protocol):
+    """The minimal async Redis surface :class:`RedisSessionStore` uses.
+
+    A structural :class:`Protocol` (like :class:`SessionRedis` / :class:`CancelRedis`) so the
+    store carries no hard driver dependency and unit tests inject an in-memory fake. The real
+    ``redis.asyncio.Redis`` from the shared pool satisfies this shape.
+    """
+
+    async def set(self, name: str, value: Any, *, ex: int | None = ...) -> Any: ...
+    async def get(self, name: str) -> Any: ...
+    async def delete(self, *names: str) -> Any: ...
+
+
+@runtime_checkable
+class LimiterRedis(Protocol):
+    """The minimal async Redis surface :class:`RedisRateLimiter` uses.
+
+    A structural :class:`Protocol` (like :class:`StoreRedis` / :class:`CancelRedis`) so the
+    limiter carries no hard driver dependency and unit tests inject an in-memory fake. The
+    real ``redis.asyncio.Redis`` from the shared pool satisfies this shape. ``incr`` +
+    ``expire`` implement a fixed-window counter; ``ttl`` gives the retry-after hint.
+    """
+
+    async def incr(self, name: str) -> Any: ...
+    async def expire(self, name: str, time: int) -> Any: ...
+    async def ttl(self, name: str) -> Any: ...
 
 
 @runtime_checkable
@@ -180,6 +214,210 @@ class RedisSessionMemory(SessionMemory):
         await self._redis.ltrim(key, -self._max_messages, -1)
         # Sliding TTL: refreshed on each turn so active sessions persist (§4).
         await self._redis.expire(key, self._ttl_seconds)
+
+
+class RedisSessionStore(SessionStore):
+    """Redis-backed server-side session record store (design §4 ``sessions`` / §7.1).
+
+    Each session's :class:`~app.schemas.auth.SessionRecord` is stored as a single JSON
+    string at ``<prefix>:<session_id>`` with a TTL, so an abandoned session (guest or
+    logged-in) self-expires rather than lingering. This is the identity/lifecycle anchor —
+    **not** conversation history (that is :class:`RedisSessionMemory`) — and the
+    ``session_id`` it keys on is the same handle P3-04 uses for guest rate-limits.
+
+    Guests live here **only** (never in Postgres ``conversations``/``messages``), per §4
+    (*"Guests get NO persisted history"*): the record is anonymous (``role="guest"``,
+    ``user_id=None``) and Redis-only.
+    """
+
+    def __init__(
+        self,
+        client: StoreRedis,
+        *,
+        key_prefix: str = "session:record",
+    ) -> None:
+        self._redis = client
+        self._key_prefix = key_prefix
+
+    @classmethod
+    def from_settings(cls, client: StoreRedis, config: Settings = settings) -> RedisSessionStore:
+        """Build the store (key prefix is fixed; TTL is passed per-create by the caller)."""
+        return cls(client)
+
+    def _key(self, session_id: str) -> str:
+        return f"{self._key_prefix}:{session_id}"
+
+    async def create(self, record: SessionRecord, *, ttl_seconds: int) -> None:
+        """Persist ``record`` (JSON) under its session id with an expiry of ``ttl_seconds``."""
+        await self._redis.set(
+            self._key(record.session_id),
+            record.model_dump_json(),
+            ex=max(1, ttl_seconds),
+        )
+
+    async def get(self, session_id: str) -> SessionRecord | None:
+        """Return the stored record for ``session_id`` (``None`` if absent/expired)."""
+        raw = await self._redis.get(self._key(session_id))
+        if raw is None:
+            return None
+        return SessionRecord.model_validate_json(raw)
+
+    async def delete(self, session_id: str) -> None:
+        """Delete the record for ``session_id`` (logout / revocation; idempotent)."""
+        await self._redis.delete(self._key(session_id))
+
+
+class RedisOAuthStateStore(OAuthStateStore):
+    """Redis-backed pending-OIDC-transaction store (§7.1 — the login PKCE handshake).
+
+    Each attempt's :class:`~app.services.oauth_state_store.OAuthStateRecord` is stored as a
+    single JSON string at ``<prefix>:<state>`` with a short TTL, so an abandoned login (user
+    closes the consent screen) self-expires. :meth:`pop` does a **get-then-delete** so a
+    transaction is single-use — a replayed ``state`` cannot complete a second login.
+
+    Uses the same narrow :class:`StoreRedis` seam as :class:`RedisSessionStore` (set/get/
+    delete) — no extra driver surface.
+    """
+
+    def __init__(
+        self,
+        client: StoreRedis,
+        *,
+        key_prefix: str = "oauth:state",
+    ) -> None:
+        self._redis = client
+        self._key_prefix = key_prefix
+
+    @classmethod
+    def from_settings(cls, client: StoreRedis, config: Settings = settings) -> RedisOAuthStateStore:
+        """Build the store (key prefix is fixed; TTL is passed per-put by the caller)."""
+        return cls(client)
+
+    def _key(self, state: str) -> str:
+        return f"{self._key_prefix}:{state}"
+
+    async def put(self, state: str, record: OAuthStateRecord, *, ttl_seconds: int) -> None:
+        """Persist ``record`` (JSON) under ``state`` with an expiry of ``ttl_seconds``."""
+        await self._redis.set(
+            self._key(state),
+            record.model_dump_json(),
+            ex=max(1, ttl_seconds),
+        )
+
+    async def pop(self, state: str) -> OAuthStateRecord | None:
+        """Return and delete the record for ``state`` (single-use; ``None`` if absent).
+
+        The delete is best-effort after the read; two concurrent callbacks racing the same
+        ``state`` is not a practical concern (a user completes one consent), and the short
+        TTL bounds any window regardless.
+        """
+        key = self._key(state)
+        raw = await self._redis.get(key)
+        if raw is None:
+            return None
+        await self._redis.delete(key)
+        return OAuthStateRecord.model_validate_json(raw)
+
+
+class RedisUpgradeTicketStore(UpgradeTicketStore):
+    """Redis-backed single-use guest→account upgrade-ticket store (P3-03, §4).
+
+    Each ticket maps its opaque id to the guest ``session_id`` it authorizes upgrading,
+    stored as a single string at ``<prefix>:<ticket>`` with a short TTL so an abandoned
+    upgrade self-expires. :meth:`pop` does a **get-then-delete** so a ticket is single-use —
+    a replayed ticket cannot authorize a second upgrade.
+
+    Uses the same narrow :class:`StoreRedis` seam (set/get/delete) as
+    :class:`RedisSessionStore` / :class:`RedisOAuthStateStore` — no extra driver surface.
+    """
+
+    def __init__(
+        self,
+        client: StoreRedis,
+        *,
+        key_prefix: str = "upgrade:ticket",
+    ) -> None:
+        self._redis = client
+        self._key_prefix = key_prefix
+
+    @classmethod
+    def from_settings(
+        cls, client: StoreRedis, config: Settings = settings
+    ) -> RedisUpgradeTicketStore:
+        """Build the store (key prefix is fixed; TTL is passed per-put by the caller)."""
+        return cls(client)
+
+    def _key(self, ticket: str) -> str:
+        return f"{self._key_prefix}:{ticket}"
+
+    async def put(self, ticket: str, guest_session_id: str, *, ttl_seconds: int) -> None:
+        """Persist ``guest_session_id`` under ``ticket`` with an expiry of ``ttl_seconds``."""
+        await self._redis.set(self._key(ticket), guest_session_id, ex=max(1, ttl_seconds))
+
+    async def pop(self, ticket: str) -> str | None:
+        """Return and delete the guest session id for ``ticket`` (single-use, ``None`` if gone)."""
+        key = self._key(ticket)
+        value = await self._redis.get(key)
+        if value is None:
+            return None
+        await self._redis.delete(key)
+        return str(value)
+
+
+class RedisRateLimiter(RateLimiter):
+    """Redis-backed fixed-window rate-limit counter (design §6.8 / §7).
+
+    Implements the :class:`~app.services.rate_limiting.RateLimiter` port with the classic
+    ``INCR`` + first-hit ``EXPIRE`` fixed-window counter: the counter at ``<prefix>:<key>`` is
+    incremented atomically per action and given a TTL of ``window_seconds`` on its **first**
+    hit, so the budget resets once the window lapses (and an abandoned guest's counters
+    self-clean). This is what enforces the guest 10-message / 1-upload cap and the generous
+    per-user limits, keyed on the identity established at login (P3-01/P3-02).
+
+    Uses the narrow :class:`LimiterRedis` seam (``incr`` / ``expire`` / ``ttl``) — no extra
+    driver surface. Setting the expiry only on the first hit (``count == 1``) keeps the window
+    *fixed* (not sliding), so a continuously-active user's window still resets on schedule.
+
+    .. note::
+       ``INCR`` then ``EXPIRE`` are two commands, not one transaction: a process crash between
+       them could leave a counter without a TTL (a permanent, namespaced key for that
+       session/user). The window is short and the key self-namespaced, so the practical impact
+       is negligible; a Lua/pipeline atomic variant is a possible future hardening.
+    """
+
+    def __init__(
+        self,
+        client: LimiterRedis,
+        *,
+        key_prefix: str = "ratelimit",
+    ) -> None:
+        self._redis = client
+        self._key_prefix = key_prefix
+
+    @classmethod
+    def from_settings(cls, client: LimiterRedis, config: Settings = settings) -> RedisRateLimiter:
+        """Build the limiter (key prefix is fixed; limits/windows are passed per-hit)."""
+        return cls(client)
+
+    def _key(self, key: str) -> str:
+        return f"{self._key_prefix}:{key}"
+
+    async def hit(self, key: str, *, limit: int, window_seconds: int) -> RateLimitResult:
+        """Increment the fixed-window counter for ``key`` and report the budget status."""
+        full_key = self._key(key)
+        count = int(await self._redis.incr(full_key))
+        if count == 1:
+            # First hit of a window: stamp the expiry so the budget resets after the window.
+            await self._redis.expire(full_key, max(1, window_seconds))
+        allowed = count <= limit
+        retry_after: int | None = None
+        if not allowed:
+            ttl = int(await self._redis.ttl(full_key))
+            # ttl < 0 means "no expiry set" (the crash window above) — fall back to the window.
+            retry_after = ttl if ttl > 0 else window_seconds
+        return RateLimitResult(
+            allowed=allowed, count=count, limit=limit, retry_after_seconds=retry_after
+        )
 
 
 class RedisCancelRegistry(CancelRegistry):

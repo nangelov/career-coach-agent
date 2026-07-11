@@ -60,6 +60,27 @@ export interface ErrorEvent {
   message: string;
 }
 
+/**
+ * Client-synthesized terminal event for an expired/invalid session (HTTP 401).
+ * Never appears on the wire — the transport generates it from the response status so the
+ * UI can drop the credential and redirect to login (design §7.1). See {@link streamChat}.
+ */
+export interface AuthErrorEvent {
+  event: "auth_error";
+  message: string;
+}
+
+/**
+ * Client-synthesized terminal event for a rate-limit rejection (HTTP 429). Never on the
+ * wire — carries the backend's upgrade-prompting `detail` and optional `retryAfter` so the
+ * UI can render an "upgrade to continue" prompt rather than a raw error (design §6.8/§7).
+ */
+export interface RateLimitedEvent {
+  event: "rate_limited";
+  message: string;
+  retryAfter: number | null;
+}
+
 /** Every event the chat stream can yield; discriminated by `event`. */
 export type ChatStreamEvent =
   | StartEvent
@@ -68,7 +89,9 @@ export type ChatStreamEvent =
   | ToolResultEvent
   | DoneEvent
   | CancelledEvent
-  | ErrorEvent;
+  | ErrorEvent
+  | AuthErrorEvent
+  | RateLimitedEvent;
 
 // --------------------------------------------------------------------------- //
 // Frame parser (pure, unit-testable independent of fetch/DOM)
@@ -203,6 +226,8 @@ export interface StreamChatOptions {
   baseUrl?: string;
   /** Injected fetch for testing. */
   fetchImpl?: typeof fetch;
+  /** Bearer session token attached as `Authorization: Bearer <token>` when present. */
+  token?: string;
 }
 
 function isAbortError(err: unknown): boolean {
@@ -212,6 +237,19 @@ function isAbortError(err: unknown): boolean {
 function networkErrorMessage(err: unknown): string {
   const detail = err instanceof Error ? err.message : String(err);
   return `Could not reach the chat service: ${detail}`;
+}
+
+/** Best-effort read of the FastAPI ``{"detail": ...}`` error body (never throws). */
+async function readDetail(response: Response, fallback: string): Promise<string> {
+  try {
+    const body = (await response.json()) as { detail?: unknown };
+    if (typeof body?.detail === "string" && body.detail) {
+      return body.detail;
+    }
+  } catch {
+    // non-JSON / empty body — use the fallback
+  }
+  return fallback;
 }
 
 /**
@@ -227,16 +265,21 @@ export async function streamChat(
   onEvent: (event: ChatStreamEvent) => void,
   options: StreamChatOptions = {},
 ): Promise<void> {
-  const { signal, baseUrl = "", fetchImpl = fetch } = options;
+  const { signal, baseUrl = "", fetchImpl = fetch, token } = options;
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "text/event-stream",
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
 
   let response: Response;
   try {
     response = await fetchImpl(`${baseUrl}/api/chat`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
-      },
+      headers,
       body: JSON.stringify(payload),
       signal,
     });
@@ -249,6 +292,28 @@ export async function streamChat(
   }
 
   if (!response.ok || !response.body) {
+    // Distinguish the two states the UI must act on differently: an expired/invalid
+    // session (redirect to login) and a rate-limit rejection (upgrade prompt).
+    if (response.status === 401) {
+      onEvent({
+        event: "auth_error",
+        message: "Your session has expired. Please sign in again.",
+      });
+      return;
+    }
+    if (response.status === 429) {
+      const message = await readDetail(
+        response,
+        "You've reached the usage limit. Please try again shortly.",
+      );
+      const retryHeader = Number(response.headers?.get?.("Retry-After"));
+      onEvent({
+        event: "rate_limited",
+        message,
+        retryAfter: Number.isFinite(retryHeader) && retryHeader > 0 ? retryHeader : null,
+      });
+      return;
+    }
     onEvent({
       event: "error",
       message: `Chat request failed (HTTP ${response.status}).`,
@@ -290,6 +355,8 @@ export async function streamChat(
 export interface CancelChatOptions {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
+  /** Bearer session token attached as `Authorization: Bearer <token>` when present. */
+  token?: string;
 }
 
 /**
@@ -301,9 +368,13 @@ export async function cancelChat(
   sessionId: string,
   options: CancelChatOptions = {},
 ): Promise<void> {
-  const { baseUrl = "", fetchImpl = fetch } = options;
+  const { baseUrl = "", fetchImpl = fetch, token } = options;
+  const init: RequestInit = { method: "POST" };
+  if (token) {
+    init.headers = { Authorization: `Bearer ${token}` };
+  }
   await fetchImpl(
     `${baseUrl}/api/chat/${encodeURIComponent(sessionId)}/cancel`,
-    { method: "POST" },
+    init,
   );
 }
