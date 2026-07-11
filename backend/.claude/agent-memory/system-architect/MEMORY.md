@@ -9,4 +9,4 @@
 - [Web-searcher P6 scope split](ruling-web-searcher-p6-scope-split.md) — P4-05 rightly defers §3 structured role-page extraction + Postgres write + Celery to P6; access allow-list N/A (public web)
 - [Responder P4-06 scope](ruling-responder-p4-06-scope.md) — Blessed: injected LLM seam, untrusted-content fencing, citations pass-through; P9 must wire state.memory into responder + chat-endpoint owns streamed guardrail/memory tail
 - [Input guardrail P4-08 seam](ruling-input-guardrail-p4-08-seam.md) — Blessed: screen_input->SafetyVerdict seam, one conditional edge, block routes to OUTPUT_GUARDRAIL skipping planner/workers; P10 swaps detection only
-- [Curated CI light deps ruling](ruling-curated-ci-light-deps.md) — Light always-used deps curated in; heavy/optional (langgraph/docling/torch) stay Any + code-fixed; CI list == Makefile install list
+- [Curated CI light deps ruling](ruling-curated-ci-light-deps.md) — Light always-used deps (incl. authlib/langgraph) curated in; only heavy ML (docling/torch) stay absent; pytest executes module-scope imports so they must be present; fix stale "excluded/Any" comments everywhere; CI list == Makefile

@@ -5,16 +5,21 @@ metadata:
   type: feedback
 ---
 
-Backend CI (`.github/workflows/backend-ci.yml`) does a **curated** install:
-`uv sync --only-group dev` + `fastapi pydantic pydantic-settings celery[redis] openai`
-— it deliberately does NOT `uv sync` the full project, so the heavy ML stack
-(`torch`/`sentence-transformers`, `langgraph`, `langmem`, `docling`) is absent in CI.
+Backend CI (`.github/workflows/backend-ci.yml`) + `backend/Makefile`'s `install`
+target do a **curated** install (MUST stay in sync — same list, both places):
+`uv sync --only-group dev` + explicit light libs: `fastapi pydantic pydantic-settings
+celery[redis] openai sqlalchemy asyncpg aiosqlite pgvector alembic joserfc authlib
+langgraph`. It deliberately does NOT `uv sync` the full project, so the genuinely-heavy
+ML stack (`torch`/`sentence-transformers`, `langmem`, `docling`) is absent in CI.
 
-**Why:** those libs are huge and slow on the free CI tier; lint/type-check/tests
+**Why:** those ML libs are huge/slow on the free CI tier; lint/type-check/tests
 don't exercise them yet. `mypy`'s `ignore_missing_imports=True` keeps un-installed
-libs as `Any` so type-check still passes.
-**How to apply:** new backend code (and its tests) may freely import
-fastapi/pydantic/openai/`redis` (redis comes via `celery[redis]`), but must NOT
-import a heavy ML module at import time or CI's `pytest` will `ModuleNotFoundError`.
-If a task needs one, gate it behind a lazy/local import and note that the CI curated
-install must be extended.
+libs as `Any` so type-check still passes — but **pytest actually executes imports at
+collection**, so `ignore_missing_imports` does NOT save a real missing runtime dep:
+any module imported at module scope by app.main/app.agents needs its dep curated in.
+**How to apply:** (1) A dep declared in `pyproject.toml` is NOT automatically in CI —
+if it's imported at module scope and light (no torch/CUDA/ML), add it to BOTH curated
+lists. (2) After ANY curated-list change, re-verify **all four tools** (ruff / ruff
+format / mypy / pytest) against a fresh curated venv, not just the one reported broken
+— a bare `uv run --no-sync pytest` against your full local `.venv` falsely passes past
+curated gaps. (3) Truly heavy ML modules must stay behind a lazy/local import.

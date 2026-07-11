@@ -100,13 +100,20 @@ jobs:
       # library app/security/tokens.py signs/verifies session tokens with (a real
       # always-used runtime dep, same "light" category as sqlalchemy/asyncpg/alembic —
       # not a heavy/optional ML lib); it must be curated in so mypy sees its real return
-      # types and `warn_return_any` doesn't flag `jwt.encode(...) -> Any`. Keep this list
-      # in sync with the backend/Makefile `install` target (they must produce the same venv).
+      # types and `warn_return_any` doesn't flag `jwt.encode(...) -> Any`. `authlib` is
+      # the light OIDC/PKCE client (app/security/oidc.py) SSO uses, and `langgraph` the
+      # multi-agent graph lib (app/agents/graph.py) — both are real, always-imported
+      # runtime deps with no heavy/ML transitives (langgraph pulls only langchain-core /
+      # langgraph-* / pydantic / xxhash). They're imported at module scope by app.main /
+      # app.agents, so pytest executes them at collection and needs them present or the
+      # suite errors out — same "light, must-curate" category as sqlalchemy/joserfc, not
+      # the deliberately-excluded ML stack (torch/sentence-transformers/docling). Keep this
+      # list in sync with the backend/Makefile `install` target (they must produce the same venv).
       - name: Install dependencies
         run: |
           uv sync --only-group dev
           uv pip install fastapi pydantic pydantic-settings "celery[redis]" openai \
-            sqlalchemy asyncpg aiosqlite pgvector alembic joserfc
+            sqlalchemy asyncpg aiosqlite pgvector alembic joserfc authlib langgraph
 
       # --no-sync: run the tool in the curated venv above WITHOUT uv re-resolving
       # and installing the full project dependency tree (which would drag in the
@@ -119,8 +126,10 @@ jobs:
 
       - name: Type-check (mypy --strict)
         # Include migrations/ so the Alembic env.py (which imports app.*) is
-        # type-checked too. alembic itself is not in the curated install; mypy's
-        # ignore_missing_imports treats it as Any (same posture as langgraph/docling).
+        # type-checked too. The heavy ML libs still excluded from the curated
+        # install (docling, sentence-transformers/torch) stay Any via mypy's
+        # ignore_missing_imports; langgraph is now installed (light, no ML
+        # transitives) so pytest can execute app/agents/graph.py at collection.
         run: uv run --no-sync mypy app/ migrations/
 
       # The pgvector `vector` extension is normally enabled by the P0-07 init

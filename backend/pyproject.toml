@@ -67,8 +67,10 @@ strict = true
 # Runtime floor is 3.11 (requires-python = ">=3.11", Dockerfile python:3.11-slim).
 # Keep mypy aligned with the runtime rather than 3.12 so checks match production.
 python_version = "3.11"
-# Third-party libs without published type stubs (e.g. langgraph, docling) are
-# treated as Any instead of failing the build. First-party code stays fully typed.
+# Heavy ML libs deliberately excluded from the curated CI venv (e.g. docling,
+# sentence-transformers, torch) resolve to Any there instead of failing the build.
+# First-party code stays fully typed. (langgraph IS installed in CI, so its real
+# types apply.)
 ignore_missing_imports = true
 # pydantic v2 mypy plugin: teaches mypy that BaseSettings/BaseModel fields with
 # env defaults are not required constructor args (fixes Settings() call-arg).
