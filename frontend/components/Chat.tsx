@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 
 import Login from "@/components/Login";
 import UpgradePrompt from "@/components/UpgradePrompt";
@@ -265,6 +266,12 @@ export default function Chat() {
           <span data-testid="session-role">
             {session.role === "guest" ? "Guest" : "Signed in"}
           </span>
+          <Link
+            href="/profile"
+            className="rounded-md border border-gray-300 px-3 py-1 font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Profile
+          </Link>
           <button
             type="button"
             className="rounded-md border border-gray-300 px-3 py-1 font-medium text-gray-700 hover:bg-gray-50"

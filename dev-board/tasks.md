@@ -120,14 +120,14 @@ We are using Github free tier.
 
 **Exit:** a scanned/image PDF and a PPTX CV both parse (async, with progress) into a usable structured profile and become RAG-grounded.
 
-- [ ] **(B)** `ingestion/` — `DocumentParser` interface; **docling** as primary engine.
-- [ ] **(B)** Type detect + text-layer check; OCR fallback (Tesseract/OCRmyPDF) for scanned/image/slide CVs; reserve VLM-OCR path for hard docs.
-- [ ] **(B)** Layout-aware structuring → LLM-assisted parse → structured profile (skills/experience/education/goals).
-- [ ] **(B)** `POST /api/profile/cv` runs parsing as a **Celery task** (progress via Redis) → store profile (JSONB) + embed chunks into pgvector.
-- [ ] **(B)** `GET/PUT /api/profile`; reuse profile across chats (no re-upload).
-- [ ] **(B)** `GET /api/jobs/status/{task_id}` — poll async task progress.
-- [ ] **(F)** CV upload UI + progress indicator; profile view/edit.
-- [ ] **(T)** Scanned/image PDF and PPTX CV both parse async into a structured profile and are RAG-grounded.
+- [x] **(B)** `ingestion/` — `DocumentParser` interface; **docling** as primary engine.
+- [x] **(B)** Type detect + text-layer check; OCR fallback (Tesseract/OCRmyPDF) for scanned/image/slide CVs; reserve VLM-OCR path for hard docs.
+- [x] **(B)** Layout-aware structuring → LLM-assisted parse → structured profile (skills/experience/education/goals).
+- [x] **(B)** `POST /api/profile/cv` runs parsing as a **Celery task** (progress via Redis) → store profile (JSONB) + embed chunks into pgvector.
+- [x] **(B)** `GET/PUT /api/profile`; reuse profile across chats (no re-upload).
+- [x] **(B)** `GET /api/jobs/status/{task_id}` — poll async task progress.
+- [x] **(F)** CV upload UI + progress indicator; profile view/edit.
+- [x] **(T)** Scanned/image PDF and PPTX CV both parse async into a structured profile and are RAG-grounded.
 
 ---
 
@@ -202,6 +202,7 @@ We are using Github free tier.
 
 **Exit:** v2 live on HF Spaces at full parity + new features; v1 removed.
 
+- [ ] **(B)** Add HuggingFace credentials / secrets / API Keys whereever necessary to access LLMs
 - [ ] **(I)** HF Spaces Dockerfile: build Next.js + run FastAPI (single container).
 - [ ] **(I)** Run Celery worker co-located in the Space container.
 - [ ] **(I)** Wire **self-hosted datastores** (Postgres+pgvector + Redis co-located containers; **no managed tier** for now) via Space secrets. (Managed tier = escape hatch if Spaces persistence needed.)
@@ -209,6 +210,7 @@ We are using Github free tier.
 - [ ] **(I)** Observability: structured logging, agent traces, error tracking.
 - [ ] **(I)** Cut over to v2.
 - [ ] **(I)** Delete v1: `app.py`, `output_parser.py`, old CRA `frontend/`, `helpers/feedback_handler.py` JSON store, etc.
+
 
 ---
 

@@ -16,6 +16,8 @@ Subagents (custom agent types, dispatched with the Agent tool):
 **The code-reviewer and system-architect always run in parallel** (dispatched together in one message), never
 one-after-the-other.
 
+**REQUIRED**: ask sub agents to be as concise as possible. No human reads their output and throughts. A simple information when needs to communicate with the orchestrator is enough, but no need to share all thoughts.
+
 ## Triggers (how the user starts work)
 
 | Trigger | Meaning | Flow |

@@ -13,3 +13,6 @@
 - [Backend diff-vs-report reconcile](check-backend-diff-vs-report.md) — reconcile engineer.md "Files changed" vs actual git diff: unmentioned uv.lock churn, zero-diff "restores", overstated pre-existing structure
 - [Phase-exit verification task checks](check-phase-exit-verification-tasks.md) — reviewing P*-NN-verify tasks: discriminating streaming/citation/guardrail-spy assertions + confirm bundled "mechanical" reformats are truly zero-logic
 - [Curated CI venv mypy](project-curated-ci-venv-mypy.md) — CI mypy runs against a narrow curated venv, not full dev venv; reproduce there + verify each fix load-bearing (find_spec present/absent)
+- [Ingestion/DocumentParser task checks](check-ingestion-parser-tasks.md) — reviewing P5 backend/app/ingestion/ docling tasks: lazy SDK isolation, injectable converter seam, Any-typed engine boundary for curated mypy, importorskip real-fixture test
+- [LLM tool schema $ref risk](check-llm-tool-schema-refs.md) — tool schemas derived from nested Pydantic models (model_json_schema) emit $defs/$ref; note the HF native-tool-calling runtime-compat risk, defer verification to the wiring task
+- [Frontend profile/poll task checks](check-frontend-profile-poll-tasks.md) — reviewing P5-07+ frontend CV-upload/job-polling: TS wire-type vs backend-schema parity, error-status coverage, poll robustness (unbounded loop), DI conventions

@@ -19,7 +19,14 @@ collection**, so `ignore_missing_imports` does NOT save a real missing runtime d
 any module imported at module scope by app.main/app.agents needs its dep curated in.
 **How to apply:** (1) A dep declared in `pyproject.toml` is NOT automatically in CI —
 if it's imported at module scope and light (no torch/CUDA/ML), add it to BOTH curated
-lists. (2) After ANY curated-list change, re-verify **all four tools** (ruff / ruff
-format / mypy / pytest) against a fresh curated venv, not just the one reported broken
-— a bare `uv run --no-sync pytest` against your full local `.venv` falsely passes past
-curated gaps. (3) Truly heavy ML modules must stay behind a lazy/local import.
+lists. FastAPI file uploads (`UploadFile`/`File`) need **`python-multipart`** — it was
+missing from deps AND both curated lists entirely; add it when you add an upload route.
+(2) After ANY curated-list change, re-verify **all four tools** (ruff / ruff format /
+mypy / pytest) against a fresh curated venv, not just the one reported broken — a bare
+`uv run --no-sync pytest` against your full local `.venv` falsely passes past curated
+gaps (e.g. docling-dependent tests pass locally, fail in the curated venv). (3) Truly
+heavy ML modules must stay behind a lazy/local import. (4) **mypy CI scope is
+`app/ migrations/` only — NOT `tests/`** (see Makefile `typecheck` + backend-ci.yml). So
+unused-`type: ignore` / arg-type noise in `tests/` (from local-venv stubs that differ
+from CI's Any) never gates the pipeline; don't chase those. Keep your OWN test-file
+ignores correct anyway, but the authoritative type gate is `mypy app/ migrations/`.

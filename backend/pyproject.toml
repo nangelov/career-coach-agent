@@ -7,6 +7,8 @@ dependencies = [
     # Core framework
     "fastapi>=0.110.0",
     "uvicorn[standard]>=0.27.0",
+    # Multipart form parsing — required by FastAPI for file uploads (POST /api/profile/cv).
+    "python-multipart>=0.0.9",
     # Settings
     "pydantic>=2.6.0",
     "pydantic-settings>=2.2.0",
@@ -29,6 +31,13 @@ dependencies = [
     # Document ingestion
     "docling>=2.0.0",
     "Pillow>=10.0.0",
+    # OCR fallback (scanned/image CVs). pytesseract needs the system `tesseract` binary;
+    # ocrmypdf needs Ghostscript + qpdf — install those in the Docker/dev image (apt:
+    # `tesseract-ocr ghostscript qpdf`). Imported lazily in app/ingestion/ocr_parser.py, so
+    # they are excluded from the curated CI venv (like docling's ML stack) and their tests
+    # skip where the toolchain is absent.
+    "pytesseract>=0.3.10",
+    "ocrmypdf>=15.0.0",
     # PDF output
     "reportlab>=4.0.0",
     # Web / search

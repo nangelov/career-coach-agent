@@ -61,3 +61,12 @@ The orchestrator's board. One row per task. See `.claude/skills/agent-handoff/SK
 | P4-10-verify | P4 exit: routing/streaming/citations/guardrail/regression | P4 | DONE | 1 | APPROVED | APPROVED |
 | FIX-02-mypy-ci-curated-deps | Fix mypy failing in CI's curated venv (joserfc + PlannerNode alias) | cross-cutting | DONE | 1 | APPROVED | APPROVED |
 | FIX-03-pytest-ci-missing-deps | Fix real backend-ci pytest collection failure (authlib + langgraph) | cross-cutting | DONE | 2 | APPROVED | APPROVED |
+| P5-01-ingestion-parser | DocumentParser interface + docling primary engine | P5 | DONE | 1 | APPROVED | APPROVED |
+| P5-02-ocr-fallback | Type/text-layer detect + OCR fallback (Tesseract/OCRmyPDF) | P5 | DONE | 1 | APPROVED | APPROVED |
+| P5-03-profile-structuring | Layout-aware structuring + LLM-assisted structured profile | P5 | DONE | 1 | APPROVED | APPROVED |
+| P5-04-cv-upload-endpoint | POST /api/profile/cv Celery task + progress + pgvector embed | P5 | DONE | 2 | APPROVED | APPROVED |
+| FIX-04-docling-bytes-import-guard | Guard bytes-source ingestion tests from real docling import in curated CI venv | cross-cutting | DONE | 1 | APPROVED | APPROVED |
+| P5-05-profile-crud | GET/PUT /api/profile | P5 | DONE | 1 | APPROVED | APPROVED |
+| P5-06-task-status | GET /api/jobs/status/{task_id} | P5 | DONE | 1 | APPROVED | APPROVED |
+| P5-07-frontend-cv-upload | CV upload UI + progress + profile view/edit | P5 | DONE | 1 | APPROVED | APPROVED |
+| P5-08-verify | P5 exit: scanned PDF + PPTX CV parse async, RAG-grounded | P5 | DONE | 1 | APPROVED | APPROVED |

@@ -32,6 +32,7 @@ from app.config import settings
 from app.repositories.conversation_store import PostgresConversationStore
 from app.repositories.feedback_store import PostgresFeedbackReader
 from app.repositories.postgres import PostgresConnectionProvider
+from app.repositories.profile_store import PostgresProfileStore
 from app.repositories.redis import (
     CancelRedis,
     LimiterRedis,
@@ -52,6 +53,9 @@ from app.services.auth import GuestAuthService, SessionAuthenticator, SsoAuthSer
 from app.services.chat import ChatService
 from app.services.feedback import FeedbackReader
 from app.services.guest_upgrade import GuestUpgradeService
+from app.services.jobs import JobStatusService
+from app.services.profile_ingest import ProfileIngestService
+from app.services.profile_store import ProfileStore
 from app.services.rate_limiting import RateLimitService
 from app.services.user_store import UserStore
 
@@ -109,6 +113,19 @@ def build_feedback_reader(app: FastAPI) -> FeedbackReader:
     """
     provider = _require_pg_provider(app, "feedback read")
     return PostgresFeedbackReader.from_provider(provider)
+
+
+def build_profile_store(app: FastAPI) -> ProfileStore:
+    """Construct the Postgres-backed :class:`ProfileStore` (get/upsert ``profiles``, P5-05).
+
+    Backs ``GET/PUT /api/profile`` — read/edit the structured profile without re-uploading a
+    CV (§4/§8). A profile is anchored to a ``users`` row (FK), so this cannot degrade to
+    Redis-only: a missing Postgres provider is a wiring bug for these endpoints and
+    ``_require_pg_provider`` fails loudly. Called once per process (cached on ``app.state`` by
+    ``app.api.profile.get_profile_store``).
+    """
+    provider = _require_pg_provider(app, "profile store")
+    return PostgresProfileStore.from_provider(provider)
 
 
 def build_chat_service(app: FastAPI) -> ChatService:
@@ -242,6 +259,45 @@ def build_rate_limit_service(app: FastAPI) -> RateLimitService:
     redis_client = _shared_redis_client(app)
     limiter = RedisRateLimiter.from_settings(cast(LimiterRedis, redis_client), settings)
     return RateLimitService.from_settings(limiter, settings)
+
+
+def build_profile_ingest_service(app: FastAPI) -> ProfileIngestService:
+    """Construct the :class:`ProfileIngestService` (CV upload → Celery parse job, §5.1/§5.3).
+
+    Wires the service's narrow enqueue port to the real Celery producer
+    (:func:`app.tasks.profile_ingest.enqueue_cv_ingest`) — imported lazily so importing this
+    composition root does not pull Celery/ingestion in at API import time, matching
+    :func:`build_chat_service`'s deferred-import posture. No Redis/Postgres pool is needed at
+    the API layer: the endpoint only validates and enqueues; the worker owns the DB/embedding
+    wiring for the parse itself. Called once per process (cached by
+    ``app.api.profile.get_profile_ingest_service``); ``app`` is unused but kept for a uniform
+    builder signature.
+    """
+    from app.tasks.profile_ingest import enqueue_cv_ingest
+
+    return ProfileIngestService.from_settings(enqueue_cv_ingest)
+
+
+def build_job_status_service(app: FastAPI) -> JobStatusService:
+    """Construct the :class:`JobStatusService` (poll any async job's progress, §5.3/§8).
+
+    Wires the service's narrow :data:`~app.services.jobs.AsyncResultFactory` port to Celery's
+    :class:`~celery.result.AsyncResult` over the shared ``celery_app`` (its result backend is
+    Redis). Both are imported lazily so importing this composition root does not pull Celery in
+    at API import time (matching :func:`build_profile_ingest_service`). No Redis/Postgres pool
+    from ``app.state`` is needed: Celery owns the result-backend connection. Called once per
+    process (cached by ``app.api.jobs.get_job_status_service``); ``app`` is unused but kept for a
+    uniform builder signature.
+    """
+    from celery.result import AsyncResult
+
+    from app.services.jobs import AsyncResultLike
+    from app.tasks.celery_app import celery_app
+
+    def result_factory(task_id: str) -> AsyncResultLike:
+        return AsyncResult(task_id, app=celery_app)
+
+    return JobStatusService(result_factory)
 
 
 def build_session_authenticator(app: FastAPI) -> SessionAuthenticator:

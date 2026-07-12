@@ -113,7 +113,8 @@ jobs:
         run: |
           uv sync --only-group dev
           uv pip install fastapi pydantic pydantic-settings "celery[redis]" openai \
-            sqlalchemy asyncpg aiosqlite pgvector alembic joserfc authlib langgraph
+            sqlalchemy asyncpg aiosqlite pgvector alembic joserfc authlib langgraph \
+            python-multipart
 
       # --no-sync: run the tool in the curated venv above WITHOUT uv re-resolving
       # and installing the full project dependency tree (which would drag in the

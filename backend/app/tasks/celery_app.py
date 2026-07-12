@@ -30,7 +30,7 @@ celery_app = Celery(
     # Lazy task-module discovery: the worker imports these modules by string path
     # and registers their @celery_app.task functions. No eager import of the task
     # objects here -> no circular import (the criterion behind P0-08).
-    include=["app.tasks.ping"],
+    include=["app.tasks.ping", "app.tasks.profile_ingest"],
 )
 
 celery_app.conf.update(

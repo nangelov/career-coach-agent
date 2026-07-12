@@ -345,6 +345,19 @@ class Settings(BaseSettings):
         ),
     )
 
+    # -------------------------------------------------------------------------
+    # Document ingestion (CV upload — §5.1 / §5.3)
+    # -------------------------------------------------------------------------
+    CV_UPLOAD_MAX_BYTES: int = Field(
+        default=10 * 1024 * 1024,
+        description=(
+            "Maximum accepted CV upload size in bytes (default 10 MiB) for "
+            "POST /api/profile/cv (§5.1). Enforced by the profile-ingest service before the "
+            "file is base64-encoded and handed to the Celery parse task, so an oversized "
+            "upload is rejected (413) in-request rather than tying up a worker."
+        ),
+    )
+
 
 # Module-level singleton — imported everywhere as `from app.config import settings`.
 settings = Settings()

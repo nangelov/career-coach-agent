@@ -18,3 +18,4 @@
 - [Extending an ABC port breaks fakes](project-abc-port-extension-breaks-fakes.md) — new abstractmethod breaks all fakes; prefer composing from existing port methods (e.g. loop persist_turn for backfill)
 - [Auth-gating an open endpoint + tests](project-auth-protected-endpoint-tests.md) — identity from token not body; authz before rate-limit; API tests override require_auth + get_rate_limit_service (fakes in tests/fakes.py)
 - [Postgres now() constant in a txn](project-pg-now-constant-in-txn.md) — same-transaction rows share created_at; ordering tests must set explicit spaced timestamps, not rely on insert order
+- [docling ingestion](project-docling-ingestion.md) — P5 DocumentParser ABC + DoclingParser; lazy-import docling, injectable converter seam, test real path with offline DOCX + importorskip

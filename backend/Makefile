@@ -47,7 +47,8 @@ LIVE_DB_ENV = set -a && . ../.env && set +a && \
 install:
 	uv sync --only-group dev
 	uv pip install fastapi pydantic pydantic-settings "celery[redis]" openai \
-		sqlalchemy asyncpg aiosqlite pgvector alembic joserfc authlib langgraph
+		sqlalchemy asyncpg aiosqlite pgvector alembic joserfc authlib langgraph \
+		python-multipart
 
 lint:
 	uv run --no-sync ruff check .

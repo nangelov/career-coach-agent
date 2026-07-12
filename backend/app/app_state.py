@@ -44,3 +44,9 @@ class AppStateKeys(StrEnum):
     USER_STORE = "user_store"
     #: The app-scoped :class:`~app.services.feedback.FeedbackReader` (admin read, P3-05), cached.
     FEEDBACK_READER = "feedback_reader"
+    #: The app-scoped :class:`~app.services.profile_ingest.ProfileIngestService` (P5-04), cached.
+    PROFILE_INGEST_SERVICE = "profile_ingest_service"
+    #: The app-scoped :class:`~app.services.profile_store.ProfileStore` (P5-05 get/put), cached.
+    PROFILE_STORE = "profile_store"
+    #: The app-scoped :class:`~app.services.jobs.JobStatusService` (P5-06 poll), cached.
+    JOB_STATUS_SERVICE = "job_status_service"

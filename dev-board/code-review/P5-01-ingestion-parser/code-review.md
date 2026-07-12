@@ -1,0 +1,20 @@
+# Code review — P5-01-ingestion-parser · engineer revision 1
+
+## Verdict: APPROVED
+
+## Findings
+| id | severity | file:line | issue | required change |
+|----|----------|-----------|-------|-----------------|
+| C1 | nit | `backend/app/ingestion/docling_parser.py:107-115` | The `except UnsupportedDocumentError: raise` inside `parse`'s try block is effectively dead code: `UnsupportedDocumentError` is raised by `_stream_name`/`_build_convert_source`, which runs at line 108 **before** the `try` opens (line 109). `converter.convert` itself never raises our custom type, so that except clause can't trigger. | Optionally drop the dead `except` (or move `_build_convert_source` inside the try if the intent was to normalize its errors too). Harmless as-is. |
+| C2 | nit | `backend/app/ingestion/docling_parser.py:116,157-184` | `_to_parsed_document` runs **outside** the try/except, so if docling's `export_to_markdown/text/dict` raise, the error leaks raw rather than being normalized to `DocumentParseError` (unlike the convert call). Low likelihood, but breaks the "callers catch one ingestion error type" contract the module advertises. | Consider wrapping the result-mapping in the same normalization, or document that export errors are out of scope. |
+| C3 | nit | acceptance / `engineer.md:75-77` | Acceptance asks for "installs cleanly via `uv sync`"; the engineer asserted the declaration + lock entry rather than running a fresh `uv sync` (reasonably — it pulls ~3GB ML/CUDA). The dep is nonetheless proven resolvable: the 2 real docling tests actually executed (14 passed, not skipped), so docling is present and importable in the dev venv. | None required; noting the criterion was satisfied by inference + real-engine test, not a clean-room `uv sync`. |
+
+## Notes
+- **Verified locally.** `pytest tests/test_ingestion_parser.py -q` → **14 passed in 5.73s** (12 fake-converter + 2 real docling on the committed DOCX fixture, which is a valid `Microsoft Word 2007+` file, 36 KB). `ruff check` on the module + test → clean. `mypy app/ingestion/` → Success, 4 files.
+- **Curated-venv mypy (the recurring CI gap) is safe here.** docling/docling_core are curated-absent and resolve to `Any`; every engine-boundary function (`_build_default_converter`, `_get_converter`, `_build_convert_source`, `parse`'s internals) is annotated `-> Any` or returns a locally-constructed concrete type, so `strict`'s `warn_return_any` has nothing to fire on. Dev-venv mypy passes with the *real* (stricter) docling types, which is a superset of the Any resolution for this direction — no curated-only regression expected. No `import docling` leaks outside method bodies; `__init__.py`/`parser.py`/`types.py` import cleanly with no ML stack.
+- **Lazy-load + injectable seam are correct.** Construction imports nothing and builds no converter (`test_construction_does_not_import_docling_or_build_converter` asserts `_converter is None`); the deferred imports carry `# noqa: PLC0415`; `_get_converter` uses proper async double-checked locking so concurrent first-callers build the converter once and off the event loop (`asyncio.to_thread`). Blocking `convert` also runs via `to_thread`. Matches the `SentenceTransformerEmbeddingClient` posture (design §6).
+- **Layering / interfaces-before-impls honored.** Callers depend on the `DocumentParser` ABC + engine-agnostic `ParsedDocument`; the docling adapter is the only SDK-bound module. No router/DB/Celery wiring — correctly deferred to P5-02..P5-04.
+- **Security:** no untrusted execution, no secrets, no `run_python_code`-style path; upload bytes are wrapped in `BytesIO`/`DocumentStream` and handed to docling. `bytes` sources without a format hint are rejected early (`UnsupportedDocumentError`) rather than guessed.
+- **Diff vs. report reconciles:** `pyproject.toml`/`uv.lock` genuinely unchanged (docling was pre-declared), matching the report. Only in-scope ingestion files + tests/fixture added; the `failed_pipeline.md` deletion and agent-memory edits are unrelated housekeeping, not this task's source.
+
+All three findings are nit-level; per the gate they do not block. Approved with notes.

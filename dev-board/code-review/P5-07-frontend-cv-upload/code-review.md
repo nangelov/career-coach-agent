@@ -1,0 +1,18 @@
+# Code review — P5-07-frontend-cv-upload · engineer revision 1
+
+## Verdict: APPROVED
+
+## Findings
+| id | severity | file:line | issue | required change |
+|----|----------|-----------|-------|-----------------|
+| C1 | minor | frontend/lib/profile.ts:354-371 | `pollJobUntilTerminal` has no upper bound (no max attempts / max duration). If a job is stuck in `pending`/`in_progress` — a dead Celery worker, or an unknown/expired `task_id`, which Celery's result backend reports as `PENDING` indefinitely — the loop polls forever (network traffic + a spinner that never resolves), only escapable via the unmount `AbortSignal`. Consider an optional `timeoutMs`/max-poll cap that resolves to `failure` or throws a timeout error. | Add a bounded poll (deadline or attempt cap) so a never-terminal job surfaces a timeout instead of polling forever. Defer acceptable; note it. |
+| C2 | nit | frontend/components/CvUpload.tsx:60,72-110 | `uploadCv` accepts no `AbortSignal`, so the unmount abort (`abortRef`) only cancels the poll, not an in-flight upload POST. If the component unmounts during the upload window, `setPhase("processing")` runs post-unmount (harmless under React 18, no warning). Engineer report says "Aborts the poll on unmount" — accurate, but the upload fetch itself is not abortable. | Optional: thread the controller's `signal` into `uploadCv`/`fetch` for full cancellation. Low value; leave as-is or note. |
+| C3 | nit | frontend/components/ProfileView.tsx:186,198-206 | `showEmptyPrompt` is derived from the last *loaded* `profile`, not current edit state, so the "you don't have a profile yet" banner persists after the user adds unsaved rows until a save re-hydrates. Copy ("or add details manually below") makes this benign. | No change required. |
+
+## Notes
+- Verified against the backend contracts this consumes: TS wire types in `lib/profile.ts` (`Profile`/`ExperienceItem`/`EducationItem`, `JobStatus`, `CvUploadHandle`) match `backend/app/ingestion/profile.py::ProfileSchema`, `backend/app/schemas/jobs.py::JobStatusResponse`, and `backend/app/schemas/profile.py::CvUploadResponse` field-for-field (snake_case round-trips through `PUT` losslessly). Error-status handling (401/403/413/415/429/422/400) matches the router's actual raises in `backend/app/api/profile.py` and the guest-403 / guest-empty-200 behavior.
+- Conventions: mirrors `lib/auth.ts` / `lib/chatStream.ts` exactly — injectable `fetchImpl`/`baseUrl` DI, `authHeaders(session)` bearer attach, defensive wire→type mappers, best-effort `readDetail` FastAPI `{detail}` extraction. Correctly omits `Content-Type` on the multipart upload (browser sets the boundary; asserted in a test).
+- Security: bearer token attached on every authenticated call; `encodeURIComponent` on `task_id` in the path; profile fields rendered as React text (auto-escaped — no XSS from parsed CV content); no secrets; no arbitrary execution. Job-status polling is a capability (unguessable id) per the backend ruling — the frontend does not weaken that.
+- Correctness: `pollJobUntilTerminal` abort path is clean (checks `signal.aborted` before each poll and in `delay`, removes the abort listener, distinguishable `AbortError` via `isAbortError`); the `busy` guard prevents double-submit; `ProfileView` load effect uses a `cancelled` guard against races; re-upload aborts the prior poll first.
+- Verification reproduced locally: `npm run lint` clean, `npm run build` succeeds (`/profile` route emitted), `npm test` → 9 suites / 89 passed (30 new). Tests cover the client happy/error/guest paths, poll-until-terminal + abort, upload happy/failure/rejection, and view read/edit/save/guest-403/reload.
+- All acceptance criteria met. Findings are all minor/nit and do not gate.

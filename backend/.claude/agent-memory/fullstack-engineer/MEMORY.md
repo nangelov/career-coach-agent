@@ -9,3 +9,4 @@
 - [SQLAlchemy ColumnElement](feedback-sqlalchemy-columnelement.md) — reassigning a WHERE cond from is_()/== to or_()/and_() widens type; annotate `cond: ColumnElement[bool]` up front for strict mypy
 - [schemas independent of agents](feedback-schemas-independent-of-agents.md) — schemas/ never imports agents/; define a wire DTO + map internal AgentState types in the service layer
 - [Graph streaming block path](project-graph-streaming-block-path.md) — streaming responder runs SEPARATELY from pre-responder graph; short-circuits need BOTH a node/routing change AND a stream_response check
+- [Phase-exit verification](phase-exit-verification.md) — Px-NN-verify: compose the real stack, fake only external edges, live-DB skip+run-once; report point-by-point
