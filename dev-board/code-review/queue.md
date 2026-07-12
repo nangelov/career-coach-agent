@@ -70,3 +70,4 @@ The orchestrator's board. One row per task. See `.claude/skills/agent-handoff/SK
 | P5-06-task-status | GET /api/jobs/status/{task_id} | P5 | DONE | 1 | APPROVED | APPROVED |
 | P5-07-frontend-cv-upload | CV upload UI + progress + profile view/edit | P5 | DONE | 1 | APPROVED | APPROVED |
 | P5-08-verify | P5 exit: scanned PDF + PPTX CV parse async, RAG-grounded | P5 | DONE | 1 | APPROVED | APPROVED |
+| FIX-05-docker-frontend-api-routing | Frontend can't reach backend under docker-compose (guest/SSO/chat/profile all 404) | cross-cutting | DONE | 1 | APPROVED | APPROVED |

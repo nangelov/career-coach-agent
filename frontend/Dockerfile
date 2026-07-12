@@ -14,6 +14,13 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# Backend origin the same-origin /api/* rewrite proxies to (see lib/apiProxy.ts).
+# MUST be set at BUILD time: Next.js freezes rewrites() into the build manifest,
+# so `next start` cannot pick this up from a runtime env var. Defaults to
+# localhost:8000 (bare `docker build`); docker-compose overrides it with the
+# in-network backend service name via build.args (see docker-compose.yml).
+ARG INTERNAL_API_URL=http://localhost:8000
+ENV INTERNAL_API_URL=$INTERNAL_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 

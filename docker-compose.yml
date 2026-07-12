@@ -91,6 +91,14 @@ services:
   frontend:
     build:
       context: ./frontend
+      # The Next.js server reverse-proxies same-origin /api/* calls to the
+      # backend (see frontend/lib/apiProxy.ts). This host is baked into the build
+      # (Next freezes rewrites() into the build manifest — a runtime `environment:`
+      # entry would NOT work), so it is passed as a build ARG: the in-network
+      # compose service name `backend`, reachable from the frontend container's
+      # Node process. The browser still only ever talks to :3000 (no CORS).
+      args:
+        INTERNAL_API_URL: http://backend:8000
     ports:
       - "3000:3000"
     depends_on:
