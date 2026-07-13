@@ -52,3 +52,5 @@ class AppStateKeys(StrEnum):
     JOB_STATUS_SERVICE = "job_status_service"
     #: The app-scoped :class:`~app.services.account.AccountService` (SEC-05 erase/export), cached.
     ACCOUNT_SERVICE = "account_service"
+    #: The app-scoped :class:`~app.services.roles.RolesService` (P6-07 role requirements), cached.
+    ROLES_SERVICE = "roles_service"

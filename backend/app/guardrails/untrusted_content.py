@@ -13,7 +13,7 @@ content meets a model:
 
 * the Response Agent's grounding block
   (:func:`app.agents.responder._grounding_block`) fences worker output (RAG + web-search +
-  job listings) before synthesis, and
+  market requirements) before synthesis, and
 * the CV structuring prompt (:mod:`app.ingestion.structuring`) fences the extracted CV
   Markdown before the schema tool-call.
 

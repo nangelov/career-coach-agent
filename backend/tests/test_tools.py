@@ -3,7 +3,8 @@
 Covers: schema shape validity, correct execution on valid input, graceful
 error payloads on bad/missing args, and the full registry round trip
 (``ToolCall`` → executor → ``role="tool"`` ``ChatMessage``). All ``internet_search``
-HTTP is served by an ``httpx.MockTransport`` — no real network in CI.
+HTTP is served by an ``httpx.MockTransport`` — no real network in CI. Tavily
+provider/failover/promotion/caching are tested separately in ``test_tavily_pool.py``.
 """
 
 from __future__ import annotations
@@ -22,6 +23,16 @@ from app.tools import (
     ToolResult,
     build_default_registry,
 )
+from app.tools.tavily_pool import TavilyPool
+
+
+def _tavily_tool(
+    handler: Any | None = None, *, keys: tuple[str, ...] = ("tvly-test",)
+) -> InternetSearchTool:
+    """Build an ``InternetSearchTool`` over a Tavily pool (mock transport, no redis)."""
+    http_client = _mock_search_client(handler) if handler is not None else None
+    pool = TavilyPool(list(keys), http_client=http_client)
+    return InternetSearchTool(pool=pool)
 
 
 # --------------------------------------------------------------------------- #
@@ -54,14 +65,14 @@ def test_current_datetime_schema_shape() -> None:
 
 
 def test_internet_search_schema_shape() -> None:
-    tool = InternetSearchTool(base_url="http://searxng.test")
+    tool = _tavily_tool()
     schema = tool.schema
     _assert_valid_schema(schema, "internet_search")
     assert schema["function"]["parameters"]["required"] == ["query"]
 
 
 def test_registry_schemas_match_registered_tools() -> None:
-    # SEARXNG_URL defaults to "" (conftest seeds no value), so the default
+    # TAVILY_API_KEY_* default to "" (conftest seeds no value), so the default
     # registry's search tool is inert — safe to build without touching the network.
     registry = build_default_registry()
     names = [s["function"]["name"] for s in registry.schemas()]
@@ -99,6 +110,8 @@ async def test_internet_search_returns_structured_snippets() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured["url"] = str(request.url)
+        captured["auth"] = request.headers.get("authorization", "")
+        captured["body"] = json.loads(request.content)
         return httpx.Response(
             200,
             json={
@@ -117,10 +130,7 @@ async def test_internet_search_returns_structured_snippets() -> None:
             },
         )
 
-    tool = InternetSearchTool(
-        base_url="http://searxng.test",
-        http_client=_mock_search_client(handler),
-    )
+    tool = _tavily_tool(handler)
     result = await tool.run({"query": "career coaching", "max_results": 5})
 
     assert not result.is_error
@@ -132,8 +142,11 @@ async def test_internet_search_returns_structured_snippets() -> None:
         "url": "https://example.com/a",
         "snippet": "How to grow your career.",
     }
-    assert "format=json" in captured["url"]
-    assert "q=career" in captured["url"]
+    assert "tavily" in captured["url"]
+    assert captured["body"]["query"] == "career coaching"
+    # The secret is carried in the Authorization header, never in the URL.
+    assert captured["auth"] == "Bearer tvly-test"
+    assert "tvly-test" not in captured["url"]
 
 
 async def test_internet_search_respects_max_results_cap() -> None:
@@ -141,24 +154,21 @@ async def test_internet_search_respects_max_results_cap() -> None:
         many = [{"title": f"t{i}", "url": f"u{i}", "content": "c"} for i in range(20)]
         return httpx.Response(200, json={"results": many})
 
-    tool = InternetSearchTool(
-        base_url="http://searxng.test",
-        http_client=_mock_search_client(handler),
-    )
+    tool = _tavily_tool(handler)
     # max_results=99 must be clamped to MAX_RESULTS_CAP (10).
     result = await tool.run({"query": "x", "max_results": 99})
     assert len(json.loads(result.content)["results"]) == 10
 
 
 async def test_internet_search_missing_query_is_graceful() -> None:
-    tool = InternetSearchTool(base_url="http://searxng.test")
+    tool = _tavily_tool()
     result = await tool.run({})
     assert result.is_error
     assert "query" in json.loads(result.content)["error"]
 
 
 async def test_internet_search_not_configured_is_graceful() -> None:
-    tool = InternetSearchTool(base_url="")
+    tool = _tavily_tool(keys=())
     result = await tool.run({"query": "anything"})
     assert result.is_error
     assert "not configured" in json.loads(result.content)["error"]
@@ -168,10 +178,7 @@ async def test_internet_search_http_error_is_graceful() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(503)
 
-    tool = InternetSearchTool(
-        base_url="http://searxng.test",
-        http_client=_mock_search_client(handler),
-    )
+    tool = _tavily_tool(handler)
     result = await tool.run({"query": "x"})
     assert result.is_error
     assert "failed" in json.loads(result.content)["error"]
@@ -181,13 +188,10 @@ async def test_internet_search_timeout_is_graceful() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.TimeoutException("timed out")
 
-    tool = InternetSearchTool(
-        base_url="http://searxng.test",
-        http_client=_mock_search_client(handler),
-    )
+    tool = _tavily_tool(handler)
     result = await tool.run({"query": "x"})
     assert result.is_error
-    assert "timed out" in json.loads(result.content)["error"]
+    assert "failed" in json.loads(result.content)["error"]
 
 
 # --------------------------------------------------------------------------- #
@@ -256,11 +260,11 @@ def test_registry_rejects_duplicate_registration() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Local factory: a registry whose search tool has no live client (base_url unset)
+# Local factory: a registry whose search tool has no configured key (empty pool)
 # so nothing can reach the network by accident in these tests.
 # --------------------------------------------------------------------------- #
 def build_default_registry_no_network() -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(CurrentDateTimeTool())
-    registry.register(InternetSearchTool(base_url=""))
+    registry.register(InternetSearchTool(pool=TavilyPool([])))
     return registry

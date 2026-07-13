@@ -112,10 +112,12 @@ async def test_upgrade_backfills_clean_transcript() -> None:
                 role="assistant",
                 content=None,
                 tool_calls=[
-                    ToolCall(id="t1", function=FunctionCall(name="job_search", arguments="{}"))
+                    ToolCall(id="t1", function=FunctionCall(name="internet_search", arguments="{}"))
                 ],
             ),
-            ChatMessage(role="tool", content='{"jobs": []}', name="job_search", tool_call_id="t1"),
+            ChatMessage(
+                role="tool", content='{"jobs": []}', name="internet_search", tool_call_id="t1"
+            ),
             ChatMessage(role="assistant", content="here are some roles", message_id="m2"),
         ],
     )

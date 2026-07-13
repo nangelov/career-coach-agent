@@ -95,6 +95,34 @@ async def test_synthesize_prompt_includes_grounding_and_turn() -> None:
     assert router.complete_messages[0][-1].content == "what skills am I missing?"
 
 
+async def test_job_hunting_turn_gets_a_redirect_framing_note() -> None:
+    """A job_hunting turn (design §7.4) steers the responder to redirect, not list jobs."""
+    router = FakeResponderRouter()
+    state = _grounded_state("find me AI architect jobs in Berlin")
+    state = state.model_copy(
+        update={"plan": PlannerDecision(intent=Intent.JOB_HUNTING, workers=[])}
+    )
+
+    await Responder(router).synthesize(state)
+
+    prompt = _prompt_text(router.complete_messages[0]).lower()
+    assert "not a job board" in prompt
+    assert "redirect" in prompt
+
+
+async def test_market_requirements_turn_has_no_redirect_note() -> None:
+    """A plain market-requirements turn is answered directly — no redirect framing."""
+    router = FakeResponderRouter()
+    state = _grounded_state("what do AI architects need?")
+    state = state.model_copy(
+        update={"plan": PlannerDecision(intent=Intent.MARKET_REQUIREMENTS, workers=[])}
+    )
+
+    await Responder(router).synthesize(state)
+
+    assert "not a job board" not in _prompt_text(router.complete_messages[0]).lower()
+
+
 async def test_untrusted_grounding_is_delineated_not_concatenated() -> None:
     """Worker content is fenced as REFERENCE MATERIAL with an ignore-instructions warning."""
     router = FakeResponderRouter()

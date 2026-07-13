@@ -50,7 +50,9 @@ from app.agents.state import (
 from tests.fakes import (
     FakeEmbeddingClient,
     FakeSearchTool,
+    FreshSessionDBProvider,
     fake_crawl_client,
+    market_and_rag_session,
     rag_db_one_hit,
     web_result,
 )
@@ -114,12 +116,12 @@ async def test_guardrails_bracket_the_pipeline() -> None:
 # --------------------------------------------------------------------------- #
 async def test_only_selected_workers_are_dispatched() -> None:
     """Planner selecting two of four workers runs exactly those two."""
-    compiled = build_graph(planner=_planner_selecting(WorkerName.RAG, WorkerName.JOB_SEARCH))
+    compiled = build_graph(planner=_planner_selecting(WorkerName.RAG, WorkerName.MARKET_INTEL))
 
     order = await _node_order(compiled, AgentState(session_id="s", user_message="find work"))
 
     assert WorkerName.RAG.value in order
-    assert WorkerName.JOB_SEARCH.value in order
+    assert WorkerName.MARKET_INTEL.value in order
     # the unselected workers never execute.
     assert WorkerName.WEB_SEARCH.value not in order
     assert WorkerName.PDP_RESUME.value not in order
@@ -168,14 +170,16 @@ def test_route_after_planner_falls_back_to_responder() -> None:
 # --------------------------------------------------------------------------- #
 async def test_parallel_workers_fan_in_without_clobbering() -> None:
     """All four workers run concurrently; every slice survives the fan-in."""
-    db, _doc_id, _chunk_id = rag_db_one_hit()
+    # RAG and MARKET_INTEL both read the DB concurrently — give each its own fresh scripted
+    # session (production hands each an independent pooled session).
+    db = FreshSessionDBProvider(market_and_rag_session)
     # Inject a fake web search tool + mock crawl transport so the real web_search worker
     # (P4-05) contributes one citation like any other worker — no real network.
     compiled = build_graph(
         planner=_planner_selecting(
             WorkerName.RAG,
             WorkerName.WEB_SEARCH,
-            WorkerName.JOB_SEARCH,
+            WorkerName.MARKET_INTEL,
             WorkerName.PDP_RESUME,
         ),
         embedder=FakeEmbeddingClient(),

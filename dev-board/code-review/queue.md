@@ -82,3 +82,14 @@ The orchestrator's board. One row per task. See `.claude/skills/agent-handoff/SK
 | SEC-09-verify | SEC exit: SSRF/injection/port/cookie/erasure verify | SEC | DONE | 1 | APPROVED | APPROVED |
 | SEC-10-container-verify | Live docker-compose + fresh test-suite verification | SEC | DONE | 1 | APPROVED | APPROVED |
 | FIX-06-ruff-format-check | Backend CI failing on `ruff format --check` | cross-cutting | DONE | 1 | APPROVED | APPROVED |
+| P6-01-taxonomy-seed | ESCO/O*NET taxonomy seed into shared KB | P6 | DONE | 1 | APPROVED | APPROVED |
+| P6-02-market-schema | role_profiles + job_postings migration | P6 | DONE | 1 | APPROVED | APPROVED |
+| P6-03-tavily-search-provider | Tavily 3-key rotating search pool | P6 | DONE | 1 | APPROVED | APPROVED |
+| P6-04-market-agent-and-guardrail | market_agent.py + mining Celery tasks + S3 topic guardrail | P6 | DONE | 2 | APPROVED | APPROVED |
+| P6-05-skills-gap | Skills gap: profile vs role_profile | P6 | DONE | 1 | APPROVED | APPROVED |
+| P6-06-learning-resource-corpus | Learning-resource corpus crawl (Coursera/Udacity/Udemy/edX) | P6 | DONE | 1 | APPROVED | APPROVED |
+| P6-07-roles-api | GET /api/roles/{role}/requirements + /gap | P6 | DONE | 1 | APPROVED | APPROVED |
+| P6-08-role-requirements-ui | Role-requirements frontend UI | P6 | DONE | 1 | APPROVED | APPROVED |
+| P6-09-manual-verify | P6 exit: cited ranked requirements + gap + cache + redirect | P6 | DONE | 1 | APPROVED | APPROVED |
+| FIX-07-market-role-canonicalization-kind-filter | market_agent canonicalization must filter shared KB by meta.kind, not just source_type | cross-cutting | DONE | 1 | APPROVED | APPROVED |
+| P6-10-cicd-verify | P6 CI/CD verification | P6 | DONE | 1 | APPROVED | APPROVED |

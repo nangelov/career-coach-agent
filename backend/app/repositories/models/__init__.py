@@ -9,7 +9,8 @@
 # Table groups (added phase-by-phase, same convention each time):
 #   * identity / conversation / documents         → P2-03
 #   * knowledge base / memories                    → P2-04
-#   * structured records: jobs, PDPs, dashboard    → P2-05
+#   * structured records: PDPs, dashboard          → P2-05
+#   * market intelligence: role_profiles, postings → P6-02
 
 from app.repositories.models.dashboard import (
     DashboardTask,
@@ -28,13 +29,14 @@ from app.repositories.models.identity import (
     Session,
     User,
 )
-from app.repositories.models.jobs import (
-    Job,
-)
 from app.repositories.models.knowledge import (
     KbChunk,
     KbDocument,
     UserMemory,
+)
+from app.repositories.models.market import (
+    JobPosting,
+    RoleProfile,
 )
 
 __all__ = [
@@ -42,7 +44,7 @@ __all__ = [
     "DashboardTask",
     "Feedback",
     "Goal",
-    "Job",
+    "JobPosting",
     "KbChunk",
     "KbDocument",
     "Message",
@@ -52,6 +54,7 @@ __all__ = [
     "Preference",
     "Profile",
     "ProgressEntry",
+    "RoleProfile",
     "Session",
     "User",
     "UserMemory",

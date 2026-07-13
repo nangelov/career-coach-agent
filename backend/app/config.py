@@ -272,14 +272,23 @@ class Settings(BaseSettings):
         default="",
         description="SerpAPI key for Google Jobs / web search.",
     )
-    SEARXNG_URL: str = Field(
+    TAVILY_API_KEY_1: str = Field(
         default="",
         description=(
-            "Base URL of a SearXNG instance for the `internet_search` tool "
-            "(OSS, self-hostable, no API key — §11 budget posture). "
-            "When empty the tool returns a graceful 'not configured' result. "
-            "Example: http://searxng:8080"
+            "Primary Tavily API key for the `internet_search` tool (§5.7 / §6.19). "
+            "Set via env / HF Space Secret; never hard-coded or logged. Free-tier quota is "
+            "~2-3k searches/month per key — three keys form an ordered rotating pool with "
+            "failover + promote-to-primary (persisted in Redis, reusing the §6.6 router "
+            "pattern). When all three are blank the tool returns 'not configured'."
         ),
+    )
+    TAVILY_API_KEY_2: str = Field(
+        default="",
+        description="Second Tavily API key in the rotating pool (§5.7 / §6.19) — env/secret only.",
+    )
+    TAVILY_API_KEY_3: str = Field(
+        default="",
+        description="Third Tavily API key in the rotating pool (§5.7 / §6.19) — env/secret only.",
     )
     SEARCH_TIMEOUT_SECONDS: float = Field(
         default=10.0,
@@ -374,6 +383,28 @@ class Settings(BaseSettings):
             "POST /api/profile/cv (§5.1). Enforced by the profile-ingest service before the "
             "file is base64-encoded and handed to the Celery parse task, so an oversized "
             "upload is rejected (413) in-request rather than tying up a worker."
+        ),
+    )
+
+    # -------------------------------------------------------------------------
+    # Market intelligence (role requirements — §5.6 / §5.7)
+    # -------------------------------------------------------------------------
+    ROLE_PROFILE_STALE_AFTER_SECONDS: int = Field(
+        default=7 * 86_400,
+        description=(
+            "Staleness window (seconds, default 7d) for a cached role_profiles row. "
+            "GET /api/roles/{role}/requirements still returns a stale-but-available profile "
+            "at 200, but enqueues a background mine_role Celery job to refresh it — the "
+            "non-blocking 'periodic refresh of stale profiles' (§5.6). Never triggers a "
+            "blocking re-mine on the request path (§7.5)."
+        ),
+    )
+    ROLE_REQUIREMENTS_CACHE_TTL_SECONDS: int = Field(
+        default=3_600,
+        description=(
+            "TTL (seconds, default 1h) for the Redis-cached serialized role-requirements "
+            "response (§5.6/§5.7 'cache hot roles'). Keyed on the normalized role so a second "
+            "request for the same hot role is served from Redis without re-hitting Postgres."
         ),
     )
 

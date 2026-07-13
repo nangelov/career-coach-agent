@@ -32,6 +32,7 @@ from .api.feedback import router as feedback_router
 from .api.jobs import router as jobs_router
 from .api.me import router as me_router
 from .api.profile import router as profile_router
+from .api.roles import router as roles_router
 from .app_state import AppStateKeys
 from .config import settings
 from .repositories.postgres import PostgresConnectionProvider
@@ -159,6 +160,7 @@ def create_app() -> FastAPI:
     app.include_router(profile_router)
     app.include_router(jobs_router)
     app.include_router(me_router)
+    app.include_router(roles_router)
 
     return app
 

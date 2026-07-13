@@ -10,8 +10,8 @@ excerpts) plus one :class:`~app.agents.state.Citation` per result.
 
 **What it does, in order.**
 
-1. Take the current turn's ``user_message`` as the query and run the P1-03
-   :class:`~app.tools.internet_search.InternetSearchTool` (SearXNG-backed, no API key)
+1. Take the current turn's ``user_message`` as the query and run the
+   :class:`~app.tools.internet_search.InternetSearchTool` (Tavily 3-key pool, §5.7 / §6.19)
    **directly** — the worker knows what to search for from the state, so it calls the tool
    rather than round-tripping through the LLM tool-call loop (same posture ``rag_agent``
    uses calling ``hybrid_search`` directly). There is no second search client.
@@ -51,12 +51,12 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Mapping, Sequence
-from html.parser import HTMLParser
 from typing import Any, Protocol, runtime_checkable
 
 import httpx
 
 from app.agents.state import AgentState, Citation, WorkerName, WorkerResult
+from app.ingestion.html_text import html_to_text
 from app.net.ssrf_guard import build_guarded_client, read_capped
 from app.tools.base import ToolResult
 from app.tools.internet_search import InternetSearchTool
@@ -159,8 +159,9 @@ def make_web_search_node(
 
     ``search_tool`` defaults to the settings-configured
     :class:`~app.tools.internet_search.InternetSearchTool` (built lazily *per call*, not at
-    import — it is cheap and reads only ``SEARXNG_URL``; when that is unset the tool reports
-    "not configured" and this worker fails soft). ``http_client`` defaults to a short-lived
+    import; when no ``TAVILY_API_KEY_*`` is set the tool reports "not configured" and this
+    worker fails soft). The chat wiring (``bootstrap``) instead injects a redis-backed tool so
+    the pool's promotion/cache use the shared pool. ``http_client`` defaults to a short-lived
     per-call client for the crawl step, matching the search tool's own pattern. Both are
     injected as fakes/mock-transport clients by unit tests so no real network call is made.
     """
@@ -287,7 +288,7 @@ async def _crawl_page(client: httpx.AsyncClient, url: str, *, timeout: float) ->
         logger.warning("web crawl failed for %s: %s", url, exc)
         return None
 
-    text = _extract_text(raw.decode(encoding, errors="replace"))
+    text = html_to_text(raw.decode(encoding, errors="replace"))
     return _truncate(text, EXTRACT_MAX_CHARS) or None
 
 
@@ -315,52 +316,6 @@ def _bundle(results: Sequence[dict[str, str]], extracts: Mapping[str, str]) -> s
         body = extracts.get(url) or r.get("snippet", "")
         lines.append(f"[{i}] {title} ({url}): {body}".rstrip())
     return "\n\n".join(lines)
-
-
-class _TextExtractor(HTMLParser):
-    """Collect visible text from HTML, skipping ``<script>`` / ``<style>`` / etc. content.
-
-    A minimal stdlib extractor (no ``beautifulsoup4`` / ``selectolax`` dependency): it drops
-    the bodies of non-content tags and gathers the remaining character data. Good enough for
-    turning a real page into inert plain text for citation — full readability heuristics are
-    out of scope.
-    """
-
-    _SKIP_TAGS = frozenset({"script", "style", "noscript", "template", "svg", "head"})
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self._parts: list[str] = []
-        self._skip_depth = 0
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in self._SKIP_TAGS:
-            self._skip_depth += 1
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag in self._SKIP_TAGS and self._skip_depth > 0:
-            self._skip_depth -= 1
-
-    def handle_data(self, data: str) -> None:
-        if self._skip_depth == 0:
-            text = data.strip()
-            if text:
-                self._parts.append(text)
-
-    @property
-    def text(self) -> str:
-        return " ".join(self._parts)
-
-
-def _extract_text(html: str) -> str:
-    """Extract collapsed plain text from an HTML string (stdlib parser; fail-soft on bad HTML)."""
-    parser = _TextExtractor()
-    try:
-        parser.feed(html)
-    except Exception as exc:
-        # Malformed markup: keep whatever text was gathered before the parser choked.
-        logger.warning("web crawl HTML parse error: %s", exc)
-    return parser.text
 
 
 def _truncate(text: str, limit: int) -> str:

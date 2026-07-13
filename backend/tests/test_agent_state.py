@@ -72,9 +72,9 @@ def test_full_construction_with_all_slices() -> None:
         history=[ChatMessage(role="user", content="earlier turn")],
         memory=MemoryContext(preferences={"tone": "concise"}, memories=["prefers remote"]),
         plan=PlannerDecision(
-            intent=Intent.JOB_SEARCH,
+            intent=Intent.MARKET_REQUIREMENTS,
             steps=["search", "score"],
-            workers=[WorkerName.JOB_SEARCH, WorkerName.RAG],
+            workers=[WorkerName.MARKET_INTEL, WorkerName.RAG],
             token_budget=2000,
         ),
         input_safety=SafetyVerdict(stage=GuardrailStage.INPUT, allowed=True),
@@ -82,8 +82,8 @@ def test_full_construction_with_all_slices() -> None:
 
     assert state.role == "user"
     assert state.plan is not None
-    assert state.plan.intent is Intent.JOB_SEARCH
-    assert state.plan.workers == [WorkerName.JOB_SEARCH, WorkerName.RAG]
+    assert state.plan.intent is Intent.MARKET_REQUIREMENTS
+    assert state.plan.workers == [WorkerName.MARKET_INTEL, WorkerName.RAG]
     # history is LLM-ready — each message renders to the provider wire shape.
     assert state.history[0].to_openai() == {"role": "user", "content": "earlier turn"}
 
@@ -214,12 +214,12 @@ def test_enum_values_serialize_to_plain_strings() -> None:
     state = AgentState(
         session_id="s",
         user_message="x",
-        plan=PlannerDecision(intent=Intent.JOB_SEARCH, workers=[WorkerName.WEB_SEARCH]),
+        plan=PlannerDecision(intent=Intent.MARKET_REQUIREMENTS, workers=[WorkerName.WEB_SEARCH]),
     )
 
     dumped = state.model_dump(mode="json")
 
-    assert dumped["plan"]["intent"] == "job_search"
+    assert dumped["plan"]["intent"] == "market_requirements"
     assert dumped["plan"]["workers"] == ["web_search"]
 
 

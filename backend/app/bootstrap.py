@@ -41,6 +41,7 @@ from app.repositories.redis import (
     RedisConnectionProvider,
     RedisOAuthStateStore,
     RedisRateLimiter,
+    RedisRoleProfileCache,
     RedisSessionMemory,
     RedisSessionStore,
     RedisUpgradeTicketStore,
@@ -59,6 +60,8 @@ from app.services.jobs import JobStatusService
 from app.services.profile_ingest import ProfileIngestService
 from app.services.profile_store import ProfileStore
 from app.services.rate_limiting import RateLimitService
+from app.services.roles import RolesService
+from app.services.skills_gap import SkillsGapService
 from app.services.user_store import UserStore
 
 
@@ -161,6 +164,7 @@ def build_chat_service(app: FastAPI) -> ChatService:
     from app.agents.graph import GraphTurnStreamer
     from app.llm.embeddings import SentenceTransformerEmbeddingClient
     from app.llm.router import LLMRouter, RedisLike
+    from app.tools.internet_search import InternetSearchTool
 
     redis_client = _shared_redis_client(app)
 
@@ -172,6 +176,14 @@ def build_chat_service(app: FastAPI) -> ChatService:
     llm_router = LLMRouter.from_settings(settings, redis_client=cast("RedisLike", redis_client))
     memory = RedisSessionMemory.from_settings(cast(SessionRedis, redis_client), settings)
     cancel = RedisCancelRegistry.from_settings(cast(CancelRedis, redis_client), settings)
+
+    # Web Searcher provider (§5.7 / §6.19): the Tavily 3-key pool needs the *same* shared
+    # Redis client for its promote-to-primary + per-key circuit-breaker + result cache, so
+    # build the settings-configured search tool here (redis-wired) and inject it into the
+    # graph rather than letting the web-search node lazily build a redis-less one per call.
+    search_tool = InternetSearchTool.from_settings(
+        settings, redis_client=cast("RedisLike", redis_client)
+    )
 
     # Durable conversation store for logged-in users (§4): built over the single shared
     # Postgres pool the lifespan (app.main) created on ``app.state`` — same "acquire from
@@ -190,13 +202,14 @@ def build_chat_service(app: FastAPI) -> ChatService:
     # The compiled-once multi-agent graph (design §3): the single failover ``LLMRouter`` drives
     # both the planner (``router=``) and the responder (``responder_router=``); the in-process
     # sentence-transformers embedder (§6 item 3, lazy-loaded on first use) and the shared
-    # Postgres pool back the RAG worker's pgvector retrieval. The web-search worker lazily builds
-    # its settings-configured tool and fails soft when unconfigured, so no wiring is needed here.
+    # Postgres pool back the RAG worker's pgvector retrieval; the redis-wired Tavily search tool
+    # (built above) backs the web-search worker.
     runner = GraphTurnStreamer(
         responder_router=llm_router,
         router=llm_router,
         embedder=SentenceTransformerEmbeddingClient(),
         db=pg_provider,
+        search_tool=search_tool,
     )
     return ChatService(runner, memory, cancel, conversations=conversations)
 
@@ -318,6 +331,47 @@ def build_job_status_service(app: FastAPI) -> JobStatusService:
         return AsyncResult(task_id, app=celery_app)
 
     return JobStatusService(result_factory)
+
+
+def build_roles_service(app: FastAPI) -> RolesService:
+    """Construct the :class:`RolesService` (role requirements + skills gap, P6-07, §5.6/§8).
+
+    Wires the cache-first market read: the Redis-backed
+    :class:`~app.repositories.redis.RedisRoleProfileCache` (over the shared pool), the shared
+    taxonomy canonicalizer (:func:`app.agents.market_agent.resolve_canonical_role`, closed over the
+    shared Postgres pool + in-process embedder), the Celery mine enqueuer
+    (:func:`app.tasks.market.enqueue_mine_role`), and the reused P6-05
+    :class:`~app.services.skills_gap.SkillsGapService` (profile store + role-profile repo). The
+    market corpus is anchored in Postgres, so this requires the shared pool
+    (``_require_pg_provider`` fails loudly). Heavy imports (embedder, market agent, Celery) are
+    deferred to keep API import light. Called once per process (cached by
+    ``app.api.roles.get_roles_service``).
+    """
+    from app.agents.market_agent import resolve_canonical_role
+    from app.llm.embeddings import SentenceTransformerEmbeddingClient
+    from app.tasks.market import enqueue_mine_role
+
+    provider = _require_pg_provider(app, "role requirements")
+    redis_client = _shared_redis_client(app)
+    cache = RedisRoleProfileCache.from_settings(cast(StoreRedis, redis_client), settings)
+
+    # The in-process sentence-transformers embedder is lazy-loaded on first use (same posture as
+    # the chat/RAG path); the canonicalizer reads the shared taxonomy corpus over the same pool.
+    embedder = SentenceTransformerEmbeddingClient()
+
+    async def resolver(role: str) -> str:
+        return await resolve_canonical_role(provider, embedder, role)
+
+    skills_gap = SkillsGapService(build_profile_store(app), provider)
+    return RolesService(
+        cache=cache,
+        resolve_canonical=resolver,
+        enqueue_mine=enqueue_mine_role,
+        skills_gap=skills_gap,
+        db=provider,
+        stale_after_seconds=settings.ROLE_PROFILE_STALE_AFTER_SECONDS,
+        cache_ttl_seconds=settings.ROLE_REQUIREMENTS_CACHE_TTL_SECONDS,
+    )
 
 
 def build_session_authenticator(app: FastAPI) -> SessionAuthenticator:

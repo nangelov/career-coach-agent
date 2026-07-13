@@ -92,9 +92,9 @@ async def test_history_is_replayed_on_the_next_turn() -> None:
 async def test_plan_event_surfaces_intent_and_workers() -> None:
     runner = FakeGraphRunner(
         plan=PlannerDecision(
-            intent=Intent.JOB_SEARCH,
+            intent=Intent.MARKET_REQUIREMENTS,
             steps=["find roles", "match to CV"],
-            workers=[WorkerName.RAG, WorkerName.JOB_SEARCH],
+            workers=[WorkerName.RAG, WorkerName.MARKET_INTEL],
         )
     )
     service = _service(runner)
@@ -104,9 +104,9 @@ async def test_plan_event_surfaces_intent_and_workers() -> None:
     plans = [e for e in events if isinstance(e, PlanEvent)]
     assert len(plans) == 1
     plan = plans[0]
-    assert plan.intent == "job_search"
+    assert plan.intent == "market_requirements"
     assert plan.steps == ["find roles", "match to CV"]
-    assert plan.workers == ["rag", "job_search"]
+    assert plan.workers == ["rag", "market_intel"]
     # The plan lands after start and before any token (visible steps before the answer).
     order = [type(e).__name__ for e in events]
     assert order.index("PlanEvent") < order.index("TokenEvent")

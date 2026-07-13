@@ -97,7 +97,7 @@ class SourceCitation(BaseModel):
     title: str | None = None
     url: str | None = None
     snippet: str | None = None
-    #: Which worker contributed this source (``rag`` / ``web_search`` / ``job_search`` /
+    #: Which worker contributed this source (``rag`` / ``web_search`` / ``market_intel`` /
     #: ``pdp_resume``) — the plain :class:`app.agents.state.WorkerName` value.
     worker: str | None = None
 
@@ -118,7 +118,8 @@ class PlanEvent(BaseModel):
     """
 
     event: Literal["plan"] = "plan"
-    #: The classified :class:`app.agents.state.Intent` value (e.g. ``chat``, ``job_search``).
+    #: The classified :class:`app.agents.state.Intent` value (e.g. ``chat``,
+    #: ``market_requirements``).
     intent: str
     #: Ordered, human-readable decomposition of the turn.
     steps: list[str] = Field(default_factory=list)

@@ -46,14 +46,32 @@ from app.schemas.auth import SessionRole
 
 
 class Intent(StrEnum):
-    """The user-turn class the planner assigns (design §3 Planner: *"classify intent
-    (chat / job search / PDP / CV question / smalltalk)"*)."""
+    """The user-turn class the planner assigns — also the **topic guardrail** (design §7.4).
+
+    The planner's single intent classification doubles as the topic-scoping guardrail
+    (design §3 / §7.4: *"coaching chat / market-requirements / PDP / CV question /
+    off-topic / job-hunting-redirect"*): no extra LLM call. ``OFF_TOPIC`` turns are
+    **refused** and ``JOB_HUNTING`` turns are **redirected** to market requirements — a
+    job-hunting request is a near-miss on a real capability, never lumped in with abuse.
+
+    ``JOB_SEARCH`` (v1's dropped "browse job listings" concept) is gone: the real
+    capability is :attr:`MARKET_REQUIREMENTS` — *"what does the market require for role
+    X"* (design §1.1 / §5.6 — role requirements, not a job board).
+    """
 
     CHAT = "chat"
-    JOB_SEARCH = "job_search"
+    MARKET_REQUIREMENTS = "market_requirements"
     PDP = "pdp"
     CV_QUESTION = "cv_question"
     SMALLTALK = "smalltalk"
+    #: A career-adjacent *job-hunting* request (e.g. "find me AI architect jobs in
+    #: Berlin"). **Redirected** — the responder answers with market requirements and
+    #: steers back to development, never a browsable-listings search (design §7.4).
+    JOB_HUNTING = "job_hunting"
+    #: Anything outside career coaching / personal development (medical/legal advice,
+    #: general chit-chat, homework). **Refused** by the graph's off-topic short-circuit
+    #: (design §7.4) — no workers, no responder LLM call.
+    OFF_TOPIC = "off_topic"
 
 
 class WorkerName(StrEnum):
@@ -66,7 +84,11 @@ class WorkerName(StrEnum):
 
     RAG = "rag"
     WEB_SEARCH = "web_search"
-    JOB_SEARCH = "job_search"
+    #: The Market Intelligence worker (design §5.6, was v1's ``job_search``): a
+    #: request-path **read** of the cached, shared ``role_profiles`` / taxonomy corpus
+    #: for "what does the market require for role X". The heavy mining pipeline that
+    #: *populates* those rows runs as a Celery job (design §7.5), never inline here.
+    MARKET_INTEL = "market_intel"
     PDP_RESUME = "pdp_resume"
 
 

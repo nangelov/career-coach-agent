@@ -6,6 +6,7 @@ import Link from "next/link";
 import Login from "@/components/Login";
 import UpgradePrompt from "@/components/UpgradePrompt";
 import { fetchSession, logout, type Session } from "@/lib/auth";
+import { safeHttpUrl } from "@/lib/url";
 import {
   cancelChat,
   streamChat,
@@ -273,6 +274,12 @@ export default function Chat() {
             {session.role === "guest" ? "Guest" : "Signed in"}
           </span>
           <Link
+            href="/roles"
+            className="rounded-md border border-gray-300 px-3 py-1 font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Roles
+          </Link>
+          <Link
             href="/profile"
             className="rounded-md border border-gray-300 px-3 py-1 font-medium text-gray-700 hover:bg-gray-50"
           >
@@ -477,26 +484,9 @@ function CitationList({ citations }: { citations: SourceCitation[] }) {
   );
 }
 
-// Only http/https URLs are safe to render as a clickable anchor. Citation urls
-// originate from untrusted third-party content (search-result / crawled-page
-// urls the web-search worker forwards verbatim), so a `javascript:`/`data:`
-// scheme would become a DOM-XSS sink — React does not sanitize `href`. Anything
-// that isn't a parseable http(s) URL degrades to plain text below.
-function safeHttpUrl(url: string | null): string | null {
-  if (!url) {
-    return null;
-  }
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-      return url;
-    }
-  } catch {
-    // Not an absolute/parseable URL — treat as non-link.
-  }
-  return null;
-}
-
+// Citation urls come from untrusted third-party content (search-result / crawled-page urls the
+// web-search worker forwards verbatim); {@link safeHttpUrl} (lib/url) gates them so only parseable
+// http(s) links become clickable anchors — anything else degrades to plain text below.
 function CitationEntry({ citation }: { citation: SourceCitation }) {
   const label =
     citation.title || citation.snippet || citation.url || citation.source_id;

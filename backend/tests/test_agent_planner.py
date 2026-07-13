@@ -26,6 +26,7 @@ from app.agents.graph import (
     INPUT_GUARDRAIL,
     MEMORY_RECALL,
     MEMORY_WRITER,
+    OFF_TOPIC_REFUSAL,
     OUTPUT_GUARDRAIL,
     PLANNER,
     RESPONDER,
@@ -117,11 +118,29 @@ async def _plan(arguments: dict[str, Any]) -> Any:
 # --------------------------------------------------------------------------- #
 # Intent → worker routing (deterministic, conservative)
 # --------------------------------------------------------------------------- #
-async def test_job_search_routes_to_job_worker() -> None:
-    decision = await _plan({"intent": "job_search", "steps": ["search jobs"]})
+async def test_market_requirements_routes_to_market_worker() -> None:
+    decision = await _plan(
+        {"intent": "market_requirements", "steps": ["look up role requirements"]}
+    )
 
-    assert decision.intent is Intent.JOB_SEARCH
-    assert decision.workers == [WorkerName.JOB_SEARCH]
+    assert decision.intent is Intent.MARKET_REQUIREMENTS
+    assert decision.workers == [WorkerName.MARKET_INTEL]
+
+
+async def test_job_hunting_routes_to_market_worker_for_redirect() -> None:
+    # A job-hunting request is a near-miss (design §7.4): it runs the SAME market-intel
+    # worker (the responder frames the answer as a redirect), never a listings search.
+    decision = await _plan({"intent": "job_hunting", "steps": ["redirect to requirements"]})
+
+    assert decision.intent is Intent.JOB_HUNTING
+    assert decision.workers == [WorkerName.MARKET_INTEL]
+
+
+async def test_off_topic_routes_to_no_workers() -> None:
+    decision = await _plan({"intent": "off_topic", "steps": ["decline politely"]})
+
+    assert decision.intent is Intent.OFF_TOPIC
+    assert decision.workers == []
 
 
 async def test_pdp_routes_to_pdp_worker() -> None:
@@ -177,14 +196,14 @@ async def test_steps_are_carried_through_and_trimmed() -> None:
 
 
 async def test_empty_steps_get_a_fallback_step() -> None:
-    decision = await _plan({"intent": "job_search", "steps": []})
+    decision = await _plan({"intent": "market_requirements", "steps": []})
 
     assert decision.steps  # never empty — a fallback step is synthesised.
 
 
 async def test_budget_defaults_are_per_intent() -> None:
     smalltalk = await _plan({"intent": "smalltalk", "steps": ["hi"]})
-    job = await _plan({"intent": "job_search", "steps": ["search"]})
+    job = await _plan({"intent": "market_requirements", "steps": ["search"]})
 
     assert smalltalk.max_iterations == 1
     assert job.max_iterations == 5
@@ -271,10 +290,10 @@ async def test_non_list_steps_do_not_raise_and_get_a_fallback(bad_steps: Any) ->
     # ``steps`` is model-controlled: a non-list value (null / number / bool / object)
     # must not raise a TypeError out of the node — it falls back to a synthesised step
     # while the (trusted) intent is still honoured (C1).
-    decision = await _plan({"intent": "job_search", "steps": bad_steps})
+    decision = await _plan({"intent": "market_requirements", "steps": bad_steps})
 
-    assert decision.intent is Intent.JOB_SEARCH
-    assert decision.workers == [WorkerName.JOB_SEARCH]
+    assert decision.intent is Intent.MARKET_REQUIREMENTS
+    assert decision.workers == [WorkerName.MARKET_INTEL]
     assert decision.steps  # synthesised fallback, never empty.
 
 
@@ -294,12 +313,14 @@ def test_parse_decision_returns_none_on_non_object_arguments() -> None:
 
 
 async def test_node_call_returns_plan_update() -> None:
-    completer = FakeCompleter(result=_tool_result({"intent": "job_search", "steps": ["search"]}))
+    completer = FakeCompleter(
+        result=_tool_result({"intent": "market_requirements", "steps": ["look up"]})
+    )
 
     update = await Planner(completer)(_state())
 
     assert set(update) == {"plan"}
-    assert update["plan"].workers == [WorkerName.JOB_SEARCH]
+    assert update["plan"].workers == [WorkerName.MARKET_INTEL]
 
 
 # --------------------------------------------------------------------------- #
@@ -308,7 +329,7 @@ async def test_node_call_returns_plan_update() -> None:
 async def test_planner_decision_drives_real_graph_fan_out() -> None:
     """A router-backed planner in the real graph runs exactly the routed worker."""
     completer = FakeCompleter(
-        result=_tool_result({"intent": "job_search", "steps": ["search jobs"]})
+        result=_tool_result({"intent": "market_requirements", "steps": ["search jobs"]})
     )
     compiled = build_graph(router=completer)
 
@@ -320,7 +341,7 @@ async def test_planner_decision_drives_real_graph_fan_out() -> None:
         INPUT_GUARDRAIL,
         MEMORY_RECALL,
         PLANNER,
-        WorkerName.JOB_SEARCH.value,
+        WorkerName.MARKET_INTEL.value,
         RESPONDER,
         OUTPUT_GUARDRAIL,
         MEMORY_WRITER,
@@ -342,3 +363,48 @@ async def test_smalltalk_skips_workers_in_real_graph() -> None:
     result = AgentState.model_validate(await compiled.ainvoke(_state("hi there")))
     assert result.plan is not None
     assert result.plan.intent is Intent.SMALLTALK
+
+
+# --------------------------------------------------------------------------- #
+# Topic guardrail (design §7.4): OFF_TOPIC short-circuit + JOB_HUNTING redirect
+# --------------------------------------------------------------------------- #
+async def test_off_topic_short_circuits_like_a_blocked_turn() -> None:
+    """An OFF_TOPIC turn skips every worker AND the responder, returning a canned refusal."""
+    completer = FakeCompleter(result=_tool_result({"intent": "off_topic", "steps": ["decline"]}))
+    compiled = build_graph(router=completer)
+
+    order: list[str] = []
+    async for update in compiled.astream(_state("Is this rash serious?"), stream_mode="updates"):
+        order.extend(update.keys())
+
+    # No worker and — crucially — no RESPONDER node ran: straight to the terminal tail.
+    assert order == [INPUT_GUARDRAIL, MEMORY_RECALL, PLANNER, OUTPUT_GUARDRAIL, MEMORY_WRITER]
+    assert RESPONDER not in order
+    assert not any(w.value in order for w in WorkerName)
+
+    result = AgentState.model_validate(await compiled.ainvoke(_state("Is this rash serious?")))
+    assert result.plan is not None
+    assert result.plan.intent is Intent.OFF_TOPIC
+    assert result.response == OFF_TOPIC_REFUSAL
+    assert result.finish_reason == "off_topic"
+
+
+async def test_job_hunting_runs_market_worker_not_a_short_circuit() -> None:
+    """A JOB_HUNTING turn runs the market-intel worker (redirect) — not a refusal short-circuit."""
+    completer = FakeCompleter(result=_tool_result({"intent": "job_hunting", "steps": ["redirect"]}))
+    compiled = build_graph(router=completer)
+
+    order: list[str] = []
+    async for update in compiled.astream(
+        _state("find me AI architect jobs in Berlin"), stream_mode="updates"
+    ):
+        order.extend(update.keys())
+
+    # The market-intel worker runs and the responder still composes (frames the redirect).
+    assert WorkerName.MARKET_INTEL.value in order
+    assert RESPONDER in order
+    result = AgentState.model_validate(
+        await compiled.ainvoke(_state("find me AI architect jobs in Berlin"))
+    )
+    assert result.plan is not None
+    assert result.plan.intent is Intent.JOB_HUNTING

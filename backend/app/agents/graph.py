@@ -5,7 +5,7 @@ This module assembles the :class:`~langgraph.graph.StateGraph` that threads the
 prescribes::
 
     Guardrails(input) → Memory recall → Planner
-        → {RAG, Web Searcher, Job Search, PDP/Resume}  (conditional fan-out, parallel)
+        → {RAG, Web Searcher, Market Intel, PDP/Resume}  (conditional fan-out, parallel)
         → Response Agent (fan-in)
         → Guardrails(output) → Memory writer (terminal; async/Celery in P9)
 
@@ -23,8 +23,10 @@ contract**:
 * ``web_search_node``         → **real** (P4-05): built by
                               :func:`app.agents.web_searcher.make_web_search_node`, search the
                               web + crawl the top hits with citations.
-* ``job_search_node`` / ``pdp_resume_node``
-                              → real workers (P4-06); still stubs here
+* ``market_intel_node``       → **real** (P6-04): built by
+                              :func:`app.agents.market_agent.make_market_node`, a request-path
+                              read of the cached shared ``role_profiles`` / taxonomy corpus.
+* ``pdp_resume_node``         → real worker (P4-06); still a stub here
 * ``responder_node``          → **real** as of P4-06: the LLM-backed
                               :class:`app.agents.responder.Responder` (synthesis + citation +
                               streaming), wired via ``build_graph(responder_router=...)`` and
@@ -79,6 +81,7 @@ if TYPE_CHECKING:
 
     from app.llm.embeddings import EmbeddingClient
 
+from app.agents.market_agent import make_market_node
 from app.agents.planner import LLMCompleter, Planner
 from app.agents.rag_agent import SessionProvider, make_rag_node
 from app.agents.responder import LLMResponder, Responder
@@ -93,6 +96,15 @@ from app.agents.state import (
 from app.agents.web_searcher import SearchRunner, make_web_search_node
 from app.guardrails import REFUSAL_MESSAGE, screen_input, screen_output
 from app.llm.types import StreamChunk
+
+#: The single, generic refusal a topic-guardrail (OFF_TOPIC) turn returns (design §7.4).
+#: Deliberately content-free like the input-guardrail :data:`~app.guardrails.REFUSAL_MESSAGE`
+#: — it declines and redirects to the assistant's purpose without echoing the off-topic input.
+OFF_TOPIC_REFUSAL = (
+    "I'm your career coach, so I can only help with career growth and personal "
+    "development — things like your skills, CV, role requirements, or a development plan. "
+    "I can't help with that particular request, but I'm happy to help with your career."
+)
 
 #: A node returns a **partial** state update as a mapping; LangGraph folds it into the
 #: shared :class:`AgentState` via each field's reducer (or last-write-wins).
@@ -237,34 +249,28 @@ rag_node = make_rag_node()
 
 #: The default Web Searcher node used by the import-time module graph: no search tool /
 #: http client bound, so it lazily builds the settings-configured ``InternetSearchTool``
-#: per call and fails soft when ``SEARXNG_URL`` is unset. ``build_graph`` swaps in an
+#: per call and fails soft when no ``TAVILY_API_KEY_*`` is set. ``build_graph`` swaps in an
 #: injected node when given ``search_tool=`` / ``http_client=`` (production or test fakes).
 web_search_node = make_web_search_node()
 
-
-def _worker_update(name: WorkerName, user_message: str) -> NodeUpdate:
-    """Canned partial update for worker ``name`` (shared stub body; DRY)."""
-    result = WorkerResult(
-        worker=name,
-        content=f"[stub:{name.value}] result for {user_message!r}",
-        citations=[Citation(worker=name, title=f"stub-{name.value}")],
-    )
-    return {
-        # keyed by the worker's own name → key-wise merge, no clobbering.
-        "worker_results": {name.value: result},
-        # list-concatenated across workers.
-        "citations": [Citation(worker=name, title=f"stub-{name.value}")],
-    }
-
-
-def job_search_node(state: AgentState) -> NodeUpdate:
-    """[STUB → P4-06] Job search worker: query job APIs, normalize, match-score."""
-    return _worker_update(WorkerName.JOB_SEARCH, state.user_message)
+#: The default Market Intelligence node used by the import-time module graph: no DB provider
+#: bound, so it fails soft if routed (the chat wiring injects the shared provider via
+#: ``build_graph(db=...)``). Reads the cached shared ``role_profiles`` / taxonomy corpus — it
+#: never crawls (mining is a Celery job, §7.5).
+market_intel_node = make_market_node()
 
 
 def pdp_resume_node(state: AgentState) -> NodeUpdate:
     """[STUB → P4-06] PDP / Resume worker: parse CV, skills-gap, build PDP."""
-    return _worker_update(WorkerName.PDP_RESUME, state.user_message)
+    result = WorkerResult(
+        worker=WorkerName.PDP_RESUME,
+        content=f"[stub:{WorkerName.PDP_RESUME.value}] result for {state.user_message!r}",
+        citations=[Citation(worker=WorkerName.PDP_RESUME, title="stub-pdp_resume")],
+    )
+    return {
+        "worker_results": {WorkerName.PDP_RESUME.value: result},
+        "citations": [Citation(worker=WorkerName.PDP_RESUME, title="stub-pdp_resume")],
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -313,18 +319,43 @@ def route_after_input_guardrail(state: AgentState) -> str:
     return MEMORY_RECALL
 
 
+def _is_short_circuited(state: AgentState) -> bool:
+    """Whether the turn was terminated before the responder (input-blocked or off-topic).
+
+    Both the input guardrail (``input_safety.allowed is False``) and the topic guardrail
+    (``plan.intent is OFF_TOPIC``, design §7.4) stamp a canned answer and skip the responder;
+    the streaming path emits that answer instead of calling the LLM (see
+    :meth:`GraphTurnStreamer.stream_response`).
+    """
+    verdict = state.input_safety
+    if verdict is not None and not verdict.allowed:
+        return True
+    plan = state.plan
+    return plan is not None and plan.intent is Intent.OFF_TOPIC
+
+
 # --------------------------------------------------------------------------- #
 # Conditional fan-out from the planner.                                        #
 # --------------------------------------------------------------------------- #
 def route_after_planner(state: AgentState) -> list[Send]:
-    """Dispatch only the workers the planner selected (design §3 fan-out).
+    """Dispatch only the planner-selected workers (design §3 fan-out), or short-circuit off-topic.
 
     Returns one :class:`Send` per selected worker so LangGraph runs *only* those nodes
     concurrently; the fan-in edges (worker → responder) then converge them. When the
     planner selects no workers, route straight to the responder so the turn still
     completes.
+
+    **Topic guardrail (design §7.4).** When the planner classified the turn ``OFF_TOPIC`` the
+    turn is short-circuited exactly like a blocked input guardrail: it routes straight to
+    :data:`OUTPUT_GUARDRAIL` (the terminal tail), skipping every worker **and** the responder
+    LLM call. The canned refusal :func:`_topic_guarded` stamped into ``response`` is what the
+    turn returns — no LLM call is wasted. (The stamping happens in the planner node, mirroring
+    :func:`input_guardrail_node`; this router only decides the skip.)
     """
-    workers = state.plan.workers if state.plan else []
+    plan = state.plan
+    if plan is not None and plan.intent is Intent.OFF_TOPIC:
+        return [Send(OUTPUT_GUARDRAIL, state)]
+    workers = plan.workers if plan else []
     if not workers:
         return [Send(RESPONDER, state)]
     # de-duplicate while preserving order (a worker only runs once per turn).
@@ -335,6 +366,34 @@ def route_after_planner(state: AgentState) -> list[Send]:
             seen.add(w.value)
             sends.append(Send(w.value, state))
     return sends
+
+
+def _topic_guarded(planner: Planner) -> PlannerNode:
+    """Wrap the real LLM planner so an ``OFF_TOPIC`` classification stamps a canned refusal.
+
+    Mirrors :func:`input_guardrail_node`: the node runs the planner (its intent classification
+    *is* the topic guardrail, design §7.4 — no extra LLM call), then, when the intent is
+    ``OFF_TOPIC``, additionally stamps the generic :data:`OFF_TOPIC_REFUSAL` into ``response``
+    (plus ``finish_reason="off_topic"`` and the turn's ``message_id``). Combined with
+    :func:`route_after_planner` routing off-topic straight to the terminal tail, this yields a
+    well-formed refusal with **no** worker or responder LLM call.
+
+    Only the real (``async``) :class:`~app.agents.planner.Planner` — the sole node that can
+    emit ``OFF_TOPIC`` — is wrapped; the dependency-free sync default (:func:`planner_node`)
+    and test-seam planners never classify off-topic and stay unwrapped (keeping the import-time
+    module graph synchronously invokable).
+    """
+
+    async def planner_with_topic_guard(state: AgentState) -> NodeUpdate:
+        update = dict(await planner(state))
+        plan = update.get("plan")
+        if isinstance(plan, PlannerDecision) and plan.intent is Intent.OFF_TOPIC:
+            update["response"] = OFF_TOPIC_REFUSAL
+            update["finish_reason"] = "off_topic"
+            update["message_id"] = state.message_id or uuid.uuid4().hex
+        return update
+
+    return planner_with_topic_guard
 
 
 # --------------------------------------------------------------------------- #
@@ -374,7 +433,7 @@ def build_graph(
     :func:`~app.agents.web_searcher.make_web_search_node` closure (tests inject a fake search
     tool + a mock ``httpx`` transport). When neither is given the module-default
     :data:`web_search_node` is used — it lazily builds the settings-configured search tool and
-    fails soft when SearXNG is unconfigured.
+    fails soft when no Tavily key is configured.
 
     Responder resolution (P4-06): when ``responder_router`` is supplied it wires the **real**
     LLM-backed :class:`~app.agents.responder.Responder` (synthesis + citation) as the RESPONDER
@@ -386,7 +445,9 @@ def build_graph(
     if planner is not None:
         resolved_planner = planner
     elif router is not None:
-        resolved_planner = Planner(router)
+        # The real planner also enforces the topic guardrail (§7.4): an OFF_TOPIC turn is
+        # stamped with a canned refusal and short-circuited by ``route_after_planner``.
+        resolved_planner = _topic_guarded(Planner(router))
     else:
         resolved_planner = planner_node
 
@@ -406,6 +467,15 @@ def build_graph(
         else web_search_node
     )
 
+    # Market Intelligence worker (P6-04): a request-path read of the cached shared corpus,
+    # bound to the same shared embedder/pool the RAG worker uses (chat wiring injects them;
+    # tests inject fakes). Falls back to the module default (fails soft) when unbound.
+    resolved_market = (
+        make_market_node(embedder=embedder, db=db)
+        if (embedder is not None or db is not None)
+        else market_intel_node
+    )
+
     builder: StateGraph[AgentState] = StateGraph(AgentState)
 
     builder.add_node(INPUT_GUARDRAIL, input_guardrail_node)
@@ -413,7 +483,7 @@ def build_graph(
     builder.add_node(PLANNER, resolved_planner)
     builder.add_node(WorkerName.RAG.value, resolved_rag)
     builder.add_node(WorkerName.WEB_SEARCH.value, resolved_web_search)
-    builder.add_node(WorkerName.JOB_SEARCH.value, job_search_node)
+    builder.add_node(WorkerName.MARKET_INTEL.value, resolved_market)
     builder.add_node(WorkerName.PDP_RESUME.value, pdp_resume_node)
     builder.add_node(RESPONDER, resolved_responder)
     builder.add_node(OUTPUT_GUARDRAIL, output_guardrail_node)
@@ -430,11 +500,12 @@ def build_graph(
     )
     builder.add_edge(MEMORY_RECALL, PLANNER)
 
-    # Conditional fan-out to the selected workers (or straight to the responder).
+    # Conditional fan-out to the selected workers (or straight to the responder). An OFF_TOPIC
+    # turn short-circuits to OUTPUT_GUARDRAIL (skipping workers + responder), so it is a target.
     builder.add_conditional_edges(
         PLANNER,
         route_after_planner,
-        [*WORKER_NODES, RESPONDER],
+        [*WORKER_NODES, RESPONDER, OUTPUT_GUARDRAIL],
     )
 
     # Fan-in: every worker converges on the responder (waits for all dispatched).
@@ -515,15 +586,17 @@ class GraphTurnStreamer:
     def stream_response(self, state: AgentState) -> AsyncIterator[StreamChunk]:
         """Stream the responder's token deltas over the merged ``state`` (fails soft).
 
-        For a turn the input guardrail **blocked** (``input_safety.allowed is False``) the
-        real responder is skipped entirely — no LLM call — and the canned refusal
-        (:data:`~app.guardrails.REFUSAL_MESSAGE`, already stamped onto ``state.response`` by
-        the guardrail node) is emitted as a single terminal chunk. A blocked turn is a
-        *successful* turn carrying a policy answer, so it streams like any other (the chat
-        service turns it into ``token`` + ``done``, not an ``error``).
+        A turn short-circuited before the responder skips the real responder entirely — no LLM
+        call — and emits the already-stamped canned answer as a single terminal chunk. Two
+        cases short-circuit (both stream like any other turn — the chat service turns them into
+        ``token`` + ``done``, not an ``error``):
+
+        * the **input guardrail** blocked the turn (``input_safety.allowed is False`` →
+          :data:`~app.guardrails.REFUSAL_MESSAGE`), and
+        * the **topic guardrail** classified it ``OFF_TOPIC`` (design §7.4 →
+          :data:`OFF_TOPIC_REFUSAL`, stamped by :func:`_topic_guarded`).
         """
-        verdict = state.input_safety
-        if verdict is not None and not verdict.allowed:
+        if _is_short_circuited(state):
             return self._stream_refusal(state)
         return self._responder.stream(state)
 

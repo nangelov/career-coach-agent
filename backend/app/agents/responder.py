@@ -53,7 +53,7 @@ import uuid
 from collections.abc import AsyncIterator, Iterable, Sequence
 from typing import Any, Protocol, runtime_checkable
 
-from app.agents.state import AgentState, Citation, WorkerResult
+from app.agents.state import AgentState, Citation, Intent, WorkerResult
 from app.guardrails import fence_untrusted
 from app.llm.errors import LLMError
 from app.llm.types import ChatMessage, CompletionResult, StreamChunk, ToolSchema
@@ -62,6 +62,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "FALLBACK_RESPONSE",
+    "JOB_HUNTING_REDIRECT_NOTE",
     "RESPONDER_SYSTEM_PROMPT",
     "LLMResponder",
     "Responder",
@@ -117,6 +118,18 @@ RESPONDER_SYSTEM_PROMPT = (
 #: A real, apologetic sentence — never a leaked stack trace or a silent empty answer.
 FALLBACK_RESPONSE = (
     "I'm sorry — I'm having trouble generating a response right now. Please try again in a moment."
+)
+
+#: Framing note appended for a ``job_hunting`` turn (design §7.4 redirect ≠ refusal). The
+#: assistant is **not** a job board (§1.1 / §5.6): a "find me openings" request is redirected
+#: to the market-requirements answer the MARKET_INTEL worker already produced, steering the
+#: user back to development — never a browsable-listings search (there is no such tool).
+JOB_HUNTING_REDIRECT_NOTE = (
+    "The user asked to find or apply to job openings, but you are a career coach, not a job "
+    "board — you cannot search or list vacancies. Do not pretend to. Instead, redirect: use "
+    "the reference material to tell them what the market requires for that kind of role "
+    "(skills, background, the gap to close), and steer them toward developing those. Be warm "
+    "and helpful about the pivot; do not refuse."
 )
 
 #: How many trailing history messages to hand the responder (bounded context window).
@@ -228,6 +241,8 @@ class Responder:
     def _build_messages(self, state: AgentState) -> list[ChatMessage]:
         """Assemble the synthesis prompt: persona → grounding → history → current turn."""
         messages: list[ChatMessage] = [ChatMessage(role="system", content=RESPONDER_SYSTEM_PROMPT)]
+        if state.plan is not None and state.plan.intent is Intent.JOB_HUNTING:
+            messages.append(ChatMessage(role="system", content=JOB_HUNTING_REDIRECT_NOTE))
         grounding = _grounding_block(state)
         if grounding:
             messages.append(ChatMessage(role="system", content=grounding))
@@ -254,7 +269,7 @@ def _grounding_block(state: AgentState) -> str | None:
     return fence_untrusted(
         "REFERENCE MATERIAL",
         worker_texts,
-        origin="was gathered by retrieval tools (knowledge base, web search, job listings)",
+        origin="was gathered by retrieval tools (knowledge base, web search, market requirements)",
         sources=citation_lines,
     )
 

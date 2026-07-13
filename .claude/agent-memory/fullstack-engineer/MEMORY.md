@@ -27,3 +27,4 @@
 - [Session registry authority](project-session-registry-authority.md) — Redis SessionStore is authoritative for live sessions (Postgres sessions is lazy); enumerate per-user via list_user_sessions; scrub feedback.contact PII on erasure
 - [Next route handler signature](project-next-route-handler-signature.md) — Next-generated route types reject an optional first param; keep POST(request: NextRequest) required and guard the body parse
 - [Cascade-delete test completeness](project-cascade-delete-test-completeness.md) — erasure "no orphan rows" tests must assert every child+grandchild table empty (join grandchildren to parent); confirm ondelete=CASCADE vs SET NULL first
+- [Parallel worktree failures](project-parallel-worktree-failures.md) — shared tree holds other in-flight tasks' uncommitted edits; triage/fix only failures in files YOUR task touches, flag the rest as out-of-scope

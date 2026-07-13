@@ -169,20 +169,20 @@ expensive with every authed surface added. Ordered by cost-to-unwind (plan.md �
 posting delta) and a **skills gap** vs the user's profile. Extraction happens **once per role**, reused across
 users. **No job listings are ever shown.**
 
-- [ ] **(B)** **Taxonomy seed (no scraping)** — ingest **ESCO / O\*NET** occupations + skills into the **shared** KB (`kb_documents.user_id IS NULL`). *This finally populates the RAG corpus, which no phase previously owned.*
-- [ ] **(B)** Migration: **`role_profiles`** — canonical role + taxonomy id, `requirements JSONB` (skill → frequency/weight/evidence), sources, `evidence_count`, `refreshed_at`. **Global, not user-scoped.**
-- [ ] **(B)** Migration: **`job_postings`** (was `jobs`) — raw **evidence only**, TTL-cached, deduped, **third-party PII stripped at ingest** (recruiter name/email/phone — they never consented).
-- [ ] **(B)** `agents/market_agent.py` (was `job_agent.py`) — normalize target role → taxonomy baseline → mine postings for the recency delta → aggregate → write `role_profiles` + embed into pgvector.
-- [ ] **(B)** Mining as **Celery tasks**; all fetched content is **untrusted** (S2) and every fetch uses the **SSRF guard** (S1).
-- [ ] **(B)** **Skills gap**: user profile △ `role_profile` → the input to P7's PDP.
-- [ ] **(B)** **Tavily search provider + 3-key rotating pool** (§5.7 / §6.19): `TAVILY_API_KEY_1|2|3` from Space Secrets; ordered failover, **promote the surviving key to primary** (persisted in Redis so a dead/exhausted key isn't retried every call), quota-aware. **Reuse the `llm/router.py` failover pattern — do not invent a second mechanism.** Replaces SerpAPI in `tools/internet_search.py`.
-- [ ] **(B)** **Learning-resource corpus** (§5.7 / §6.20): crawl Coursera / Udacity / Udemy / edX (and similar) → normalized (title, provider, level, duration, cost, URL, **skills covered**), **skill-keyed**, shared (`user_id IS NULL`), embedded, TTL-refreshed via Celery. Prefer official catalogs/APIs over scraping marketing pages. Cited whenever the PDP recommends them.
-- [ ] **(B)** `GET /api/roles/{role}/requirements` + `GET /api/roles/{role}/gap`; Redis cache for hot roles; periodic refresh of stale profiles. **No user-facing turn triggers uncached crawling** — mining is always a Celery job (quota protection, §7.5).
-- [ ] **(B)** **S3 — Topic guardrail** (design §7.4) on the planner's **existing** `Intent` classification (no extra LLM call): `OFF_TOPIC` → refuse; `JOB_HUNTING` → **redirect** to market requirements. Low false-positives on legitimate career questions.
-- [ ] **(I)** Source policy: respect `robots.txt`, rate-limit, **never scrape LinkedIn** (ToS).
-- [ ] **(F)** Role-requirements UI: target role, frequency-ranked skills **with citations**, gap vs profile. **No listings, no apply, no save/track.**
-- [ ] **(T)** "PM → AI Solution Architect" returns cited, ranked requirements + a gap; second user hits the cache (no re-extraction); *"find me jobs in Berlin"* is **redirected**, not answered with listings.
-- [ ] **(T)** **CI/CD verification** — run the full backend + frontend CI command sets locally (ruff + ruff format --check + mypy + pytest; eslint + tsc + jest — the exact commands in `.github/workflows/backend-ci.yml` / `frontend-ci.yml`) and confirm both are green before closing the phase.
+- [x] **(B)** **Taxonomy seed (no scraping)** — ingest **ESCO / O\*NET** occupations + skills into the **shared** KB (`kb_documents.user_id IS NULL`). *This finally populates the RAG corpus, which no phase previously owned.*
+- [x] **(B)** Migration: **`role_profiles`** — canonical role + taxonomy id, `requirements JSONB` (skill → frequency/weight/evidence), sources, `evidence_count`, `refreshed_at`. **Global, not user-scoped.**
+- [x] **(B)** Migration: **`job_postings`** (was `jobs`) — raw **evidence only**, TTL-cached, deduped, **third-party PII stripped at ingest** (recruiter name/email/phone — they never consented).
+- [x] **(B)** `agents/market_agent.py` (was `job_agent.py`) — normalize target role → taxonomy baseline → mine postings for the recency delta → aggregate → write `role_profiles` + embed into pgvector.
+- [x] **(B)** Mining as **Celery tasks**; all fetched content is **untrusted** (S2) and every fetch uses the **SSRF guard** (S1).
+- [x] **(B)** **Skills gap**: user profile △ `role_profile` → the input to P7's PDP.
+- [x] **(B)** **Tavily search provider + 3-key rotating pool** (§5.7 / §6.19): `TAVILY_API_KEY_1|2|3` from Space Secrets; ordered failover, **promote the surviving key to primary** (persisted in Redis so a dead/exhausted key isn't retried every call), quota-aware. **Reuse the `llm/router.py` failover pattern — do not invent a second mechanism.** Replaces SerpAPI in `tools/internet_search.py`.
+- [x] **(B)** **Learning-resource corpus** (§5.7 / §6.20): crawl Coursera / Udacity / Udemy / edX (and similar) → normalized (title, provider, level, duration, cost, URL, **skills covered**), **skill-keyed**, shared (`user_id IS NULL`), embedded, TTL-refreshed via Celery. Prefer official catalogs/APIs over scraping marketing pages. Cited whenever the PDP recommends them.
+- [x] **(B)** `GET /api/roles/{role}/requirements` + `GET /api/roles/{role}/gap`; Redis cache for hot roles; periodic refresh of stale profiles. **No user-facing turn triggers uncached crawling** — mining is always a Celery job (quota protection, §7.5).
+- [x] **(B)** **S3 — Topic guardrail** (design §7.4) on the planner's **existing** `Intent` classification (no extra LLM call): `OFF_TOPIC` → refuse; `JOB_HUNTING` → **redirect** to market requirements. Low false-positives on legitimate career questions.
+- [x] **(I)** Source policy: respect `robots.txt`, rate-limit, **never scrape LinkedIn** (ToS).
+- [x] **(F)** Role-requirements UI: target role, frequency-ranked skills **with citations**, gap vs profile. **No listings, no apply, no save/track.**
+- [x] **(T)** "PM → AI Solution Architect" returns cited, ranked requirements + a gap; second user hits the cache (no re-extraction); *"find me jobs in Berlin"* is **redirected**, not answered with listings.
+- [x] **(T)** **CI/CD verification** — run the full backend + frontend CI command sets locally (ruff + ruff format --check + mypy + pytest; eslint + tsc + jest — the exact commands in `.github/workflows/backend-ci.yml` / `frontend-ci.yml`) and confirm both are green before closing the phase.
 
 ---
 

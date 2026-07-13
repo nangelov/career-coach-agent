@@ -38,6 +38,7 @@ from app.schemas.auth import SessionRecord
 from app.services.cancellation import CancelRegistry
 from app.services.oauth_state_store import OAuthStateRecord, OAuthStateStore
 from app.services.rate_limiting import RateLimiter, RateLimitResult
+from app.services.roles import RoleProfileCache
 from app.services.session_memory import SessionMemory
 from app.services.session_store import SessionStore
 from app.services.upgrade_ticket_store import UpgradeTicketStore
@@ -403,6 +404,46 @@ class RedisUpgradeTicketStore(UpgradeTicketStore):
             return None
         await self._redis.delete(key)
         return str(value)
+
+
+class RedisRoleProfileCache(RoleProfileCache):
+    """Redis-backed serialized role-requirements response cache (design §5.6 / §5.7).
+
+    Implements the :class:`~app.services.roles.RoleProfileCache` port with the narrow
+    :class:`StoreRedis` seam (``set`` with ``ex`` / ``get``): the serialized
+    :class:`~app.schemas.roles.RoleRequirementsResponse` is stored as a single JSON string at
+    ``<prefix>:<role_key>`` with a TTL, so a *hot* role is served from Redis without re-hitting
+    Postgres, and a stale entry self-expires after the window ("cache hot roles", §5.7). No
+    extra driver surface beyond the shared :class:`StoreRedis` seam used by the other stores.
+    """
+
+    def __init__(
+        self,
+        client: StoreRedis,
+        *,
+        key_prefix: str = "roles:requirements",
+    ) -> None:
+        self._redis = client
+        self._key_prefix = key_prefix
+
+    @classmethod
+    def from_settings(
+        cls, client: StoreRedis, config: Settings = settings
+    ) -> RedisRoleProfileCache:
+        """Build the cache (key prefix is fixed; the TTL is passed per-set by the caller)."""
+        return cls(client)
+
+    def _key(self, role_key: str) -> str:
+        return f"{self._key_prefix}:{role_key}"
+
+    async def get(self, role_key: str) -> str | None:
+        """Return the cached serialized response for ``role_key`` (``None`` if absent/expired)."""
+        raw = await self._redis.get(self._key(role_key))
+        return None if raw is None else str(raw)
+
+    async def set(self, role_key: str, payload: str, *, ttl_seconds: int) -> None:
+        """Cache ``payload`` under ``role_key`` with an expiry of ``ttl_seconds`` (min 1s)."""
+        await self._redis.set(self._key(role_key), payload, ex=max(1, ttl_seconds))
 
 
 class RedisRateLimiter(RateLimiter):

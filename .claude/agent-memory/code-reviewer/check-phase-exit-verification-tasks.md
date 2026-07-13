@@ -39,6 +39,23 @@ fix truly zero-logic-change.
   endpoint) — legitimate (broker is a true external edge) *only* because a byte-equality assertion
   (`base64decode(captured) == uploaded`) ties the two halves. Confirm that tie exists; note there's no single
   upload→task→persist→retrieve flow test (chain proven in segments).
+- **Flagged prior-task defect → route, don't gate the verify task:** when the engineer of a verify task
+  precisely flags a real latent bug in a *prior* task (e.g. P6-09 flagged P6-04 canonicalization), it is
+  correctly *deferred* for the verify task, NOT a blocker — verify tasks are product-code-free and the task
+  itself instructs "flag precisely, route to the owning task, don't patch around." Confirm the bug is real
+  (I verified P6-04's), record it as a note/finding routed to the owning task, and still APPROVE the verify
+  task if its own deliverable (test module + gates + honest report) is sound. But call the caveat out loudly.
+- **P6-04 curated-corpus canonicalization drift (real, route to P6-04):** `_resolve_baseline` searches
+  `shared_kb_document_ids(source_types=["curated"])` and takes the top hybrid hit (`k=1`, no threshold). The
+  curated corpus holds taxonomy occupations AND mined role-profile summaries (`ROLE_PROFILE_SOURCE_TYPE=
+  "curated"`, title `"Market requirements: <role>"`) AND learning resources — all `source_type="curated"`,
+  distinguished only by `meta.kind`. So read-time canonicalization can drift to a summary title →
+  `get_role_profile` miss → perpetual `202` re-enqueue loop. Holds only because the occupation empirically
+  outranks the summary under seeded taxonomy. Fix: filter by `meta.kind`, not `source_type` alone.
+- **Watch stubbed-resolver cache-reuse proofs:** P6-09's cache-reuse test injects a `_SpyResolver` (stub), so
+  it never exercises the real canonicalization; the live round-trip *skips* exactly when canonicalization
+  drifts — so "criterion met" is conditional on the ranking holding, not proven robust. Fine for scope, but
+  note it so the orchestrator doesn't over-read the conclusion.
 - **Live-Postgres proofs (persist/reuse, RAG-grounding) skip without a DB** — you usually can't confirm them;
   read the code for correctness (create user → real task core → assert via real endpoint/`retrieve` → cascade
   cleanup) and trust the engineer's compose-Postgres run per the P2-09/P4-10 posture.

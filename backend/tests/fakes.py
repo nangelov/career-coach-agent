@@ -274,6 +274,10 @@ class FakeExecuteResult:
     def all(self) -> list[Any]:
         return list(self._rows)
 
+    def scalar_one_or_none(self) -> Any:
+        """The single scalar row, or ``None`` — mirrors SQLAlchemy's existence-lookup helper."""
+        return self._rows[0] if self._rows else None
+
     def scalars(self) -> _FakeScalarResult:
         return _FakeScalarResult(self._rows)
 
@@ -317,6 +321,61 @@ class FakeDBProvider:
     @asynccontextmanager
     async def session(self) -> AsyncIterator[Any]:
         yield self.session_obj
+
+
+class FreshSessionDBProvider:
+    """A :class:`~app.repositories.postgres.PostgresConnectionProvider` double that yields a
+    **fresh** scripted :class:`FakeSession` per :meth:`session` call.
+
+    Needed when two DB workers run concurrently in one graph turn (e.g. RAG + MARKET_INTEL):
+    in production each ``async with db.session()`` acquires an independent pooled session, so a
+    single shared :class:`FakeSession` (with a single consumed script) cannot model both. The
+    factory builds an independent, identically-scripted session for each caller, so the two
+    workers never contend for the same scripted results regardless of scheduling order.
+    """
+
+    def __init__(self, factory: Any) -> None:
+        self._factory = factory
+
+    @asynccontextmanager
+    async def session(self) -> AsyncIterator[Any]:
+        yield self._factory()
+
+
+def market_and_rag_session(
+    *,
+    title: str = "rag-source",
+    content: str = "rag grounding excerpt",
+    canonical_role: str = "Data Scientist",
+) -> FakeSession:
+    """A scripted session that serves **both** the RAG and MARKET_INTEL worker read patterns.
+
+    Both workers issue ``[id-scalars, hybrid-chunk-rows, title-rows]`` in that order; the market
+    worker additionally reads ``role_profiles`` (scalars) as a 4th query. Scripting all four (the
+    RAG worker simply leaves the 4th unused) lets one factory back either worker's fresh session.
+    The chunk row carries ``meta.canonical_role`` so the market worker resolves its role profile.
+    """
+    doc_id = uuid.uuid4()
+    chunk_id = uuid.uuid4()
+    return FakeSession(
+        [
+            FakeExecuteResult([doc_id]),
+            FakeExecuteResult(
+                [
+                    kb_chunk_row(
+                        chunk_id=chunk_id,
+                        doc_id=doc_id,
+                        content=content,
+                        meta={"canonical_role": canonical_role},
+                    )
+                ]
+            ),
+            FakeExecuteResult([kb_title_row(doc_id=doc_id, title=title)]),
+            FakeExecuteResult(
+                [SimpleNamespace(canonical_role=canonical_role, requirements={"Python": {}})]
+            ),
+        ]
+    )
 
 
 def kb_title_row(*, doc_id: uuid.UUID, title: str) -> SimpleNamespace:

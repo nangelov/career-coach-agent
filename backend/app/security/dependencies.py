@@ -90,6 +90,26 @@ async def require_auth(
         ) from exc
 
 
+async def resolve_optional_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+    authenticator: SessionAuthenticator = Depends(get_session_authenticator),
+) -> CurrentUser | None:
+    """Resolve the caller from the bearer token if present/valid, else ``None`` (never raises).
+
+    The **optional** counterpart to :func:`require_auth`, for routes that serve anonymous callers
+    but still want a caller identity when one exists — e.g. ``GET /api/roles/{role}/requirements``
+    (§5.6: *"guests can query market requirements, no account needed"*). A missing, malformed, or
+    expired/revoked token yields ``None`` rather than a ``401``; the route then keys rate limits on
+    a fallback identity (e.g. client IP) instead of rejecting the request.
+    """
+    if credentials is None or not credentials.credentials:
+        return None
+    try:
+        return await authenticator.authenticate(credentials.credentials)
+    except InvalidSessionToken:
+        return None
+
+
 def get_user_store(request: Request) -> UserStore:
     """FastAPI dependency: the app-scoped :class:`UserStore`, built once and cached.
 

@@ -142,8 +142,13 @@ PLANNER_SYSTEM_PROMPT = (
     "You are the planner for a career-coaching assistant. Read the user's latest "
     "message (and recent context) and call the record_plan function. Do not answer the "
     "user — only classify and plan.\n"
+    "This assistant does career coaching and personal development ONLY. Your intent "
+    "classification is also the topic guardrail, so tune for LOW false-positives: a "
+    "legitimate career question must never be marked off_topic or job_hunting.\n"
     "Choose exactly one intent:\n"
-    "- job_search: the user wants to find or browse job openings / vacancies.\n"
+    "- market_requirements: the user asks what a role/career requires — skills, "
+    "background, or the gap to reach it (e.g. 'What skills do AI Solution Architects "
+    "need?', 'How do I close the gap from PM to AI architect?').\n"
     "- pdp: the user wants a Personal Development Plan or career roadmap built "
     "(often from a CV / resume).\n"
     "- cv_question: the user asks about their own CV / resume content or how to "
@@ -151,25 +156,41 @@ PLANNER_SYSTEM_PROMPT = (
     "- chat: a substantive career question that needs an informative answer; set "
     "needs_grounding=true when answering well requires the knowledge base.\n"
     "- smalltalk: greetings, thanks, or chit-chat with no informational need.\n"
+    "- job_hunting: the user wants to find/browse/apply to actual job openings or "
+    "vacancies (e.g. 'find me AI architect jobs in Berlin', 'show me openings near "
+    "me'). This is a near-miss — it will be redirected to market requirements, not "
+    "refused. Use it ONLY for browse/apply-to-listings requests.\n"
+    "- off_topic: anything outside career coaching / personal development — medical, "
+    "legal, or financial advice, general chit-chat, homework (e.g. 'Is this rash "
+    "serious?', 'Write my essay'). Refused.\n"
     "Return 2-4 concise steps describing how you will handle the turn."
 )
 
 #: Deterministic intent → worker routing (design §3 fan-out). Conservative on purpose:
 #: ``chat`` is resolved separately via ``needs_grounding`` (see :func:`_workers_for`).
+#: Both ``market_requirements`` and ``job_hunting`` route to the same MARKET_INTEL worker
+#: (a cached ``role_profiles`` read) — the **responder** frames a job-hunting turn as a
+#: redirect (design §7.4), the routing does not differ. ``off_topic`` runs no workers; the
+#: graph short-circuits it to a canned refusal before the responder (design §7.4).
 _INTENT_WORKERS: dict[Intent, list[WorkerName]] = {
-    Intent.JOB_SEARCH: [WorkerName.JOB_SEARCH],
+    Intent.MARKET_REQUIREMENTS: [WorkerName.MARKET_INTEL],
+    Intent.JOB_HUNTING: [WorkerName.MARKET_INTEL],
     Intent.PDP: [WorkerName.PDP_RESUME],
     Intent.CV_QUESTION: [WorkerName.RAG],
     Intent.SMALLTALK: [],
+    Intent.OFF_TOPIC: [],
 }
 
-#: Per-intent iteration budget (design §3: the planner "sets a budget"). Smalltalk needs
-#: no workers/loops; retrieval-light chat/CV a couple; job-search / PDP the default cap.
+#: Per-intent iteration budget (design §3: the planner "sets a budget"). Smalltalk /
+#: off-topic need no workers/loops; retrieval-light chat/CV a couple; market-intel / PDP
+#: the default cap.
 _INTENT_MAX_ITERATIONS: dict[Intent, int] = {
     Intent.SMALLTALK: 1,
+    Intent.OFF_TOPIC: 1,
     Intent.CHAT: 3,
     Intent.CV_QUESTION: 3,
-    Intent.JOB_SEARCH: 5,
+    Intent.MARKET_REQUIREMENTS: 5,
+    Intent.JOB_HUNTING: 5,
     Intent.PDP: 5,
 }
 

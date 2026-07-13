@@ -1,10 +1,12 @@
 """Integration checks for the P2-05 structured-records schema against **real Postgres**.
 
-Proves the jobs / PDP / dashboard table group created by migration ``0004`` is usable:
-JSONB round-trips, checked ``status`` / ``source`` vocabularies are enforced, the ``jobs``
-``(source, external_id)`` dedup key is unique, and the cascade rules behave — in particular
-the §4 GDPR cascades (user → goals → milestones → tasks, user → pdps / progress_entries) and
-the §5.2 attribution/append-only posture.
+Proves the PDP / dashboard table group created by migration ``0004`` is usable: JSONB
+round-trips, checked ``status`` / ``source`` vocabularies are enforced, and the cascade
+rules behave — in particular the §4 GDPR cascades (user → goals → milestones → tasks,
+user → pdps / progress_entries) and the §5.2 attribution/append-only posture.
+
+(The ``jobs`` table was renamed to ``job_postings`` and rescoped into the market-intel
+group in P6-02 — its checks now live in ``test_market_models.py``.)
 
 They require the docker-compose Postgres (``JSONB``/``UUID`` cannot be represented in
 SQLite). The suite is **skipped automatically** when no Postgres is reachable at
@@ -28,7 +30,6 @@ from app.config import settings
 from app.repositories.models import (
     DashboardTask,
     Goal,
-    Job,
     Milestone,
     Pdp,
     ProgressEntry,
@@ -64,7 +65,7 @@ async def session() -> AsyncIterator[AsyncSession]:
     db = AsyncSession(bind=conn, expire_on_commit=False)
     try:
         try:
-            await db.execute(select(Job).limit(1))
+            await db.execute(select(Pdp).limit(1))
         except Exception:  # noqa: BLE001 - surface as a skip, not a hard error
             pytest.skip(
                 "structured schema (migration 0004) not applied — run `alembic upgrade head`"
@@ -85,39 +86,6 @@ def _make_user() -> User:
         email=f"user-{unique}@example.com",
         display_name="Test User",
     )
-
-
-async def test_job_round_trip_and_jsonb(session: AsyncSession) -> None:
-    """Insert a job, read it back — JSONB ``raw`` and nullable ``match_score`` usable."""
-    job = Job(
-        source="serpapi",
-        external_id=f"ext-{uuid4().hex[:8]}",
-        source_url="https://example.com/jobs/123",
-        title="Senior Product Manager",
-        company="Acme",
-        location="Remote",
-        description="Lead the roadmap.",
-        raw={"salary": "competitive", "tags": ["pm", "remote"]},
-    )
-    session.add(job)
-    await session.flush()
-    job_id = job.id
-    session.expire_all()
-
-    fetched = (await session.execute(select(Job).where(Job.id == job_id))).scalar_one()
-    assert fetched.raw == {"salary": "competitive", "tags": ["pm", "remote"]}
-    assert fetched.match_score is None
-
-
-async def test_job_dedup_key_unique(session: AsyncSession) -> None:
-    """The ``(source, external_id)`` dedup key rejects a duplicate listing."""
-    ext = f"ext-{uuid4().hex[:8]}"
-    session.add(Job(source="linkedin", external_id=ext, title="Role A"))
-    await session.flush()
-    with pytest.raises(IntegrityError):
-        async with session.begin_nested():
-            session.add(Job(source="linkedin", external_id=ext, title="Role A duplicate"))
-            await session.flush()
 
 
 async def test_pdp_round_trip_and_user_cascade(session: AsyncSession) -> None:
