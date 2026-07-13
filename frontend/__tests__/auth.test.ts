@@ -1,132 +1,97 @@
 import {
-  authHeaders,
   beginSsoLogin,
-  clearSession,
   createGuestSession,
-  loadSession,
+  fetchSession,
   logout,
-  saveSession,
-  sessionFromFragment,
-  sessionFromPayload,
+  sessionFromState,
   upgradeGuestToSso,
-  type Session,
 } from "@/lib/auth";
 
-beforeEach(() => {
-  window.localStorage.clear();
-});
-
-function guestSession(overrides: Partial<Session> = {}): Session {
-  return {
-    accessToken: "tok",
-    tokenType: "bearer",
-    sessionId: "sid-1",
-    role: "guest",
-    expiresAt: Date.now() + 3_600_000,
-    ...overrides,
-  };
+/** A minimal ok/json Response stand-in. */
+function jsonResponse(body: unknown, ok = true, status = 200): Response {
+  return { ok, status, json: async () => body } as unknown as Response;
 }
 
-describe("sessionFromPayload", () => {
-  it("maps a well-formed backend token payload", () => {
-    const before = Date.now();
-    const session = sessionFromPayload({
-      access_token: "tok",
-      token_type: "bearer",
-      session_id: "sid-1",
+describe("sessionFromState", () => {
+  it("maps a token-free BFF session state", () => {
+    const session = sessionFromState({
+      sessionId: "sid-1",
       role: "user",
-      expires_in: 3600,
+      expiresAt: 1_700_000_000_000,
     });
-    expect(session).not.toBeNull();
-    expect(session?.accessToken).toBe("tok");
-    expect(session?.sessionId).toBe("sid-1");
-    expect(session?.role).toBe("user");
-    expect(session?.expiresAt).toBeGreaterThanOrEqual(before + 3600 * 1000);
+    expect(session).toEqual({
+      sessionId: "sid-1",
+      role: "user",
+      expiresAt: 1_700_000_000_000,
+    });
   });
 
-  it("returns null when the mandatory token / session id are missing", () => {
-    expect(sessionFromPayload({ session_id: "sid" })).toBeNull();
-    expect(sessionFromPayload({ access_token: "tok" })).toBeNull();
+  it("returns null when the mandatory sessionId is missing", () => {
+    expect(sessionFromState({ role: "guest" })).toBeNull();
   });
 
-  it("defaults an unknown role to guest", () => {
-    const session = sessionFromPayload({
-      access_token: "tok",
-      session_id: "sid",
-      role: "something-else",
-    });
-    expect(session?.role).toBe("guest");
+  it("defaults an unknown role to guest and a missing expiry to null", () => {
+    const session = sessionFromState({ sessionId: "sid", role: "something-else" });
+    expect(session).toMatchObject({ role: "guest", expiresAt: null });
+  });
+
+  it("never surfaces a token even if the payload smuggles one", () => {
+    const session = sessionFromState({
+      sessionId: "sid",
+      role: "guest",
+      // @ts-expect-error — a stray token field must be ignored, not carried through.
+      accessToken: "should-not-appear",
+    }) as unknown as Record<string, unknown>;
+    expect(session.accessToken).toBeUndefined();
   });
 });
 
-describe("sessionFromFragment", () => {
-  it("parses the SSO callback fragment (with leading #)", () => {
-    const session = sessionFromFragment(
-      "#access_token=abc&token_type=bearer&session_id=sid-9&role=user&expires_in=1800",
+describe("fetchSession", () => {
+  it("returns the session when the BFF reports authenticated", async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(
+      jsonResponse({
+        isAuthenticated: true,
+        sessionId: "sid-9",
+        role: "user",
+        expiresAt: 1_700_000_000_000,
+      }),
     );
-    expect(session).toMatchObject({
-      accessToken: "abc",
-      sessionId: "sid-9",
-      role: "user",
+    const session = await fetchSession({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
     });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/auth/session",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(session).toMatchObject({ sessionId: "sid-9", role: "user" });
   });
 
-  it("returns null for an empty / tokenless fragment", () => {
-    expect(sessionFromFragment("")).toBeNull();
-    expect(sessionFromFragment("#")).toBeNull();
-    expect(sessionFromFragment("#state=xyz")).toBeNull();
-  });
-});
-
-describe("persistence", () => {
-  it("round-trips save → load", () => {
-    const session = guestSession();
-    saveSession(session);
-    expect(loadSession()).toEqual(session);
+  it("returns null when the BFF reports unauthenticated", async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(jsonResponse({ isAuthenticated: false }));
+    expect(
+      await fetchSession({ fetchImpl: fetchImpl as unknown as typeof fetch }),
+    ).toBeNull();
   });
 
-  it("clears and returns null after clearSession", () => {
-    saveSession(guestSession());
-    clearSession();
-    expect(loadSession()).toBeNull();
-  });
-
-  it("drops an expired session on load", () => {
-    saveSession(guestSession({ expiresAt: Date.now() - 1000 }));
-    expect(loadSession()).toBeNull();
-    // Proactively cleared, so the raw key is gone too.
-    expect(window.localStorage.getItem("cc.session")).toBeNull();
-  });
-
-  it("returns null for a malformed stored value", () => {
-    window.localStorage.setItem("cc.session", "{not json");
-    expect(loadSession()).toBeNull();
-  });
-});
-
-describe("authHeaders", () => {
-  it("builds the bearer header from a session", () => {
-    expect(authHeaders(guestSession())).toEqual({ Authorization: "Bearer tok" });
-  });
-
-  it("is empty when unauthenticated", () => {
-    expect(authHeaders(null)).toEqual({});
+  it("returns null on a network failure rather than throwing", async () => {
+    const fetchImpl = jest.fn().mockRejectedValue(new Error("offline"));
+    expect(
+      await fetchSession({ fetchImpl: fetchImpl as unknown as typeof fetch }),
+    ).toBeNull();
   });
 });
 
 describe("createGuestSession", () => {
-  it("POSTs to the guest endpoint and persists the session", async () => {
-    const fetchImpl = jest.fn().mockResolvedValue({
-      ok: true,
-      status: 201,
-      json: async () => ({
-        access_token: "gtok",
-        token_type: "bearer",
-        session_id: "gsid",
-        role: "guest",
-        expires_in: 3600,
-      }),
-    });
+  it("POSTs to the guest endpoint and returns the token-free session", async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(
+      jsonResponse(
+        { sessionId: "gsid", role: "guest", expiresAt: 1_700_000_000_000 },
+        true,
+        200,
+      ),
+    );
     const session = await createGuestSession({
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
@@ -134,12 +99,16 @@ describe("createGuestSession", () => {
       "/api/auth/guest",
       expect.objectContaining({ method: "POST" }),
     );
+    // Consent gate (§6.22): the request carries the consent flag the backend now requires.
+    const init = fetchImpl.mock.calls[0][1] as RequestInit;
+    expect(JSON.parse(init.body as string)).toEqual({ consent: true });
     expect(session.sessionId).toBe("gsid");
-    expect(loadSession()?.accessToken).toBe("gtok");
+    // The client model carries no token.
+    expect((session as unknown as Record<string, unknown>).accessToken).toBeUndefined();
   });
 
   it("throws on a non-2xx response", async () => {
-    const fetchImpl = jest.fn().mockResolvedValue({ ok: false, status: 500 });
+    const fetchImpl = jest.fn().mockResolvedValue(jsonResponse({}, false, 500));
     await expect(
       createGuestSession({ fetchImpl: fetchImpl as unknown as typeof fetch }),
     ).rejects.toThrow();
@@ -147,7 +116,7 @@ describe("createGuestSession", () => {
 });
 
 describe("beginSsoLogin", () => {
-  it("navigates to the backend login endpoint", () => {
+  it("navigates to the BFF login endpoint", () => {
     const navigate = jest.fn();
     beginSsoLogin("google", { navigate });
     expect(navigate).toHaveBeenCalledWith("/api/auth/login/google");
@@ -160,54 +129,58 @@ describe("beginSsoLogin", () => {
       "/api/auth/login/linkedin?upgrade_ticket=tkt%201",
     );
   });
+
+  it("appends the consent flag when accepted (§6.22)", () => {
+    const navigate = jest.fn();
+    beginSsoLogin("google", { navigate, consent: true });
+    expect(navigate).toHaveBeenCalledWith("/api/auth/login/google?consent=1");
+  });
+
+  it("orders upgrade_ticket then consent when both are present", () => {
+    const navigate = jest.fn();
+    beginSsoLogin("google", { navigate, upgradeTicket: "UPG", consent: true });
+    expect(navigate).toHaveBeenCalledWith(
+      "/api/auth/login/google?upgrade_ticket=UPG&consent=1",
+    );
+  });
 });
 
 describe("upgradeGuestToSso", () => {
-  it("mints an upgrade ticket then navigates to login with it", async () => {
-    const fetchImpl = jest.fn().mockResolvedValue({
-      ok: true,
-      status: 201,
-      json: async () => ({ upgrade_ticket: "UPG", expires_in: 120 }),
-    });
+  it("mints an upgrade ticket (no client token) then navigates to login with it", async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(
+      jsonResponse({ upgrade_ticket: "UPG", expires_in: 120 }, true, 201),
+    );
     const navigate = jest.fn();
-    await upgradeGuestToSso("google", guestSession(), {
+    await upgradeGuestToSso("google", {
       fetchImpl: fetchImpl as unknown as typeof fetch,
       navigate,
     });
-    expect(fetchImpl).toHaveBeenCalledWith(
-      "/api/auth/upgrade",
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({ Authorization: "Bearer tok" }),
-      }),
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe("/api/auth/upgrade");
+    expect(init.method).toBe("POST");
+    // No Authorization header is built client-side — the BFF injects it from the cookie.
+    expect(init.headers?.Authorization).toBeUndefined();
+    // The upgrading guest already consented at guest-session start, so consent is threaded.
+    expect(navigate).toHaveBeenCalledWith(
+      "/api/auth/login/google?upgrade_ticket=UPG&consent=1",
     );
-    expect(navigate).toHaveBeenCalledWith("/api/auth/login/google?upgrade_ticket=UPG");
   });
 });
 
 describe("logout", () => {
-  it("POSTs to the logout endpoint and clears the stored session", async () => {
-    saveSession(guestSession());
-    const fetchImpl = jest.fn().mockResolvedValue({ ok: true, status: 204 });
-    await logout(guestSession(), {
-      fetchImpl: fetchImpl as unknown as typeof fetch,
-    });
-    expect(fetchImpl).toHaveBeenCalledWith(
-      "/api/auth/logout",
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({ Authorization: "Bearer tok" }),
-      }),
-    );
-    expect(loadSession()).toBeNull();
+  it("POSTs to the logout endpoint (no client token)", async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(null, true, 204));
+    await logout({ fetchImpl: fetchImpl as unknown as typeof fetch });
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe("/api/auth/logout");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toBeUndefined();
   });
 
-  it("clears the session even if the network call fails", async () => {
-    saveSession(guestSession());
+  it("swallows a network failure (best-effort revocation)", async () => {
     const fetchImpl = jest.fn().mockRejectedValue(new Error("offline"));
-    await logout(guestSession(), {
-      fetchImpl: fetchImpl as unknown as typeof fetch,
-    });
-    expect(loadSession()).toBeNull();
+    await expect(
+      logout({ fetchImpl: fetchImpl as unknown as typeof fetch }),
+    ).resolves.toBeUndefined();
   });
 });

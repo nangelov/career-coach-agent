@@ -20,3 +20,10 @@
 - [Postgres now() constant in a txn](project-pg-now-constant-in-txn.md) — same-transaction rows share created_at; ordering tests must set explicit spaced timestamps, not rely on insert order
 - [docling ingestion](project-docling-ingestion.md) — P5 DocumentParser ABC + DoclingParser; lazy-import docling, injectable converter seam, test real path with offline DOCX + importorskip
 - [Next.js rewrites are build-frozen](project-next-rewrites-build-frozen.md) — rewrites() eval'd at build into routes-manifest.json; env in destination must be Docker build ARG not runtime env (frontend/lib/apiProxy.ts)
+- [SSRF guard for outbound fetches](project-ssrf-guard.md) — app/net/ssrf_guard.py; GuardedTransport auto-revalidates redirect hops; route all externally-supplied-URL fetches through it; test via inner_transport + fake resolver
+- [Blocking IO in async paths](project-blocking-io-in-async.md) — never call blocking stdlib IO (getaddrinfo) direct from async; offload via anyio.to_thread.run_sync(abandon_on_cancel=True) under fail_after
+- [guardrails↔agents import cycle](project-guardrails-agents-cycle.md) — guardrails is below agents; import agents.state types lazily (in-func + TYPE_CHECKING), never at module top, or you close a cycle
+- [BFF Route Handlers](project-bff-route-handlers.md) — httpOnly-cookie→Authorization BFF layout, SSE streaming passthrough, and testing Next 15 Route Handlers under jest `@jest-environment node`
+- [Session registry authority](project-session-registry-authority.md) — Redis SessionStore is authoritative for live sessions (Postgres sessions is lazy); enumerate per-user via list_user_sessions; scrub feedback.contact PII on erasure
+- [Next route handler signature](project-next-route-handler-signature.md) — Next-generated route types reject an optional first param; keep POST(request: NextRequest) required and guard the body parse
+- [Cascade-delete test completeness](project-cascade-delete-test-completeness.md) — erasure "no orphan rows" tests must assert every child+grandchild table empty (join grandchildren to parent); confirm ondelete=CASCADE vs SET NULL first

@@ -1,14 +1,26 @@
 import { render, screen } from "@testing-library/react";
 
 import Home from "@/app/page";
-import { saveSession } from "@/lib/auth";
+import { fetchSession } from "@/lib/auth";
+
+// The chat hydrates the session from the httpOnly cookie via the BFF (SEC-04). Mock that
+// hydration; keep the real login flow for the signed-out screen.
+jest.mock("@/lib/auth", () => {
+  const actual = jest.requireActual("@/lib/auth");
+  return {
+    __esModule: true,
+    ...actual,
+    fetchSession: jest.fn(),
+    logout: jest.fn().mockResolvedValue(undefined),
+  };
+});
+
+const mockFetchSession = fetchSession as jest.MockedFunction<typeof fetchSession>;
 
 beforeEach(() => {
-  window.localStorage.clear();
-  // The chat is auth-gated (P3-06): seed a session so Home renders the chat, not login.
-  saveSession({
-    accessToken: "test-token",
-    tokenType: "bearer",
+  jest.clearAllMocks();
+  // Auth-gated (P3-06): resolve a guest session so Home renders the chat, not login.
+  mockFetchSession.mockResolvedValue({
     sessionId: "guest-session-1",
     role: "guest",
     expiresAt: Date.now() + 3_600_000,
@@ -16,28 +28,28 @@ beforeEach(() => {
 });
 
 describe("Home page", () => {
-  it("renders the chat page with the 'Career Coach' heading", () => {
+  it("renders the chat page with the 'Career Coach' heading", async () => {
     render(<Home />);
 
     expect(
-      screen.getByRole("heading", { name: /career coach/i }),
+      await screen.findByRole("heading", { name: /career coach/i }),
     ).toBeInTheDocument();
   });
 
-  it("shows the empty-state prompt before any messages", () => {
+  it("shows the empty-state prompt before any messages", async () => {
     render(<Home />);
 
     expect(
-      screen.getByText(/ask anything about your career/i),
+      await screen.findByText(/ask anything about your career/i),
     ).toBeInTheDocument();
   });
 
-  it("shows the login screen when there is no session", () => {
-    window.localStorage.clear();
+  it("shows the login screen when there is no session", async () => {
+    mockFetchSession.mockResolvedValue(null);
     render(<Home />);
 
     expect(
-      screen.getByRole("button", { name: /continue as guest/i }),
+      await screen.findByRole("button", { name: /continue as guest/i }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /continue with google/i }),

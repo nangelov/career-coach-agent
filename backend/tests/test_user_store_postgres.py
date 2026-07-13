@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -96,6 +97,51 @@ async def test_upsert_inserts_then_updates_same_row(
             )
         assert len(rows) == 1
         assert rows[0].email == "new@example.com"
+    finally:
+        if created_id is not None:
+            await _delete_user(provider, created_id)
+
+
+async def test_upsert_records_and_updates_consent(
+    provider: PostgresConnectionProvider,
+) -> None:
+    """Consent gate (§6.22): the policy version + timestamp round-trip and re-record on bump."""
+    store = PostgresUserStore(provider)
+    sub = f"sub-{uuid4().hex[:12]}"
+    created_id: str | None = None
+    try:
+        first_at = datetime(2025, 1, 1, tzinfo=UTC)
+        first = await store.upsert(
+            provider="google",
+            sub=sub,
+            email="c@example.com",
+            display_name="C",
+            consent_policy_version="2025-01-01",
+            consent_accepted_at=first_at,
+        )
+        created_id = first.id
+
+        async with provider.session() as db:
+            row = await db.get(User, uuid.UUID(created_id))
+            assert row is not None
+            assert row.consent_policy_version == "2025-01-01"
+            assert row.consent_accepted_at == first_at
+
+        # A returning login accepting a bumped policy overwrites both columns.
+        second_at = datetime(2026, 7, 13, tzinfo=UTC)
+        await store.upsert(
+            provider="google",
+            sub=sub,
+            email="c@example.com",
+            display_name="C",
+            consent_policy_version="2026-07-13",
+            consent_accepted_at=second_at,
+        )
+        async with provider.session() as db:
+            row = await db.get(User, uuid.UUID(created_id))
+            assert row is not None
+            assert row.consent_policy_version == "2026-07-13"
+            assert row.consent_accepted_at == second_at
     finally:
         if created_id is not None:
             await _delete_user(provider, created_id)

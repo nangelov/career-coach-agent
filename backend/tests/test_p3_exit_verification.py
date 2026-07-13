@@ -188,7 +188,12 @@ class _Harness:
             self.conversations,
             ticket_ttl_seconds=300,
         )
-        self.guest = GuestAuthService(self.sessions, self.codec, session_ttl_seconds=3600)
+        self.guest = GuestAuthService(
+            self.sessions,
+            self.codec,
+            session_ttl_seconds=3600,
+            consent_policy_version="2026-07-13",
+        )
         self.authenticator = SessionAuthenticator(self.codec, self.sessions)
         self.sso = SsoAuthService(
             _MultiUserOIDCClient(),
@@ -200,6 +205,7 @@ class _Harness:
             state_ttl_seconds=600,
             session_ttl_seconds=3600,
             providers=frozenset({"google", "linkedin"}),
+            consent_policy_version="2026-07-13",
             upgrades=self.upgrades,
         )
         self.rate_limits = RateLimitService(
@@ -253,7 +259,7 @@ def _bearer(token: str) -> dict[str, str]:
 
 async def _login_user(client: httpx.AsyncClient, *, code: str, state: str) -> dict[str, str]:
     """Drive a full mocked-SSO login and return the token fragment (real user session JWT)."""
-    login = await client.get("/api/auth/login/google")
+    login = await client.get("/api/auth/login/google", params={"consent": "1"})
     assert login.status_code == 302
     callback = await client.get("/api/auth/callback/google", params={"code": code, "state": state})
     assert callback.status_code == 302
@@ -265,7 +271,7 @@ async def _login_user(client: httpx.AsyncClient, *, code: str, state: str) -> di
 
 async def test_guest_flow_chats_to_limit_then_upgrade_prompt(client: httpx.AsyncClient) -> None:
     """Guest session → 10 messages OK → 11th denied 429 with an upgrade prompt (P3-01 + P3-04)."""
-    guest = (await client.post("/api/auth/guest")).json()
+    guest = (await client.post("/api/auth/guest", json={"consent": True})).json()
     assert guest["role"] == "guest"
     headers = _bearer(guest["access_token"])
     session_id = guest["session_id"]
@@ -341,7 +347,7 @@ async def test_upgrade_preserves_session_and_begins_persisting(
 ) -> None:
     """Guest chats → upgrades via SSO → same session continues, now persisted (P3-03)."""
     # 1. Guest starts and has been chatting (seed the shared working memory for the session).
-    guest = (await client.post("/api/auth/guest")).json()
+    guest = (await client.post("/api/auth/guest", json={"consent": True})).json()
     guest_session_id = guest["session_id"]
     await harness.memory.append(
         guest_session_id,
@@ -356,7 +362,7 @@ async def test_upgrade_preserves_session_and_begins_persisting(
     assert upgrade.status_code == 201
     ticket = upgrade.json()["upgrade_ticket"]
 
-    login = await client.get(f"/api/auth/login/google?upgrade_ticket={ticket}")
+    login = await client.get(f"/api/auth/login/google?upgrade_ticket={ticket}&consent=1")
     assert login.status_code == 302
     callback = await client.get(
         "/api/auth/callback/google", params={"code": "code-A", "state": "state-1"}

@@ -42,6 +42,7 @@ from .errors import (
     LLMResponseError,
     LLMTimeoutError,
 )
+from .redaction import redact_messages
 from .types import ChatMessage, CompletionResult, StreamChunk
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -222,7 +223,11 @@ class LLMRouter:
         Transient ``5xx``/``429`` are retried on the same model (backoff) before
         failing over; a client ``4xx`` (non-429) is not failed over — it would
         fail on every model — and is re-raised immediately.
+
+        Contact-detail PII is stripped from outbound content here (§6.16 / §7.6),
+        at this single chokepoint, before any underlying ``client`` call.
         """
+        messages = redact_messages(messages)
         last_error: LLMError | None = None
         attempted = False
         for client in self._clients:
@@ -296,8 +301,13 @@ class LLMRouter:
         *continuation* from the next model. The caller sees one continuous stream
         — no restart, no user-facing "switching models" notice. A failure before
         any token is a clean failover (fresh stream, no prefill).
+
+        Contact-detail PII is stripped from outbound content here (§6.16 / §7.6),
+        at this single chokepoint, before any underlying ``client`` call. The
+        mid-stream ``accumulated`` prefill is model-generated continuation (built
+        from already-redacted input) and is not re-redacted.
         """
-        base_messages = list(messages)
+        base_messages = redact_messages(messages)
         accumulated = ""
         last_error: LLMError | None = None
         attempted = False

@@ -44,6 +44,32 @@ class SessionRecord(BaseModel):
         description="Logged-in users.id (P3-02); None for a guest session.",
     )
     created_at: datetime = Field(..., description="When the session was created (UTC).")
+    consent_policy_version: str | None = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "ToS + privacy policy version accepted at session start (§6.22). For a guest, "
+            "consent is per-session (guests hold nothing durable, §6.18) so it is stamped on "
+            "this transient record for the life of the session — useful for support/debugging. "
+            "For a logged-in user the durable record is on the ``users`` row; this mirror is "
+            "optional. ``None`` on records that predate the consent gate."
+        ),
+    )
+
+
+class GuestSessionRequest(BaseModel):
+    """``POST /api/auth/guest`` body — the per-session consent acceptance (§6.22).
+
+    A guest session is minted only when ``consent`` is ``true`` (the login screen's
+    ToS/privacy checkbox). Guests hold nothing durable (§6.18), so consent is per-session:
+    it is accepted afresh at **every** guest start. The body is optional on the wire (a
+    missing body is treated as ``consent=false`` → rejected) so the endpoint fails closed.
+    """
+
+    consent: bool = Field(
+        default=False,
+        description="Whether the ToS + privacy notice was accepted (required to mint a session).",
+    )
 
 
 class GuestSessionResponse(BaseModel):

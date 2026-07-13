@@ -7,8 +7,9 @@
  *
  *   - pure functions with an injectable `fetchImpl` / `baseUrl` (DI for tests — no hard
  *     `window`/`fetch` globals in the request paths),
- *   - the bearer session token attached as `Authorization: Bearer <token>` via
- *     {@link authHeaders} exactly like the chat/auth clients,
+ *   - no client-side auth: the Next.js BFF injects `Authorization` server-side from the
+ *     httpOnly session cookie (design §7.2), which the browser sends automatically on these
+ *     same-origin fetches — this layer never touches the token,
  *   - wire types that mirror the backend Pydantic schemas verbatim (snake_case fields), so a
  *     `GET` result can be edited and `PUT` straight back with no lossy remapping.
  *
@@ -21,8 +22,6 @@
  * can branch on the states the backend distinguishes (401 expired, 403 guest-cannot-save, 413
  * too-large, 415 unsupported, 429 rate-limited) rather than showing one generic message.
  */
-
-import { authHeaders, type Session } from "@/lib/auth";
 
 // --------------------------------------------------------------------------- //
 // Wire types (mirror backend/app/ingestion/profile.py::ProfileSchema)
@@ -277,7 +276,6 @@ function updateFallback(status: number): string {
  */
 export async function uploadCv(
   file: File,
-  session: Session,
   options: ProfileClientOptions = {},
 ): Promise<CvUploadHandle> {
   const { baseUrl = "", fetchImpl = fetch } = options;
@@ -286,7 +284,8 @@ export async function uploadCv(
   // NB: never set Content-Type for a FormData body — the browser adds the multipart boundary.
   const response = await fetchImpl(`${baseUrl}/api/profile/cv`, {
     method: "POST",
-    headers: { ...authHeaders(session), Accept: "application/json" },
+    headers: { Accept: "application/json" },
+    credentials: "same-origin",
     body: form,
   });
   if (!response.ok) {
@@ -303,7 +302,6 @@ export async function uploadCv(
 /** Fetch one poll of a job's status (`GET /api/jobs/status/{task_id}`). */
 export async function pollJobStatus(
   taskId: string,
-  session: Session,
   options: ProfileClientOptions = {},
 ): Promise<JobStatus> {
   const { baseUrl = "", fetchImpl = fetch } = options;
@@ -311,7 +309,8 @@ export async function pollJobStatus(
     `${baseUrl}/api/jobs/status/${encodeURIComponent(taskId)}`,
     {
       method: "GET",
-      headers: { ...authHeaders(session), Accept: "application/json" },
+      headers: { Accept: "application/json" },
+      credentials: "same-origin",
     },
   );
   if (!response.ok) {
@@ -353,7 +352,6 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
  */
 export async function pollJobUntilTerminal(
   taskId: string,
-  session: Session,
   options: JobPollOptions = {},
 ): Promise<JobStatus> {
   const { intervalMs = 1500, onUpdate, signal } = options;
@@ -361,7 +359,7 @@ export async function pollJobUntilTerminal(
     if (signal?.aborted) {
       throw abortError();
     }
-    const status = await pollJobStatus(taskId, session, options);
+    const status = await pollJobStatus(taskId, options);
     onUpdate?.(status);
     if (status.status === "success" || status.status === "failure") {
       return status;
@@ -376,13 +374,13 @@ export async function pollJobUntilTerminal(
  * always has a renderable shape (backend contract). Throws {@link ProfileApiError} on non-2xx.
  */
 export async function getProfile(
-  session: Session,
   options: ProfileClientOptions = {},
 ): Promise<Profile> {
   const { baseUrl = "", fetchImpl = fetch } = options;
   const response = await fetchImpl(`${baseUrl}/api/profile`, {
     method: "GET",
-    headers: { ...authHeaders(session), Accept: "application/json" },
+    headers: { Accept: "application/json" },
+    credentials: "same-origin",
   });
   if (!response.ok) {
     const fallback =
@@ -402,17 +400,16 @@ export async function getProfile(
  */
 export async function updateProfile(
   profile: Profile,
-  session: Session,
   options: ProfileClientOptions = {},
 ): Promise<Profile> {
   const { baseUrl = "", fetchImpl = fetch } = options;
   const response = await fetchImpl(`${baseUrl}/api/profile`, {
     method: "PUT",
     headers: {
-      ...authHeaders(session),
       "Content-Type": "application/json",
       Accept: "application/json",
     },
+    credentials: "same-origin",
     body: JSON.stringify(profile),
   });
   if (!response.ok) {

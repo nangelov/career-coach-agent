@@ -14,6 +14,7 @@ import pytest
 
 from app.security.tokens import SessionTokenCodec
 from app.services.auth import (
+    ConsentRequired,
     InvalidOAuthState,
     SsoAuthService,
     UnknownProvider,
@@ -25,6 +26,7 @@ from tests.fakes import FakeOIDCClient
 
 _SECRET = "sso-service-test-secret"
 _BASE_URL = "https://app.example"
+_POLICY = "2026-07-13"
 
 
 def _service(
@@ -33,6 +35,7 @@ def _service(
     states: InMemoryOAuthStateStore | None = None,
     users: InMemoryUserStore | None = None,
     sessions: InMemorySessionStore | None = None,
+    consent_policy_version: str = _POLICY,
 ) -> SsoAuthService:
     return SsoAuthService(
         oidc or FakeOIDCClient(),
@@ -44,6 +47,7 @@ def _service(
         state_ttl_seconds=600,
         session_ttl_seconds=3600,
         providers=frozenset({"google", "linkedin"}),
+        consent_policy_version=consent_policy_version,
     )
 
 
@@ -52,7 +56,7 @@ async def test_begin_login_returns_consent_url_and_persists_transaction() -> Non
     states = InMemoryOAuthStateStore()
     service = _service(oidc=oidc, states=states)
 
-    url = await service.begin_login("google")
+    url = await service.begin_login("google", consent=True)
 
     assert url.startswith("https://provider.example/consent")
     # Redirect URI is derived from config, not hard-coded per provider (§7.1).
@@ -64,11 +68,22 @@ async def test_begin_login_returns_consent_url_and_persists_transaction() -> Non
     assert record is not None
     assert record.provider == "google"
     assert record.code_verifier == "verifier-1"
+    # The accepted consent policy version is threaded into the transaction (§6.22).
+    assert record.consent_policy_version == _POLICY
+
+
+async def test_begin_login_without_consent_is_rejected() -> None:
+    states = InMemoryOAuthStateStore()
+    service = _service(states=states)
+    with pytest.raises(ConsentRequired):
+        await service.begin_login("google", consent=False)
+    # No transaction was stored (rejected before the provider redirect, §6.22).
+    assert await states.pop("state-1") is None
 
 
 async def test_begin_login_unknown_provider_raises() -> None:
     with pytest.raises(UnknownProvider):
-        await _service().begin_login("myspace")
+        await _service().begin_login("myspace", consent=True)
 
 
 async def test_complete_login_mints_user_session() -> None:
@@ -78,7 +93,7 @@ async def test_complete_login_mints_user_session() -> None:
     sessions = InMemorySessionStore()
     service = _service(oidc=oidc, states=states, users=users, sessions=sessions)
 
-    await service.begin_login("google")
+    await service.begin_login("google", consent=True)
     session = await service.complete_login("google", code="auth-code", state="state-1")
 
     assert session.token_type == "bearer"
@@ -94,6 +109,11 @@ async def test_complete_login_mints_user_session() -> None:
     assert record.role == "user"
     assert record.user_id is not None
 
+    # Consent (§6.22) was recorded against the user row: version + a timestamp.
+    account = users._by_identity[("google", "sub-123")]  # type: ignore[attr-defined]
+    assert account.consent_policy_version == _POLICY
+    assert account.consent_accepted_at is not None
+
     # The bearer token names the user (sub == users.id), not the session.
     claims = SessionTokenCodec(secret=_SECRET).decode(session.access_token)
     assert claims.role == "user"
@@ -101,13 +121,43 @@ async def test_complete_login_mints_user_session() -> None:
     assert claims.sid == session.session_id
 
 
+async def test_complete_login_records_current_policy_on_returning_stale_user() -> None:
+    # A returning user whose stored consent is stale gets re-recorded on next login (§6.22).
+    # One shared OIDC client + state store spans both logins (so state ids don't collide).
+    users = InMemoryUserStore()
+    oidc = FakeOIDCClient()
+    states = InMemoryOAuthStateStore()
+
+    # First login under an old policy version.
+    old = _service(
+        oidc=oidc, states=states, users=users, consent_policy_version="2025-01-01"
+    )
+    await old.begin_login("google", consent=True)
+    await old.complete_login("google", code="c1", state="state-1")
+    assert (
+        users._by_identity[("google", "sub-123")].consent_policy_version  # type: ignore[attr-defined]
+        == "2025-01-01"
+    )
+
+    # Next login under the bumped policy re-records the current version (same identity).
+    current = _service(
+        oidc=oidc, states=states, users=users, consent_policy_version="2026-07-13"
+    )
+    await current.begin_login("google", consent=True)
+    await current.complete_login("google", code="c2", state="state-2")
+    assert (
+        users._by_identity[("google", "sub-123")].consent_policy_version  # type: ignore[attr-defined]
+        == "2026-07-13"
+    )
+
+
 async def test_complete_login_is_idempotent_on_returning_user() -> None:
     users = InMemoryUserStore()
     service = _service(users=users)
 
-    await service.begin_login("google")
+    await service.begin_login("google", consent=True)
     first = await service.complete_login("google", code="c1", state="state-1")
-    await service.begin_login("google")
+    await service.begin_login("google", consent=True)
     second = await service.complete_login("google", code="c2", state="state-2")
 
     a = SessionTokenCodec(secret=_SECRET).decode(first.access_token)
@@ -126,14 +176,14 @@ async def test_complete_login_rejects_unknown_state() -> None:
 async def test_complete_login_rejects_provider_mismatch() -> None:
     service = _service()
     # State was issued for google; replaying it on the linkedin callback must fail.
-    await service.begin_login("google")
+    await service.begin_login("google", consent=True)
     with pytest.raises(InvalidOAuthState):
         await service.complete_login("linkedin", code="c", state="state-1")
 
 
 async def test_complete_login_state_is_single_use() -> None:
     service = _service()
-    await service.begin_login("google")
+    await service.begin_login("google", consent=True)
     await service.complete_login("google", code="c", state="state-1")
     # Replaying the same state must fail (transaction consumed).
     with pytest.raises(InvalidOAuthState):

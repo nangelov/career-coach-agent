@@ -1,0 +1,28 @@
+# Opt-in local-debugging override — re-publishes the internal service ports.
+#
+# The default `docker-compose.yml` keeps `db`, `redis` and `backend` on the
+# internal Docker network only (port lockdown, design §7.2 / §6.12 — the UI is
+# the only entry point). This override re-adds the host port mappings so you
+# can, during development, connect a DB client to localhost:5432, poke Redis on
+# localhost:6379, or curl the backend directly on localhost:8000.
+#
+# It is intentionally NOT named `docker-compose.override.yml`, because that name
+# is auto-merged by plain `docker compose up`. This file only takes effect when
+# you pass it explicitly:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev-ports.yml up
+#
+# Never enable this in a deployed/shared environment — it defeats the lockdown.
+
+services:
+  db:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  backend:
+    ports:
+      - "8000:8000"

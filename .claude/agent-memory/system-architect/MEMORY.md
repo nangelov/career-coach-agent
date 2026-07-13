@@ -1,5 +1,8 @@
 # Memory index
 
+- **[Product scope](project-product-scope.md) — LOCKED: coaching/personal-development ONLY, NOT a job board; P6 rescoped to market intelligence (role_profiles, ESCO/O*NET)**
+- **[Security & privacy posture](project-security-privacy-posture.md) — LOCKED §7.2-7.6: non-public backend + BFF cookie, SSRF guard, docs-are-not-instructions, denial-of-wallet, GDPR erasure/Art.9; the [SEC] block**
+- **[Privacy & ops decisions](project-privacy-ops-decisions.md) — LOCKED §6.16-25: contact-only CV redaction, data-loss accepted, 30d retention, Tavily 3-key pool, Altcha PoW, consent gate, Sentry, no cover letters**
 - [v2 locked stack](project-v2-locked-stack.md) — the 9 pre-work decisions (GLM-5.2, Qwen3-Embedding-8B dim=4096, LangMem, self-host, guest 10msg+1doc, resume); all 9 now LOCKED (#8 = silent-but-viewable/deletable memory, opt-out)
 - [LLM layer seam](project-llm-layer-seam.md) — blessed llm/ pattern (P1-01): LLMClient ABC + first-party types/errors, single client max_retries=0, failover/resume only in router.py (P1-02)
 - [Frontend path](project-frontend-path.md) — RESOLVED P0-13: v2 now at canonical §8 frontend/ (renamed from frontend-v2/); v1 CRA in legacy-code/; package.json name still -v2 (cosmetic)
@@ -18,4 +21,8 @@
 - [OCR fallback](project-ocr-fallback.md) — blessed P5-02: TextLayerCheck keys off ParsedDocument.is_empty+density (not re-probe), OCR+composite reuse P5-01 DocumentParser seam, VLM tier reserved NotImplementedError, lazy OCR imports; P5-04=Celery, P5-03=no layout when OCR ran
 - [Profile structuring](project-profile-structuring.md) — blessed P5-03: ProfileSchema (ingestion/profile.py) owns profiles.data JSONB shape; LLMCompleter-injected structurer, forced tool-call, raise-not-fail-soft, Pydantic-derived tool schema ($ref risk logged); for P5-04/05
 - [Docker API routing](project-docker-api-routing.md) — blessed FIX-05: always-on same-origin Next rewrite proxy, INTERNAL_API_URL build ARG (not runtime), localhost:8000 default forward-compatible with P11 single-container
+- [SSRF guard](project-ssrf-guard.md) — blessed SEC-01/S1: app/net/ pkg (not guardrails/), GuardedTransport per-hop revalidation seam + build_guarded_client, crawler is the only in-scope fetcher, rebind TOCTOU accepted (cheap-to-harden)
+- [Untrusted-content contract](project-untrusted-content-contract.md) — blessed SEC-02 §7.3: single fence_untrusted helper + screen_output net (one deny-list both directions), no untrusted text + live tool schema; logged guardrails→agents.state layering inversion
+- [BFF session transport](project-bff-session-transport.md) — blessed SEC-04: catch-all+auth Route Handlers in frontend/app/api/*, httpOnly cc_session cookie (token never in JS/URL), SSE verbatim passthrough; FIX-05 build-ARG SUPERSEDED → runtime INTERNAL_API_URL correct
 - [AuthZ + rate limits](project-authz-ratelimit.md) — blessed P3-04: centralized authorize_session_access (session==token.sid), identity from token not body, RateLimiter port + Redis fixed-window, guest Decision-8 caps; P5 follow-up = repo-level owner filter for relational rows
+- [Observability & analytics](project-observability-analytics.md) — LOCKED §6.26-27/§7.8: OTel+free OTLP backend+Sentry (new P11), GA4 engagement events (no PII); admin telemetry access = provider's own login, NOT a new password surface (SSO-only §6.2 holds); old P11 Deploy is now P12

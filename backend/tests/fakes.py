@@ -12,6 +12,7 @@ by subclassing, so callers pass them where an ``LLMRouter`` / ``ToolRegistry`` i
 
 from __future__ import annotations
 
+import ipaddress
 import uuid
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
@@ -24,6 +25,7 @@ import httpx
 from app.agents.state import AgentState, Citation, Intent, PlannerDecision
 from app.llm.embeddings import EmbeddingClient
 from app.llm.types import ChatMessage, CompletionResult, StreamChunk, ToolCall
+from app.net.ssrf_guard import build_guarded_client
 from app.repositories.vector_search import SearchResult
 from app.schemas.auth import CurrentUser, SessionRole
 from app.security.oidc import AuthorizationRequest, OIDCClient, OIDCUserInfo
@@ -400,22 +402,37 @@ def web_result(
     return {"title": title, "url": url, "snippet": snippet}
 
 
+#: A fixed public IP every crawl-test host resolves to, so the SSRF guard treats the mock
+#: hosts (``ex.com`` / ``example.com`` / …) as public and lets them through. SSRF-specific
+#: rejection tests inject their own resolver mapping a host to a private/blocked address.
+PUBLIC_TEST_IP = "93.184.216.34"
+
+
+def public_resolver(_host: str) -> list[Any]:
+    """A ``Resolver`` double: resolve any host to a single public IP (for crawl happy-paths)."""
+    return [ipaddress.ip_address(PUBLIC_TEST_IP)]
+
+
 def fake_crawl_client(
     pages: Mapping[str, str] | None = None,
     *,
     default_html: str = "<html><body><p>crawled page text</p></body></html>",
 ) -> httpx.AsyncClient:
-    """An ``httpx.AsyncClient`` whose ``MockTransport`` serves canned HTML per crawled URL.
+    """An SSRF-**guarded** ``httpx.AsyncClient`` whose inner ``MockTransport`` serves canned HTML.
 
-    ``pages`` maps a URL to its HTML body; unmapped URLs get ``default_html``. No real network
-    call is made (mirrors the ``internet_search`` tests' mock-transport pattern).
+    ``pages`` maps a URL to its HTML body; unmapped URLs get ``default_html``. The MockTransport
+    is wrapped by :func:`~app.net.ssrf_guard.build_guarded_client` with :func:`public_resolver`,
+    so crawl tests exercise the real guard path (design §7.2) while no real network / DNS call is
+    made (mirrors the ``internet_search`` tests' mock-transport pattern).
     """
 
     def handler(request: httpx.Request) -> httpx.Response:
         html = (pages or {}).get(str(request.url), default_html)
         return httpx.Response(200, html=html)
 
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    return build_guarded_client(
+        inner_transport=httpx.MockTransport(handler), resolver=public_resolver
+    )
 
 
 class FakeResponderRouter:

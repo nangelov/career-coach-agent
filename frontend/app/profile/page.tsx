@@ -6,13 +6,13 @@ import Link from "next/link";
 import CvUpload from "@/components/CvUpload";
 import Login from "@/components/Login";
 import ProfileView from "@/components/ProfileView";
-import { loadSession, type Session } from "@/lib/auth";
+import { fetchSession, type Session } from "@/lib/auth";
 
 /**
  * Profile route (design §5.1 / §8 App Router): hosts the CV upload + parse-progress surface and
  * the structured-profile view/edit, reachable from the chat header. Auth-gated like the chat
- * (P3-06): the session is resolved client-side (localStorage is unavailable during SSR), and an
- * unauthenticated visitor gets the login screen. When a CV parse succeeds, `onParsed` bumps a
+ * (P3-06): the session is hydrated from the httpOnly cookie via the BFF `GET /api/auth/session`
+ * (SEC-04), and an unauthenticated visitor gets the login screen. When a CV parse succeeds, `onParsed` bumps a
  * reload key so the profile view re-fetches the freshly persisted profile without a page reload.
  */
 export default function ProfilePage() {
@@ -20,9 +20,23 @@ export default function ProfilePage() {
   const [authChecked, setAuthChecked] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
+  // Hydrate the session from the httpOnly cookie via the BFF (SEC-04 — no localStorage).
   useEffect(() => {
-    setSession(loadSession());
-    setAuthChecked(true);
+    let cancelled = false;
+    void fetchSession()
+      .then((next) => {
+        if (!cancelled) {
+          setSession(next);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setAuthChecked(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleParsed = useCallback(() => {

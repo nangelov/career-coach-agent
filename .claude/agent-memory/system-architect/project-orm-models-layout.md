@@ -26,3 +26,14 @@ unique `(provider,sub)`; `messages.message_id` = `String(32)` unique matching `u
 `String(64)` client-supplied (`crypto.randomUUID()`), nullable `user_id` = guest; `role`/`rating` as
 `CheckConstraint` over `String` (kept in lockstep with `app.llm.types.Role`), not PG `ENUM`; GDPR user-delete
 CASCADEs owned rows, but product `feedback` FKs are `ON DELETE SET NULL` (deliberately outlives the account).
+
+**SEC-05 (GDPR erasure/export) blessed rev1, APPROVED:** `api/me.py` (thin) → `services/account.py`
+(`AccountRepository` port + `AccountService` + `InMemoryAccountRepository` double) → `repositories/account.py`
+(`PostgresAccountRepository`). Erase = enumerate `sessions.id`→delete each Redis session record (all devices,
+via existing `SessionStore` port) **before** the single `DELETE FROM users` cascade (Redis session store is
+separate from PG `sessions` rows). Export = per-table explicit-column SELECTs (never `*_embedding`), caller-scoped
+by `user_id`/owned-parent joins, shared `user_id IS NULL` KB never leaked; open row-dict sections (not typed
+per-table models) — KISS, one SELECT governs egress. Guest→403, DELETE→204, export=attachment. **Logged
+follow-up (don't re-flag as blocker, but track):** `feedback.SET NULL` + `feedback.contact` (optional email)
+means an Art.17 erase nulls `user_id` but leaves a directly-identifying email — recommend scrubbing
+`feedback.contact` in `erase()` for true anonymization (cheap; not expensive to unwind → APPROVED w/ follow-up).

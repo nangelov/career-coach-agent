@@ -29,6 +29,7 @@ from redis.asyncio import Redis
 
 from app.app_state import AppStateKeys
 from app.config import settings
+from app.repositories.account import PostgresAccountRepository
 from app.repositories.conversation_store import PostgresConversationStore
 from app.repositories.feedback_store import PostgresFeedbackReader
 from app.repositories.postgres import PostgresConnectionProvider
@@ -49,6 +50,7 @@ from app.repositories.redis import (
 from app.repositories.user_store import PostgresUserStore
 from app.security.oidc import AuthlibOIDCClient
 from app.security.tokens import SessionTokenCodec
+from app.services.account import AccountService
 from app.services.auth import GuestAuthService, SessionAuthenticator, SsoAuthService
 from app.services.chat import ChatService
 from app.services.feedback import FeedbackReader
@@ -126,6 +128,24 @@ def build_profile_store(app: FastAPI) -> ProfileStore:
     """
     provider = _require_pg_provider(app, "profile store")
     return PostgresProfileStore.from_provider(provider)
+
+
+def build_account_service(app: FastAPI) -> AccountService:
+    """Construct the :class:`AccountService` (GDPR erase/export, SEC-05 / §7.6).
+
+    Wires the Postgres-backed :class:`~app.repositories.account.PostgresAccountRepository` (the
+    cascade delete + scoped export over the shared Postgres pool) and the Redis-backed
+    :class:`~app.repositories.redis.RedisSessionStore` (revoking the user's live sessions across
+    all devices) over the *same* shared Redis pool as the rest of the app. Erasure spans both
+    stores, so both are required — a missing Postgres provider is a wiring bug (``_require_pg_
+    provider`` fails loudly). Called once per process (cached by
+    ``app.api.me.get_account_service``).
+    """
+    provider = _require_pg_provider(app, "account erasure/export")
+    redis_client = _shared_redis_client(app)
+    sessions = RedisSessionStore.from_settings(cast(StoreRedis, redis_client), settings)
+    repo = PostgresAccountRepository.from_provider(provider)
+    return AccountService(repo, sessions)
 
 
 def build_chat_service(app: FastAPI) -> ChatService:

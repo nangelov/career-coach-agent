@@ -53,6 +53,17 @@ class OAuthStateRecord(BaseModel):
             "``/login`` and consumed on ``/callback``. ``None`` for a plain login."
         ),
     )
+    consent_policy_version: str | None = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "ToS + privacy policy version accepted on the login screen (§6.22), threaded "
+            "through the OAuth redirect so the callback can record it against the ``users`` "
+            "row (which does not exist yet at ``/login``). Set to "
+            "``settings.CONSENT_POLICY_VERSION`` when the consent checkbox was ticked; the "
+            "login is rejected before this record is written if consent was absent."
+        ),
+    )
 
 
 class OAuthStateStore(ABC):

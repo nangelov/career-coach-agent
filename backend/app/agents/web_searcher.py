@@ -16,10 +16,12 @@ excerpts) plus one :class:`~app.agents.state.Citation` per result.
    rather than round-tripping through the LLM tool-call loop (same posture ``rag_agent``
    uses calling ``hybrid_search`` directly). There is no second search client.
 2. **Crawl** a small, capped number of the top result URLs (``DEFAULT_CRAWL_PAGES``): a
-   bounded ``GET`` per page (capped timeout, capped response bytes, redirects followed), from
-   which **plain text** is extracted with a stdlib :mod:`html.parser` pass (tags / scripts /
-   styles stripped) and truncated to a bounded length. No new parsing dependency is pulled in
-   (budget / OSS posture, design §11; keeps the curated CI install unchanged).
+   bounded ``GET`` per page through the **SSRF guard** (:mod:`app.net.ssrf_guard`, design
+   §7.2) — http(s)-only, resolved-IP-validated, per-hop-re-validated redirects, capped
+   timeout, capped response bytes — from which **plain text** is extracted with a stdlib
+   :mod:`html.parser` pass (tags / scripts / styles stripped) and truncated to a bounded
+   length. No new parsing dependency is pulled in (budget / OSS posture, design §11; keeps
+   the curated CI install unchanged).
 3. Map every search result to a :class:`Citation` (title / url / snippet) and bundle the
    snippets + crawled excerpts into :attr:`WorkerResult.content` as grounded material.
 
@@ -55,6 +57,7 @@ from typing import Any, Protocol, runtime_checkable
 import httpx
 
 from app.agents.state import AgentState, Citation, WorkerName, WorkerResult
+from app.net.ssrf_guard import build_guarded_client, read_capped
 from app.tools.base import ToolResult
 from app.tools.internet_search import InternetSearchTool
 
@@ -237,14 +240,15 @@ async def _crawl_top_results(
     """Crawl up to ``max_crawl`` of the top result URLs, returning ``{url: extracted_text}``.
 
     Bounded fan-out (``max_crawl`` pages) and sequential — no unbounded concurrency. Manages a
-    short-lived ``httpx.AsyncClient`` when none is injected (same lifecycle as the search tool);
-    an injected client (tests) is left open for the caller to own. Each page fails soft.
+    short-lived **SSRF-guarded** ``httpx.AsyncClient`` (:func:`build_guarded_client`, design
+    §7.2) when none is injected; an injected client (tests) is assumed already guarded and left
+    open for the caller to own. Each page fails soft.
     """
     targets = [r["url"] for r in results[:max_crawl] if r.get("url")]
     if not targets:
         return {}
 
-    client = http_client or httpx.AsyncClient(timeout=timeout)
+    client = http_client or build_guarded_client(timeout=timeout)
     owns_client = http_client is None
     extracts: dict[str, str] = {}
     try:
@@ -261,31 +265,28 @@ async def _crawl_top_results(
 async def _crawl_page(client: httpx.AsyncClient, url: str, *, timeout: float) -> str | None:
     """Fetch one page and return its bounded plain-text extract, or ``None`` on any failure.
 
-    Bounded on every axis: a capped timeout, redirects followed, only ``text/html`` bodies
-    read, at most :data:`CRAWL_MAX_BYTES` streamed into memory, and the extracted text trimmed
-    to :data:`EXTRACT_MAX_CHARS`. Any error (timeout, HTTP status, transport, decode) is caught
-    and logged — a single untrusted page must never crash the worker.
+    Bounded on every axis: a capped timeout; redirects followed **through the SSRF guard**
+    (:class:`~app.net.ssrf_guard.GuardedTransport` re-validates every hop, design §7.2); only
+    ``text/html`` bodies read; at most :data:`CRAWL_MAX_BYTES` streamed into memory (via
+    :func:`~app.net.ssrf_guard.read_capped`); and the extracted text trimmed to
+    :data:`EXTRACT_MAX_CHARS`. Any error — timeout, HTTP status, transport, decode, or an
+    :class:`~app.net.ssrf_guard.SsrfError` raised by the guard for a private/blocked target —
+    is caught and logged as a per-URL fail-soft skip; a single untrusted page (or a page that
+    redirects somewhere unsafe) must never crash the worker.
     """
     try:
-        async with client.stream("GET", url, follow_redirects=True, timeout=timeout) as response:
+        async with client.stream("GET", url, timeout=timeout) as response:
             response.raise_for_status()
             content_type = response.headers.get("content-type", "")
             if "html" not in content_type.lower():
                 return None
-            chunks: list[bytes] = []
-            total = 0
-            async for chunk in response.aiter_bytes():
-                chunks.append(chunk)
-                total += len(chunk)
-                if total >= CRAWL_MAX_BYTES:
-                    break
+            raw = await read_capped(response, max_bytes=CRAWL_MAX_BYTES)
             encoding = response.charset_encoding or "utf-8"
     except Exception as exc:
         # Untrusted-page crawl: any failure is per-URL fail-soft, never fatal to the worker.
         logger.warning("web crawl failed for %s: %s", url, exc)
         return None
 
-    raw = b"".join(chunks)[:CRAWL_MAX_BYTES]
     text = _extract_text(raw.decode(encoding, errors="replace"))
     return _truncate(text, EXTRACT_MAX_CHARS) or None
 

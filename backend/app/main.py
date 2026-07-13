@@ -30,6 +30,7 @@ from .api.auth import router as auth_router
 from .api.chat import router as chat_router
 from .api.feedback import router as feedback_router
 from .api.jobs import router as jobs_router
+from .api.me import router as me_router
 from .api.profile import router as profile_router
 from .app_state import AppStateKeys
 from .config import settings
@@ -157,6 +158,7 @@ def create_app() -> FastAPI:
     app.include_router(feedback_router)
     app.include_router(profile_router)
     app.include_router(jobs_router)
+    app.include_router(me_router)
 
     return app
 

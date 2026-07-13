@@ -35,6 +35,10 @@ const SSO_PROVIDERS: ReadonlyArray<{ id: SsoProvider; label: string }> = [
 export default function Login({ onAuthenticated, message }: LoginProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Consent gate (§6.22): no session is minted without accepting the ToS + privacy notice.
+  // The buttons stay disabled until this is checked (UX gate); the backend is the real
+  // enforcement. Guest consent is per-session; SSO consent is recorded against the user.
+  const [agreed, setAgreed] = useState(false);
 
   const handleGuest = useCallback(async () => {
     setBusy(true);
@@ -52,8 +56,12 @@ export default function Login({ onAuthenticated, message }: LoginProps) {
     setBusy(true);
     setError(null);
     // Full-page navigation to the backend OIDC entry point (no return to this component).
-    beginSsoLogin(provider);
+    // Consent is threaded through so the backend `/login` accepts the attempt (§6.22).
+    beginSsoLogin(provider, { consent: true });
   }, []);
+
+  // Buttons are inert until consent is given (and not while a request is in flight).
+  const blocked = busy || !agreed;
 
   return (
     <div className="mx-auto flex h-screen w-full max-w-md flex-col justify-center p-6">
@@ -83,13 +91,33 @@ export default function Login({ onAuthenticated, message }: LoginProps) {
           </div>
         ) : null}
 
+        <label className="flex items-start gap-2 text-sm text-gray-600">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4"
+            checked={agreed}
+            onChange={(event) => setAgreed(event.target.checked)}
+          />
+          <span>
+            I agree to the{" "}
+            <a href="/terms" className="text-blue-600 underline hover:text-blue-700">
+              Terms of Service
+            </a>{" "}
+            and{" "}
+            <a href="/privacy" className="text-blue-600 underline hover:text-blue-700">
+              Privacy Notice
+            </a>
+            .
+          </span>
+        </label>
+
         <div className="space-y-3">
           {SSO_PROVIDERS.map((provider) => (
             <button
               key={provider.id}
               type="button"
               className="w-full rounded-md border border-gray-300 px-4 py-2.5 font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
-              disabled={busy}
+              disabled={blocked}
               onClick={() => handleSso(provider.id)}
             >
               {provider.label}
@@ -105,7 +133,7 @@ export default function Login({ onAuthenticated, message }: LoginProps) {
           <button
             type="button"
             className="w-full rounded-md bg-blue-600 px-4 py-2.5 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-            disabled={busy}
+            disabled={blocked}
             onClick={() => void handleGuest()}
           >
             Continue as guest

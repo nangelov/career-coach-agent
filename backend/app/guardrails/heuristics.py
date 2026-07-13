@@ -1,11 +1,19 @@
-"""Minimal, deterministic input-guardrail heuristics (design §7 — minimal slice).
+"""Minimal, deterministic guardrail heuristics (design §7 — minimal slice).
 
-This is the **cheap, coarse net** the P4 input guardrail runs — *not* the real P10
-classifier. It screens the raw user message against a small, deliberately-short deny-list
-of canonical jailbreak / prompt-injection phrasings ("ignore previous instructions",
-"reveal your system prompt", "you are now DAN", …). No LLM call, no ML dependency, no
-network — pure regex over the text, so it is fast enough to run on every turn before any
-planner/worker/responder work.
+This is the **cheap, coarse net** the P4 guardrails run — *not* the real P10 classifier. A
+single, deliberately-short deny-list of canonical jailbreak / prompt-injection phrasings
+("ignore previous instructions", "reveal your system prompt", "you are now DAN", …) backs
+**both** directions:
+
+* :func:`screen_input` screens the raw *user message* before any planner/worker work (P4-08),
+  blocking a matched turn; and
+* :func:`screen_output` screens the responder's *final answer* (§7.3 point 4), **stripping**
+  any of those same canonical phrasings that leaked back out of untrusted grounding material
+  (a crawled page / CV that told the model "ignore your instructions", echoed into the reply).
+
+Both share the one :data:`_DENY_PATTERNS` list (DRY — no forked second copy). No LLM call, no
+ML dependency, no network — pure regex over the text, so either direction is fast enough to
+run on every turn.
 
 **Design posture (read before extending).**
 
@@ -30,10 +38,25 @@ focuses purely on content heuristics (DRY — no duplicate length guard).
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from app.agents.state import GuardrailStage, SafetyVerdict
+if TYPE_CHECKING:
+    from app.agents.state import SafetyVerdict
 
-__all__ = ["REFUSAL_MESSAGE", "screen_input"]
+__all__ = [
+    "REFUSAL_MESSAGE",
+    "OutputScreenResult",
+    "screen_input",
+    "screen_output",
+]
+
+# ``GuardrailStage`` / ``SafetyVerdict`` are imported lazily *inside* the screen functions
+# rather than at module top. ``guardrails`` is a lower layer than ``agents`` (``agents.graph``
+# imports this module), and ``app.agents.state`` cannot be imported without running
+# ``app.agents.__init__`` — which eagerly loads ``agents.graph`` → ``agents.responder`` →
+# back into ``guardrails``. A module-load-time import here would therefore close an import
+# cycle; deferring it to call time keeps loading ``guardrails`` free of the ``agents`` package.
 
 #: The single, generic user-facing refusal for a blocked turn. Deliberately content-free:
 #: it does not repeat the flagged input, does not reveal *why* it was blocked, and does not
@@ -119,6 +142,8 @@ def screen_input(message: str) -> SafetyVerdict:
     This is the minimal P4 slice; P10 replaces it with the real classifier while keeping
     this return contract (see the module docstring).
     """
+    from app.agents.state import GuardrailStage, SafetyVerdict
+
     categories: list[str] = []
     for pattern, category in _DENY_PATTERNS:
         if category not in categories and pattern.search(message):
@@ -132,4 +157,70 @@ def screen_input(message: str) -> SafetyVerdict:
         allowed=False,
         categories=categories,
         reason=f"Input matched a disallowed pattern ({', '.join(categories)}).",
+    )
+
+
+#: What a stripped injection fragment is replaced with in the outgoing answer. A visible,
+#: neutral marker (rather than silent deletion) so a redaction is auditable and never splices
+#: two unrelated clauses into a new, misleading sentence.
+_OUTPUT_REDACTION = "[removed]"
+
+
+@dataclass(frozen=True)
+class OutputScreenResult:
+    """Outcome of :func:`screen_output` — the (possibly scrubbed) text + its OUTPUT verdict.
+
+    ``text`` is the answer with any matched canonical injection phrasing replaced by
+    :data:`_OUTPUT_REDACTION`; it equals the input verbatim when nothing matched. ``modified``
+    says whether any replacement happened, so a caller can avoid rewriting state needlessly.
+    ``verdict`` is the :class:`~app.agents.state.SafetyVerdict` (``stage=OUTPUT``) stamped onto
+    :attr:`~app.agents.state.AgentState.output_safety` for telemetry — it stays ``allowed`` (a
+    scrub *neutralises* rather than *blocks*: the answer is still returned, just cleaned).
+    """
+
+    text: str
+    verdict: SafetyVerdict
+    modified: bool
+
+
+def screen_output(text: str) -> OutputScreenResult:
+    """Strip canonical injection phrasings that leaked into the final answer (§7.3 point 4).
+
+    The coarse, deterministic *output* net: it scans ``text`` for the very same canonical
+    jailbreak / prompt-injection phrasings :func:`screen_input` blocks on (reusing
+    :data:`_DENY_PATTERNS` — one deny-list, both directions) and replaces each verbatim match
+    with :data:`_OUTPUT_REDACTION`. This defends against a model echoing an instruction it
+    picked up from untrusted grounding material (a crawled page / CV saying "ignore previous
+    instructions") straight back into its reply. Anything the deny-list does not recognise is
+    passed through unchanged (default-open, mirroring the input heuristic's posture).
+
+    This is a placeholder net; full injection/leakage detection is P10, which replaces it while
+    keeping this return contract (see the module docstring).
+    """
+    from app.agents.state import GuardrailStage, SafetyVerdict
+
+    categories: list[str] = []
+    scrubbed = text
+    for pattern, category in _DENY_PATTERNS:
+        if pattern.search(scrubbed):
+            scrubbed = pattern.sub(_OUTPUT_REDACTION, scrubbed)
+            if category not in categories:
+                categories.append(category)
+
+    if not categories:
+        return OutputScreenResult(
+            text=text,
+            verdict=SafetyVerdict(stage=GuardrailStage.OUTPUT, allowed=True),
+            modified=False,
+        )
+
+    return OutputScreenResult(
+        text=scrubbed,
+        verdict=SafetyVerdict(
+            stage=GuardrailStage.OUTPUT,
+            allowed=True,
+            categories=categories,
+            reason=f"Output echoed a disallowed pattern ({', '.join(categories)}); redacted.",
+        ),
+        modified=True,
     )

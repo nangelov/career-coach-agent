@@ -1,20 +1,45 @@
 import type { NextConfig } from "next";
-import { buildApiRewrites } from "./lib/apiProxy";
+
+// Baseline security headers for the Next origin (design §7.2 "Security headers / CSP;
+// CORS remains closed"). Applied to every route. The app is a strictly same-origin SPA:
+// it only fetches its own `/api/*` (the BFF), so `connect-src 'self'` and
+// `frame-ancestors 'none'` are safe. Next.js injects inline bootstrap/hydration scripts
+// and Tailwind emits inline styles, so `'unsafe-inline'` is required for script/style-src
+// (a nonce-based CSP is a larger, separate change). `img-src` allows data: URIs and https
+// (citation favicons / avatars).
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: https:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "object-src 'none'",
+].join("; ");
+
+const SECURITY_HEADERS = [
+  { key: "Content-Security-Policy", value: CSP },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "X-DNS-Prefetch-Control", value: "off" },
+];
 
 const nextConfig: NextConfig = {
-  // Same-origin API proxy: forward browser calls to /api/** to the FastAPI
-  // backend (app-design §9 mounts the v2 API under /api). The browser only ever
-  // talks to the Next.js origin, so this avoids CORS and keeps the backend host
-  // out of the client bundle.
-  //
-  // This runs in EVERY environment (dev and production `next start`), because
-  // the docker-compose deployment runs frontend and backend as two separate
-  // origins with no reverse proxy in front — without this rewrite, /api/* calls
-  // 404 inside the Next.js server (FIX-05). The backend host is parameterized by
-  // INTERNAL_API_URL (default http://localhost:8000; docker-compose sets
-  // http://backend:8000). See lib/apiProxy.ts.
-  async rewrites() {
-    return buildApiRewrites();
+  // No `rewrites()` /api passthrough: SEC-04 replaced it with the BFF Route Handlers under
+  // `app/api/*`, which attach the session `Authorization` header server-side from the
+  // httpOnly cookie (a transparent rewrite let the browser carry the token — insufficient
+  // per design §7.2). The backend origin resolver lives in `lib/apiProxy.ts`.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: SECURITY_HEADERS,
+      },
+    ];
   },
 };
 

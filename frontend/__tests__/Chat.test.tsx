@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import Chat from "@/components/Chat";
-import { saveSession } from "@/lib/auth";
+import { fetchSession } from "@/lib/auth";
 import {
   cancelChat,
   streamChat,
@@ -14,17 +14,26 @@ jest.mock("@/lib/chatStream", () => ({
   cancelChat: jest.fn(),
 }));
 
+// The session is hydrated from the httpOnly cookie via the BFF (SEC-04). Mock that hydration
+// (and logout) but keep the real login/upgrade flows for the screens that render on sign-out.
+jest.mock("@/lib/auth", () => {
+  const actual = jest.requireActual("@/lib/auth");
+  return {
+    __esModule: true,
+    ...actual,
+    fetchSession: jest.fn(),
+    logout: jest.fn().mockResolvedValue(undefined),
+  };
+});
+
 const mockStreamChat = streamChat as jest.MockedFunction<typeof streamChat>;
 const mockCancelChat = cancelChat as jest.MockedFunction<typeof cancelChat>;
+const mockFetchSession = fetchSession as jest.MockedFunction<typeof fetchSession>;
 
 beforeEach(() => {
   jest.clearAllMocks();
-  window.localStorage.clear();
-  window.sessionStorage.clear();
-  // Chat is auth-gated (P3-06): seed a valid guest session so the chat UI renders.
-  saveSession({
-    accessToken: "test-token",
-    tokenType: "bearer",
+  // Chat is auth-gated (P3-06): resolve a valid guest session so the chat UI renders.
+  mockFetchSession.mockResolvedValue({
     sessionId: "guest-session-1",
     role: "guest",
     expiresAt: Date.now() + 3_600_000,
@@ -292,7 +301,7 @@ describe("Chat", () => {
     expect(alert).toHaveTextContent(/all models are unavailable/i);
   });
 
-  it("carries the seeded session id and bearer token on the request", async () => {
+  it("carries the hydrated session id and no client-side token on the request", async () => {
     mockStreamChat.mockResolvedValue(undefined);
 
     render(<Chat />);
@@ -300,7 +309,8 @@ describe("Chat", () => {
 
     const [payload, , options] = mockStreamChat.mock.calls[0];
     expect(payload.session_id).toBe("guest-session-1");
-    expect(options).toMatchObject({ token: "test-token" });
+    // No token is passed client-side — the BFF injects Authorization from the cookie.
+    expect(options).toBeUndefined();
   });
 
   it("shows an upgrade prompt (not a raw error) when rate-limited", async () => {

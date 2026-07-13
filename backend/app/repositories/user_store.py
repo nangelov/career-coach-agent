@@ -14,6 +14,7 @@ adapter or SQLAlchemy directly.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -41,6 +42,8 @@ class PostgresUserStore(UserStore):
         sub: str,
         email: str,
         display_name: str | None,
+        consent_policy_version: str | None = None,
+        consent_accepted_at: datetime | None = None,
     ) -> UserAccount:
         """Insert the identity or update its email/display name, returning the row.
 
@@ -49,13 +52,31 @@ class PostgresUserStore(UserStore):
         SELECT-then-branch race. Only the SSO-provided fields are ever written; there is no
         password/credential column (§7.1). ``RETURNING`` gives back the (possibly
         pre-existing) ``users.id`` that becomes the session JWT ``sub``.
+
+        The consent gate (§6.22): ``consent_policy_version`` + ``consent_accepted_at`` are
+        written on **both** the insert and the conflict-update, so a returning user
+        re-accepting a bumped policy overwrites the stored version + timestamp — that is the
+        re-prompt-on-version-bump mechanism. Both default to ``None`` (the columns are
+        nullable) for the rare caller that creates a row outside the login flow.
         """
         stmt = (
             pg_insert(User)
-            .values(provider=provider, sub=sub, email=email, display_name=display_name)
+            .values(
+                provider=provider,
+                sub=sub,
+                email=email,
+                display_name=display_name,
+                consent_policy_version=consent_policy_version,
+                consent_accepted_at=consent_accepted_at,
+            )
             .on_conflict_do_update(
                 constraint="uq_users_provider_sub",
-                set_={"email": email, "display_name": display_name},
+                set_={
+                    "email": email,
+                    "display_name": display_name,
+                    "consent_policy_version": consent_policy_version,
+                    "consent_accepted_at": consent_accepted_at,
+                },
             )
             .returning(User.id)
         )
@@ -68,6 +89,8 @@ class PostgresUserStore(UserStore):
             sub=sub,
             email=email,
             display_name=display_name,
+            consent_policy_version=consent_policy_version,
+            consent_accepted_at=consent_accepted_at,
         )
 
     async def is_admin(self, user_id: str) -> bool:

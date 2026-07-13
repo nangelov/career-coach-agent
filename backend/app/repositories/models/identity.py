@@ -86,6 +86,16 @@ class User(CreatedAtMixin, Base):
     # granted out-of-band by a trusted operator (see docs/admin-access.md), never by any
     # self-service route, so no request can escalate its own privilege.
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false())
+    # Consent gate (§6.22 / §7.6): the ToS + privacy policy version the user last accepted
+    # and when. Nullable so a row can exist before a consent is recorded (e.g. an out-of-band
+    # admin seed); the SSO login flow records both on every login. When the stored version
+    # falls behind ``settings.CONSENT_POLICY_VERSION`` the next login re-collects consent
+    # (the login screen always re-shows the checkbox) and overwrites these — that is the
+    # re-prompt-on-version-bump mechanism.
+    consent_policy_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    consent_accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Free-form user settings document (§4: ``settings JSONB``).
     settings: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
 

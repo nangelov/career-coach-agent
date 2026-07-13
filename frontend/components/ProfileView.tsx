@@ -87,7 +87,7 @@ export default function ProfileView({ session, reloadKey = 0 }: ProfileViewProps
     setLoadError(null);
     setSaveError(null);
     setSaved(false);
-    getProfile(session)
+    getProfile()
       .then((next) => {
         if (!cancelled) {
           hydrate(next);
@@ -144,7 +144,7 @@ export default function ProfileView({ session, reloadKey = 0 }: ProfileViewProps
       education,
     };
     try {
-      const stored = await updateProfile(next, session);
+      const stored = await updateProfile(next);
       hydrate(stored);
       setSaved(true);
     } catch (err) {
@@ -156,7 +156,7 @@ export default function ProfileView({ session, reloadKey = 0 }: ProfileViewProps
     } finally {
       setSaving(false);
     }
-  }, [education, experience, goalsText, hydrate, saving, session, skillsText]);
+  }, [education, experience, goalsText, hydrate, saving, skillsText]);
 
   if (loading) {
     return (

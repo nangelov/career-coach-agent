@@ -24,8 +24,6 @@ const mockUpdateProfile = updateProfile as jest.MockedFunction<typeof updateProf
 
 function session(role: Session["role"] = "user"): Session {
   return {
-    accessToken: "tok",
-    tokenType: "bearer",
     sessionId: "sid",
     role,
     expiresAt: Date.now() + 3_600_000,

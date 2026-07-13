@@ -71,3 +71,13 @@ The orchestrator's board. One row per task. See `.claude/skills/agent-handoff/SK
 | P5-07-frontend-cv-upload | CV upload UI + progress + profile view/edit | P5 | DONE | 1 | APPROVED | APPROVED |
 | P5-08-verify | P5 exit: scanned PDF + PPTX CV parse async, RAG-grounded | P5 | DONE | 1 | APPROVED | APPROVED |
 | FIX-05-docker-frontend-api-routing | Frontend can't reach backend under docker-compose (guest/SSO/chat/profile all 404) | cross-cutting | DONE | 1 | APPROVED | APPROVED |
+| SEC-01-ssrf-guard | S1 — SSRF guard for all outbound fetches | SEC | DONE | 2 | APPROVED | APPROVED |
+| SEC-02-untrusted-content-contract | S2 — Untrusted-content contract | SEC | DONE | 1 | APPROVED | APPROVED |
+| SEC-03-port-lockdown | S5 — Compose port lockdown | SEC | DONE | 1 | APPROVED | APPROVED |
+| SEC-04-bff-httponly-cookie | S4 — BFF + httpOnly cookie | SEC | DONE | 2 | APPROVED | APPROVED |
+| SEC-05-gdpr-erasure-export | S6 — GDPR erasure + export | SEC | DONE | 2 | APPROVED | APPROVED |
+| SEC-06-consent-gate | S13 — Consent gate | SEC | DONE | 1 | APPROVED | APPROVED |
+| SEC-07-privacy-tos-pages | Privacy notice + ToS pages | SEC | DONE | 1 | APPROVED | APPROVED |
+| SEC-08-contact-redaction | S10 — Contact-detail redaction at LLM egress | SEC | DONE | 1 | APPROVED | APPROVED |
+| SEC-09-verify | SEC exit: SSRF/injection/port/cookie/erasure verify | SEC | DONE | 1 | APPROVED | APPROVED |
+| SEC-10-container-verify | Live docker-compose + fresh test-suite verification | SEC | DONE | 1 | APPROVED | APPROVED |

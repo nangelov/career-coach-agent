@@ -28,10 +28,16 @@ from app.bootstrap import (
     build_sso_auth_service,
 )
 from app.config import settings
-from app.schemas.auth import CurrentUser, GuestSessionResponse, UpgradeTicketResponse
+from app.schemas.auth import (
+    CurrentUser,
+    GuestSessionRequest,
+    GuestSessionResponse,
+    UpgradeTicketResponse,
+)
 from app.security.dependencies import get_session_authenticator, require_auth
 from app.security.oidc import OIDCError
 from app.services.auth import (
+    ConsentRequired,
     GuestAuthService,
     InvalidOAuthState,
     SessionAuthenticator,
@@ -91,17 +97,28 @@ def get_guest_upgrade_service(request: Request) -> GuestUpgradeService:
 
 @router.post("/guest", status_code=201)
 async def create_guest_session(
+    payload: GuestSessionRequest | None = None,
     service: GuestAuthService = Depends(get_guest_auth_service),
 ) -> GuestSessionResponse:
     """Start an anonymous guest session and return a bearer token (§7.1 / §9).
 
-    No authentication required — this is how a guest begins. Creates a TTL'd Redis session
-    record (no Postgres history, per §4) and returns a backend-signed session JWT with
-    ``role="guest"`` plus the ``session_id`` the client uses for subsequent chat/rate-limit
-    calls. The same token shape logged-in users receive in P3-02, so the frontend treats
-    both uniformly.
+    No authentication required — this is how a guest begins. Gated by the consent check
+    (§6.22): the body must carry ``consent=true`` (the login screen's ToS/privacy checkbox),
+    otherwise the request is rejected ``400`` and **no** session is minted. A missing body is
+    treated as no consent (fail closed). On success, creates a TTL'd Redis session record (no
+    Postgres history, per §4, stamped with the accepted policy version) and returns a
+    backend-signed session JWT with ``role="guest"`` plus the ``session_id`` the client uses
+    for subsequent chat/rate-limit calls — the same token shape logged-in users receive in
+    P3-02, so the frontend treats both uniformly.
     """
-    return await service.create_guest_session()
+    consent = payload is not None and payload.consent
+    try:
+        return await service.create_guest_session(consent=consent)
+    except ConsentRequired as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Consent to the Terms of Service and Privacy Notice is required.",
+        ) from exc
 
 
 @router.post("/upgrade", status_code=201)
@@ -132,21 +149,35 @@ async def sso_login(
         description="Optional single-use ticket (from POST /api/auth/upgrade) to carry the "
         "originating guest session over to the new account.",
     ),
+    consent: bool = Query(
+        default=False,
+        description="Whether the ToS + privacy notice was accepted on the login screen "
+        "(§6.22) — required to start the login; rejected 400 otherwise.",
+    ),
     service: SsoAuthService = Depends(get_sso_auth_service),
 ) -> RedirectResponse:
     """Begin the OIDC login: 302-redirect to the provider consent screen (§7.1).
 
     Builds a PKCE authorization request with minimal scopes (``openid email profile``) and
-    stores the pending transaction; the browser is sent to the provider. An unsupported
-    ``{provider}`` is a ``404``. A valid ``upgrade_ticket`` binds this login to the guest
-    session it names so the callback preserves that conversation (P3-03).
+    stores the pending transaction; the browser is sent to the provider. The consent gate
+    (§6.22): without ``consent=true`` (the login screen's checkbox) the attempt is rejected
+    ``400`` **before** redirecting to the provider and before any upgrade ticket is consumed.
+    An unsupported ``{provider}`` is a ``404``. A valid ``upgrade_ticket`` binds this login to
+    the guest session it names so the callback preserves that conversation (P3-03).
     """
     try:
-        url = await service.begin_login(provider, upgrade_ticket=upgrade_ticket)
+        url = await service.begin_login(
+            provider, upgrade_ticket=upgrade_ticket, consent=consent
+        )
     except UnknownProvider as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Unknown SSO provider: {provider}",
+        ) from exc
+    except ConsentRequired as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Consent to the Terms of Service and Privacy Notice is required.",
         ) from exc
     except OIDCError as exc:
         raise HTTPException(
@@ -200,6 +231,15 @@ async def sso_callback(
         }
     )
     location = f"{settings.OAUTH_POST_LOGIN_REDIRECT}#{fragment}"
+    # NB (SEC-04): this "token in the redirect fragment" shape is *server-to-server only*
+    # now. The backend publishes no host port; the browser never reaches this endpoint or
+    # follows this redirect. The Next.js BFF callback handler
+    # (frontend/app/api/auth/callback/[provider]/route.ts) calls this with
+    # redirects **not** auto-followed, reads the token out of this Location header inside its
+    # Node process, sets it in an httpOnly cookie, and redirects the *browser* to a clean URL.
+    # So the token never enters browser JS, history, or the Referer header (design §7.2 /
+    # §6.13). Do not "fix" this back into a browser-facing fragment redirect — that would
+    # re-introduce the XSS-exposed token-in-URL pattern SEC-04 removed.
     return RedirectResponse(location, status_code=status.HTTP_302_FOUND)
 
 

@@ -1,4 +1,3 @@
-import { type Session } from "@/lib/auth";
 import {
   getProfile,
   isProfileEmpty,
@@ -10,21 +9,6 @@ import {
   uploadCv,
   type Profile,
 } from "@/lib/profile";
-
-function guestSession(overrides: Partial<Session> = {}): Session {
-  return {
-    accessToken: "tok",
-    tokenType: "bearer",
-    sessionId: "sid-1",
-    role: "guest",
-    expiresAt: Date.now() + 3_600_000,
-    ...overrides,
-  };
-}
-
-function userSession(): Session {
-  return guestSession({ role: "user", accessToken: "utok" });
-}
 
 /** A minimal ok/json Response stand-in. */
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
@@ -97,18 +81,19 @@ describe("uploadCv", () => {
     return new File(["cv bytes"], "cv.pdf", { type: "application/pdf" });
   }
 
-  it("POSTs multipart form data with the bearer token and returns the task id", async () => {
+  it("POSTs multipart form data (no client Authorization) and returns the task id", async () => {
     const fetchImpl = jest
       .fn()
       .mockResolvedValue(jsonResponse({ task_id: "task-9", status: "accepted" }, true, 202));
-    const handle = await uploadCv(cvFile(), guestSession(), {
+    const handle = await uploadCv(cvFile(), {
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     expect(handle).toEqual({ taskId: "task-9" });
     const [url, init] = fetchImpl.mock.calls[0];
     expect(url).toBe("/api/profile/cv");
     expect(init.method).toBe("POST");
-    expect(init.headers.Authorization).toBe("Bearer tok");
+    // The BFF injects Authorization from the cookie — never built client-side.
+    expect(init.headers.Authorization).toBeUndefined();
     expect(init.body).toBeInstanceOf(FormData);
     // The browser must set the multipart Content-Type/boundary — we must not.
     expect(init.headers["Content-Type"]).toBeUndefined();
@@ -119,7 +104,7 @@ describe("uploadCv", () => {
       jsonResponse({ detail: "The uploaded file exceeds the maximum size." }, false, 413),
     );
     await expect(
-      uploadCv(cvFile(), guestSession(), {
+      uploadCv(cvFile(), {
         fetchImpl: fetchImpl as unknown as typeof fetch,
       }),
     ).rejects.toMatchObject({ status: 413, message: /exceeds the maximum size/i });
@@ -128,7 +113,7 @@ describe("uploadCv", () => {
   it("uses a friendly fallback when the error body has no detail (415)", async () => {
     const fetchImpl = jest.fn().mockResolvedValue(jsonResponse({}, false, 415));
     await expect(
-      uploadCv(cvFile(), guestSession(), {
+      uploadCv(cvFile(), {
         fetchImpl: fetchImpl as unknown as typeof fetch,
       }),
     ).rejects.toMatchObject({ status: 415, message: /isn't supported/i });
@@ -143,7 +128,7 @@ describe("uploadCv", () => {
       ),
     );
     await expect(
-      uploadCv(cvFile(), guestSession(), {
+      uploadCv(cvFile(), {
         fetchImpl: fetchImpl as unknown as typeof fetch,
       }),
     ).rejects.toMatchObject({ status: 429, message: /sign in to upload more/i });
@@ -164,7 +149,7 @@ describe("pollJobStatus", () => {
         message: "Reading your CV…",
       }),
     );
-    const status = await pollJobStatus("t 1", guestSession(), {
+    const status = await pollJobStatus("t 1", {
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     expect(fetchImpl).toHaveBeenCalledWith(
@@ -182,7 +167,7 @@ describe("pollJobStatus", () => {
     const fetchImpl = jest
       .fn()
       .mockResolvedValue(jsonResponse({ task_id: "t1", status: "WHO_KNOWS" }));
-    const status = await pollJobStatus("t1", guestSession(), {
+    const status = await pollJobStatus("t1", {
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     expect(status.status).toBe("pending");
@@ -201,7 +186,7 @@ describe("pollJobUntilTerminal", () => {
       Promise.resolve(jsonResponse(bodies[Math.min(call++, bodies.length - 1)])),
     );
     const updates: string[] = [];
-    const terminal = await pollJobUntilTerminal("t1", guestSession(), {
+    const terminal = await pollJobUntilTerminal("t1", {
       fetchImpl: fetchImpl as unknown as typeof fetch,
       intervalMs: 0,
       onUpdate: (s) => updates.push(s.status),
@@ -215,7 +200,7 @@ describe("pollJobUntilTerminal", () => {
     const fetchImpl = jest.fn().mockResolvedValue(
       jsonResponse({ task_id: "t1", status: "failure", error: "We couldn't read that file." }),
     );
-    const terminal = await pollJobUntilTerminal("t1", guestSession(), {
+    const terminal = await pollJobUntilTerminal("t1", {
       fetchImpl: fetchImpl as unknown as typeof fetch,
       intervalMs: 0,
     });
@@ -231,7 +216,7 @@ describe("pollJobUntilTerminal", () => {
       return Promise.resolve(jsonResponse({ task_id: "t1", status: "in_progress" }));
     });
     await expect(
-      pollJobUntilTerminal("t1", guestSession(), {
+      pollJobUntilTerminal("t1", {
         fetchImpl: fetchImpl as unknown as typeof fetch,
         intervalMs: 50,
         signal: controller.signal,
@@ -246,27 +231,24 @@ describe("pollJobUntilTerminal", () => {
 // getProfile / updateProfile
 // --------------------------------------------------------------------------- //
 describe("getProfile", () => {
-  it("GETs the profile with the bearer token and maps the body", async () => {
+  it("GETs the profile (no client Authorization) and maps the body", async () => {
     const fetchImpl = jest
       .fn()
       .mockResolvedValue(jsonResponse({ skills: ["python"], goals: [] }));
-    const profile = await getProfile(userSession(), {
+    const profile = await getProfile({
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
-    expect(fetchImpl).toHaveBeenCalledWith(
-      "/api/profile",
-      expect.objectContaining({
-        method: "GET",
-        headers: expect.objectContaining({ Authorization: "Bearer utok" }),
-      }),
-    );
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe("/api/profile");
+    expect(init.method).toBe("GET");
+    expect(init.headers.Authorization).toBeUndefined();
     expect(profile.skills).toEqual(["python"]);
   });
 
   it("throws a ProfileApiError on 401", async () => {
     const fetchImpl = jest.fn().mockResolvedValue(jsonResponse({}, false, 401));
     await expect(
-      getProfile(userSession(), { fetchImpl: fetchImpl as unknown as typeof fetch }),
+      getProfile({ fetchImpl: fetchImpl as unknown as typeof fetch }),
     ).rejects.toBeInstanceOf(ProfileApiError);
   });
 });
@@ -279,16 +261,16 @@ describe("updateProfile", () => {
     goals: ["grow"],
   };
 
-  it("PUTs the JSON profile with the bearer token and returns the stored result", async () => {
+  it("PUTs the JSON profile (no client Authorization) and returns the stored result", async () => {
     const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(profile));
-    const stored = await updateProfile(profile, userSession(), {
+    const stored = await updateProfile(profile, {
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     const [url, init] = fetchImpl.mock.calls[0];
     expect(url).toBe("/api/profile");
     expect(init.method).toBe("PUT");
     expect(init.headers["Content-Type"]).toBe("application/json");
-    expect(init.headers.Authorization).toBe("Bearer utok");
+    expect(init.headers.Authorization).toBeUndefined();
     expect(JSON.parse(init.body)).toEqual(profile);
     expect(stored.skills).toEqual(["ts"]);
   });
@@ -302,7 +284,7 @@ describe("updateProfile", () => {
       ),
     );
     await expect(
-      updateProfile(profile, guestSession(), {
+      updateProfile(profile, {
         fetchImpl: fetchImpl as unknown as typeof fetch,
       }),
     ).rejects.toMatchObject({ status: 403, message: /sign in to store and edit/i });

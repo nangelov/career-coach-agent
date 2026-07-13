@@ -45,6 +45,7 @@ async def client() -> AsyncIterator[httpx.AsyncClient]:
         state_ttl_seconds=600,
         session_ttl_seconds=3600,
         providers=frozenset({"google", "linkedin"}),
+        consent_policy_version="2026-07-13",
     )
     authenticator = SessionAuthenticator(codec, store)
     app.dependency_overrides[get_sso_auth_service] = lambda: sso
@@ -65,20 +66,26 @@ def _token_from_redirect(location: str) -> dict[str, str]:
 
 
 async def test_login_redirects_to_consent(client: httpx.AsyncClient) -> None:
-    response = await client.get("/api/auth/login/google")
+    response = await client.get("/api/auth/login/google", params={"consent": "1"})
 
     assert response.status_code == 302
     assert response.headers["location"].startswith("https://provider.example/consent")
 
 
+async def test_login_without_consent_is_rejected(client: httpx.AsyncClient) -> None:
+    # No consent flag → 400 before any provider redirect (§6.22).
+    response = await client.get("/api/auth/login/google")
+    assert response.status_code == 400
+
+
 async def test_login_unknown_provider_404(client: httpx.AsyncClient) -> None:
-    response = await client.get("/api/auth/login/myspace")
+    response = await client.get("/api/auth/login/myspace", params={"consent": "1"})
     assert response.status_code == 404
 
 
 async def test_callback_completes_and_redirects_with_token(client: httpx.AsyncClient) -> None:
     # Start the flow so the PKCE transaction (state-1) is stored, then hit the callback.
-    await client.get("/api/auth/login/google")
+    await client.get("/api/auth/login/google", params={"consent": "1"})
     response = await client.get(
         "/api/auth/callback/google", params={"code": "auth-code", "state": "state-1"}
     )
@@ -116,7 +123,7 @@ async def test_logout_requires_bearer_token(client: httpx.AsyncClient) -> None:
 
 async def test_logout_revokes_session(client: httpx.AsyncClient) -> None:
     # Full flow: login → callback → obtain the bearer token.
-    await client.get("/api/auth/login/google")
+    await client.get("/api/auth/login/google", params={"consent": "1"})
     callback = await client.get(
         "/api/auth/callback/google", params={"code": "auth-code", "state": "state-1"}
     )

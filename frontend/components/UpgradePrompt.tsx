@@ -50,17 +50,19 @@ export default function UpgradePrompt({
       try {
         // Preserve the guest conversation across to the new account. If minting the ticket
         // fails, fall back to a plain login rather than blocking the user.
-        await upgradeGuestToSso(provider, session);
+        await upgradeGuestToSso(provider);
       } catch {
         try {
-          beginSsoLogin(provider);
+          // The guest already accepted the consent gate at session start (§6.22), so the
+          // fallback plain login is consented too — thread the flag or the backend rejects it.
+          beginSsoLogin(provider, { consent: true });
         } catch {
           setError("Could not start sign-in. Please try again.");
           setBusy(false);
         }
       }
     },
-    [session],
+    [],
   );
 
   return (

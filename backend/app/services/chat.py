@@ -40,6 +40,7 @@ from typing import Protocol, runtime_checkable
 from uuid import uuid4
 
 from app.agents.state import AgentState, Citation
+from app.guardrails import screen_output
 from app.llm.errors import LLMAllModelsFailedError, LLMError
 from app.llm.types import ChatMessage, StreamChunk
 from app.schemas.auth import SessionRole
@@ -298,6 +299,15 @@ class ChatService:
         ``result.cancelled = True`` and the partial content captured. The responder stream is
         explicitly closed in ``finally`` so an early return (cancel) does not leak the underlying
         async generator or its upstream HTTP connection.
+
+        Each content delta is run through the minimal output guardrail
+        (:func:`app.guardrails.screen_output`, SEC-02 / design §7.3 point 4) before it is
+        emitted, stripping any canonical injection phrasing the model echoed back out of
+        untrusted grounding material. This is the streaming counterpart to the graph's
+        :func:`~app.agents.graph.output_guardrail_node` (which nets the buffered path); both are
+        the coarse deterministic placeholder swapped for the full classifier in P10. As a coarse
+        per-chunk net it neutralises phrasing contained within a single delta — windowing across
+        chunk boundaries is deferred to the P10 classifier.
         """
         parts: list[str] = []
         chunk_count = 0
@@ -306,8 +316,9 @@ class ChatService:
         try:
             async for chunk in stream:
                 if chunk.content:
-                    parts.append(chunk.content)
-                    yield TokenEvent(content=chunk.content)
+                    content = screen_output(chunk.content).text
+                    parts.append(content)
+                    yield TokenEvent(content=content)
                 if chunk.finish_reason:
                     result.finish_reason = chunk.finish_reason
 

@@ -242,7 +242,7 @@ describe("streamChat", () => {
     expect(events[0].event).toBe("error");
   });
 
-  it("attaches the bearer token when provided", async () => {
+  it("does not attach an Authorization header (the BFF injects it server-side)", async () => {
     const fetchImpl = jest.fn().mockResolvedValue(
       fakeStreamResponse([
         'event: done\ndata: {"message_id": "m1", "finish_reason": "stop"}\n\n',
@@ -251,10 +251,10 @@ describe("streamChat", () => {
     await streamChat(
       { session_id: "s1", message: "hi" },
       () => {},
-      { fetchImpl: fetchImpl as unknown as typeof fetch, token: "tok-123" },
+      { fetchImpl: fetchImpl as unknown as typeof fetch },
     );
     const [, init] = fetchImpl.mock.calls[0];
-    expect(init.headers.Authorization).toBe("Bearer tok-123");
+    expect(init.headers.Authorization).toBeUndefined();
   });
 
   it("surfaces a 401 as a terminal auth_error event", async () => {

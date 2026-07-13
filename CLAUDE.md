@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The code currently in the repo is **v1** (described below and still the running app). A ground-up **v2 refactor** has been designed but **not yet implemented**. Before doing substantial work, read:
 - **[dev-board/app-design-and-features.md](./dev-board/app-design-and-features.md)** — v2 system design, architecture, tech stack, data model, features, security.
-- **[dev-board/plan.md](./dev-board/plan.md)** — phased execution plan (P0–P11, foundation-first).
+- **[dev-board/plan.md](./dev-board/plan.md)** — phased execution plan (P0–P12, foundation-first).
 
 **Locked v2 decisions** (all 9 pre-work decisions are now locked except one — see below and the "Decisions locked before P1" list in `dev-board/plan.md`):
 - **Orchestration → LangGraph** (confirmed; hand-rolled orchestrator rejected). Multi-agent graph (planner → workers → responder) with typed shared state.
@@ -27,7 +27,7 @@ The v1 description below stays accurate until v2 lands; when implementing v2, fo
 
 v2 work is built one task at a time through an **orchestrator agent** that drives a subagent pipeline.
 
-- **[dev-board/tasks.md](./dev-board/tasks.md)** — the actionable task breakdown (pre-work decisions + P0–P11), tagged (B)/(F)/(I)/(D)/(T).
+- **[dev-board/tasks.md](./dev-board/tasks.md)** — the actionable task breakdown (pre-work decisions + P0–P12), tagged (B)/(F)/(I)/(D)/(T).
 - **[dev-board/code-review/](./dev-board/code-review/)** — per-task subfolders where agents pass files to each other (`task.md`, `engineer.md`, `code-review.md`, `architecture-review.md`). `queue.md` is the status board.
 - **`agent-handoff` skill** (`.claude/skills/agent-handoff/SKILL.md`) — single source of truth for the pipeline steps, folder layout, file templates, and verdict gates.
 - **Four agent types** (`.claude/agents/`):

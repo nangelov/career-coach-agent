@@ -151,6 +151,19 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # Auth / SSO
     # -------------------------------------------------------------------------
+    CONSENT_POLICY_VERSION: str = Field(
+        default="2026-07-13",
+        description=(
+            "Current Terms-of-Service + Privacy-Notice policy version (§6.22 / §7.6). The "
+            "single source of truth for the consent gate: no session is minted without "
+            "acceptance of this version. Recorded against the ``users`` row at SSO login "
+            "(with a timestamp) and stamped on a guest session record for its lifetime. "
+            "**Bumping this value is the re-consent mechanism** — a returning SSO user whose "
+            "stored ``consent_policy_version`` no longer matches re-accepts on their next "
+            "login (the login screen always re-shows the checkbox). A plain string (a date "
+            "or semver); overridable via env when the notice text changes (SEC-07)."
+        ),
+    )
     JWT_SECRET_KEY: str = Field(
         ...,
         description="Signing key for backend-owned session JWTs — required; never commit.",
@@ -180,22 +193,28 @@ class Settings(BaseSettings):
         description="LinkedIn OAuth 2.0 client secret — set via env or HF Space Secret.",
     )
     OAUTH_REDIRECT_BASE_URL: str = Field(
-        default="http://localhost:8000",
+        default="http://localhost:3000",
         description=(
-            "Public base URL of *this backend* (scheme + host, no trailing slash). The OIDC "
-            "redirect (callback) URI is derived from it as "
-            "``<base>/api/auth/callback/{provider}`` (§7.1 'redirect URIs locked to the "
-            "Space domain') — never hard-coded per provider. In HF Spaces set this to the "
-            "Space domain; the exact same value must be registered in the provider console."
+            "Public base URL of the *frontend / Next origin the BFF runs on* (scheme + host, "
+            "no trailing slash). Since SEC-03 the backend publishes no host port, so the OIDC "
+            "redirect (callback) URI — derived as ``<base>/api/auth/callback/{provider}`` "
+            "(§7.1 'redirect URIs locked to the Space domain') — must resolve on the "
+            "browser-reachable Next origin, where the BFF callback Route Handler receives it "
+            "and forwards to the backend server-side. Never hard-coded per provider. Locally "
+            "this is ``http://localhost:3000``; in HF Spaces the Space domain (which *is* the "
+            "frontend origin). The exact same value must be registered in the provider console."
         ),
     )
     OAUTH_POST_LOGIN_REDIRECT: str = Field(
         default="http://localhost:3000/auth/callback",
         description=(
-            "Frontend URL the browser is redirected to after a successful OIDC callback. "
-            "The minted session JWT is appended in the URL *fragment* "
-            "(``#access_token=...&token_type=bearer&...``) so the Next.js client reads it "
-            "client-side and it never reaches server logs / the Referer header."
+            "URL the backend callback appends the minted session JWT to (in the URL "
+            "*fragment*: ``#access_token=...&token_type=bearer&...``). This redirect is "
+            "consumed **server-side only** by the Next.js BFF callback Route Handler (SEC-04): "
+            "it reads the token out of the fragment inside its Node process, sets the httpOnly "
+            "cookie, and redirects the *browser* to a clean URL. The browser never sees this "
+            "fragment, so the token never reaches browser JS, history, server logs, or the "
+            "Referer header."
         ),
     )
     OAUTH_METADATA_URLS: dict[str, str] = Field(

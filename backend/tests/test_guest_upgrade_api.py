@@ -76,7 +76,12 @@ class _Wiring:
             self.conversations,
             ticket_ttl_seconds=300,
         )
-        self.guest = GuestAuthService(self.sessions, self.codec, session_ttl_seconds=3600)
+        self.guest = GuestAuthService(
+            self.sessions,
+            self.codec,
+            session_ttl_seconds=3600,
+            consent_policy_version="2026-07-13",
+        )
         self.authenticator = SessionAuthenticator(self.codec, self.sessions)
         self.sso = SsoAuthService(
             FakeOIDCClient(),
@@ -88,6 +93,7 @@ class _Wiring:
             state_ttl_seconds=600,
             session_ttl_seconds=3600,
             providers=frozenset({"google", "linkedin"}),
+            consent_policy_version="2026-07-13",
             upgrades=self.upgrades,
         )
 
@@ -126,7 +132,7 @@ async def test_guest_upgrade_preserves_session_and_persists(
     client: httpx.AsyncClient, wiring: _Wiring
 ) -> None:
     # 1. Start a guest session.
-    guest = (await client.post("/api/auth/guest")).json()
+    guest = (await client.post("/api/auth/guest", json={"consent": True})).json()
     guest_session_id = guest["session_id"]
     guest_headers = {"Authorization": f"Bearer {guest['access_token']}"}
 
@@ -145,7 +151,7 @@ async def test_guest_upgrade_preserves_session_and_persists(
     ticket = upgrade.json()["upgrade_ticket"]
 
     # 4. Begin SSO carrying the ticket → 302 to the provider consent screen.
-    login = await client.get(f"/api/auth/login/google?upgrade_ticket={ticket}")
+    login = await client.get(f"/api/auth/login/google?upgrade_ticket={ticket}&consent=1")
     assert login.status_code == 302
 
     # 5. Provider redirects back to the callback → 302 to the frontend with the token.
@@ -183,7 +189,7 @@ async def test_upgrade_requires_bearer_token(client: httpx.AsyncClient) -> None:
 
 async def test_logged_in_user_cannot_upgrade(client: httpx.AsyncClient, wiring: _Wiring) -> None:
     # A user token (not a guest) has nothing to upgrade → 409 Conflict.
-    await client.get("/api/auth/login/google")
+    await client.get("/api/auth/login/google", params={"consent": "1"})
     callback = await client.get(
         "/api/auth/callback/google", params={"code": "c", "state": "state-1"}
     )
@@ -199,7 +205,7 @@ async def test_plain_login_without_ticket_mints_fresh_session(
     client: httpx.AsyncClient, wiring: _Wiring
 ) -> None:
     # A normal login (no upgrade ticket) is unaffected: a fresh session id, nothing backfilled.
-    await client.get("/api/auth/login/google")
+    await client.get("/api/auth/login/google", params={"consent": "1"})
     callback = await client.get(
         "/api/auth/callback/google", params={"code": "c", "state": "state-1"}
     )

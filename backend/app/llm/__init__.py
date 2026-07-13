@@ -20,6 +20,7 @@ from .errors import (
     LLMResponseError,
     LLMTimeoutError,
 )
+from .redaction import redact_contact_details, redact_messages
 from .router import CircuitBreaker, LLMRouter, RedisLike
 from .types import (
     ChatMessage,
@@ -54,4 +55,6 @@ __all__ = [
     "ToolCall",
     "ToolCallDelta",
     "ToolSchema",
+    "redact_contact_details",
+    "redact_messages",
 ]

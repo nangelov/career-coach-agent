@@ -66,12 +66,18 @@ class StoreRedis(Protocol):
 
     A structural :class:`Protocol` (like :class:`SessionRedis` / :class:`CancelRedis`) so the
     store carries no hard driver dependency and unit tests inject an in-memory fake. The real
-    ``redis.asyncio.Redis`` from the shared pool satisfies this shape.
+    ``redis.asyncio.Redis`` from the shared pool satisfies this shape. The set commands
+    (``sadd`` / ``srem`` / ``smembers``) back the per-user session index (SEC-05); ``expire``
+    keeps that index bounded to the session lifetime.
     """
 
     async def set(self, name: str, value: Any, *, ex: int | None = ...) -> Any: ...
     async def get(self, name: str) -> Any: ...
     async def delete(self, *names: str) -> Any: ...
+    async def sadd(self, name: str, *values: Any) -> Any: ...
+    async def srem(self, name: str, *values: Any) -> Any: ...
+    async def smembers(self, name: str) -> Any: ...
+    async def expire(self, name: str, time: int) -> Any: ...
 
 
 @runtime_checkable
@@ -228,6 +234,14 @@ class RedisSessionStore(SessionStore):
     Guests live here **only** (never in Postgres ``conversations``/``messages``), per §4
     (*"Guests get NO persisted history"*): the record is anonymous (``role="guest"``,
     ``user_id=None``) and Redis-only.
+
+    For logged-in sessions (``user_id`` set) the store additionally maintains a **per-user
+    session index** — a Redis set at ``<index_prefix>:<user_id>`` holding that user's live
+    ``session_id``s. This is the authoritative "all devices" enumeration GDPR erasure needs
+    (SEC-05, §7.6): the Postgres ``sessions`` row is written only lazily (first persisted
+    turn), so a just-logged-in device that has not chatted has *no* Postgres row — but it is
+    in this Redis index and so is revoked. The index set is expired to the session TTL on each
+    write, so it self-cleans alongside the sessions it tracks.
     """
 
     def __init__(
@@ -235,9 +249,11 @@ class RedisSessionStore(SessionStore):
         client: StoreRedis,
         *,
         key_prefix: str = "session:record",
+        index_prefix: str = "session:user",
     ) -> None:
         self._redis = client
         self._key_prefix = key_prefix
+        self._index_prefix = index_prefix
 
     @classmethod
     def from_settings(cls, client: StoreRedis, config: Settings = settings) -> RedisSessionStore:
@@ -247,13 +263,26 @@ class RedisSessionStore(SessionStore):
     def _key(self, session_id: str) -> str:
         return f"{self._key_prefix}:{session_id}"
 
+    def _index_key(self, user_id: str) -> str:
+        return f"{self._index_prefix}:{user_id}"
+
     async def create(self, record: SessionRecord, *, ttl_seconds: int) -> None:
-        """Persist ``record`` (JSON) under its session id with an expiry of ``ttl_seconds``."""
+        """Persist ``record`` (JSON) under its session id with an expiry of ``ttl_seconds``.
+
+        A logged-in session (``user_id`` set) is also added to that user's session index so
+        :meth:`list_user_sessions` can enumerate every device on erasure; the index set's TTL
+        is refreshed to ``ttl_seconds`` so it never outlives the sessions it tracks.
+        """
+        ttl = max(1, ttl_seconds)
         await self._redis.set(
             self._key(record.session_id),
             record.model_dump_json(),
-            ex=max(1, ttl_seconds),
+            ex=ttl,
         )
+        if record.user_id is not None:
+            index_key = self._index_key(record.user_id)
+            await self._redis.sadd(index_key, record.session_id)
+            await self._redis.expire(index_key, ttl)
 
     async def get(self, session_id: str) -> SessionRecord | None:
         """Return the stored record for ``session_id`` (``None`` if absent/expired)."""
@@ -263,8 +292,20 @@ class RedisSessionStore(SessionStore):
         return SessionRecord.model_validate_json(raw)
 
     async def delete(self, session_id: str) -> None:
-        """Delete the record for ``session_id`` (logout / revocation; idempotent)."""
+        """Delete the record for ``session_id`` (logout / revocation; idempotent).
+
+        Also drops the id from its user's session index (looked up from the record before it
+        is removed) so a logged-out session does not linger in the "all devices" enumeration.
+        """
+        record = await self.get(session_id)
         await self._redis.delete(self._key(session_id))
+        if record is not None and record.user_id is not None:
+            await self._redis.srem(self._index_key(record.user_id), session_id)
+
+    async def list_user_sessions(self, user_id: str) -> list[str]:
+        """Return every live ``session_id`` indexed for ``user_id`` (empty set if none)."""
+        members = await self._redis.smembers(self._index_key(user_id))
+        return list(members) if members else []
 
 
 class RedisOAuthStateStore(OAuthStateStore):

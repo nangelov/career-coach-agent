@@ -26,11 +26,18 @@
 # interpolation exactly like running compose from the repo root does.
 COMPOSE = docker compose -f ../docker-compose.yml
 
+# The default compose file no longer publishes the `db` host port (port lockdown,
+# design §7.2). The live-DB targets below run pytest/alembic *on the host* against
+# localhost:5432, so they must bring the DB up with the opt-in dev-ports override
+# that re-publishes it. DRY: reuse this for every recipe that needs the host port.
+COMPOSE_PORTS = docker compose -f ../docker-compose.yml -f ../docker-compose.dev-ports.yml
+
 # Shell prefix that loads the root `.env` and exports a *localhost* async DSN so
 # every live-DB recipe (migrate + pytest) talks to the docker-compose Postgres
-# published on :5432. app.config.Settings loads its `.env` relative to the CWD
-# (backend/), which has no .env — so the required fields (DATABASE_URL,
-# HF_API_TOKEN, JWT_SECRET_KEY) must come from the exported root .env here.
+# published on :5432 (requires the DB to be up via COMPOSE_PORTS — see above).
+# app.config.Settings loads its `.env` relative to the CWD (backend/), which has
+# no .env — so the required fields (DATABASE_URL, HF_API_TOKEN, JWT_SECRET_KEY)
+# must come from the exported root .env here.
 # DRY: one definition, reused by migrate-integration and test-integration.
 LIVE_DB_ENV = set -a && . ../.env && set +a && \
 	export DATABASE_URL="postgresql+asyncpg://$$POSTGRES_USER:$$POSTGRES_PASSWORD@localhost:5432/$$POSTGRES_DB" &&
@@ -69,24 +76,26 @@ test:
 	uv run --no-sync pytest
 
 # Run the full suite against the docker-compose Postgres. The compose stack must
-# be up and migrated first (`$(COMPOSE) up -d --wait db && make migrate-integration`),
-# or just use the all-in-one `test-integration-full` below. Builds the async DSN
+# be up (with the DB host port published) and migrated first
+# (`$(COMPOSE_PORTS) up -d --wait db && make migrate-integration`), or just use
+# the all-in-one `test-integration-full` below. Builds the async DSN
 # from the root .env so the live-DB integration suites actually execute instead
 # of skipping. Leaves the DB as found (rolled-back / cleaned-up tests).
 test-integration:
 	$(LIVE_DB_ENV) uv run --no-sync pytest
 
 # All-in-one, self-contained live-DB verification (P2 exit criteria). Brings up
-# the Postgres(+pgvector) container, applies migrations, runs the WHOLE suite so
-# the live-DB integration tests execute (not skip), then tears the container
-# back down. Reproducible from a clean checkout:
+# the Postgres(+pgvector) container *with its host port published* (dev-ports
+# override — the default compose file keeps it internal-only per §7.2), applies
+# migrations, runs the WHOLE suite so the live-DB integration tests execute (not
+# skip), then tears the container back down. Reproducible from a clean checkout:
 #   cd backend && make test-integration-full
 # `up --wait db` blocks until the healthcheck passes; `down` removes the compose
 # containers (named volumes, incl. postgres_data, are preserved). If pytest
 # fails, make stops before `down` so the DB stays up for debugging — re-run, or
 # tear down manually with `$(COMPOSE) down`.
 test-integration-full:
-	$(COMPOSE) up -d --wait db
+	$(COMPOSE_PORTS) up -d --wait db
 	$(MAKE) migrate-integration
 	$(MAKE) test-integration
 	$(COMPOSE) down

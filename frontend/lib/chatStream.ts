@@ -288,12 +288,10 @@ export interface ChatRequestPayload {
 export interface StreamChatOptions {
   /** Abort the in-flight fetch (e.g. on unmount). */
   signal?: AbortSignal;
-  /** Base URL override; defaults to same-origin ("" → dev proxy / prod proxy). */
+  /** Base URL override; defaults to same-origin ("" → the BFF proxy). */
   baseUrl?: string;
   /** Injected fetch for testing. */
   fetchImpl?: typeof fetch;
-  /** Bearer session token attached as `Authorization: Bearer <token>` when present. */
-  token?: string;
 }
 
 function isAbortError(err: unknown): boolean {
@@ -331,18 +329,17 @@ export async function streamChat(
   onEvent: (event: ChatStreamEvent) => void,
   options: StreamChatOptions = {},
 ): Promise<void> {
-  const { signal, baseUrl = "", fetchImpl = fetch, token } = options;
+  const { signal, baseUrl = "", fetchImpl = fetch } = options;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "text/event-stream",
   };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
 
   let response: Response;
   try {
+    // The BFF injects `Authorization` from the httpOnly cookie; the browser sends the
+    // cookie automatically on this same-origin fetch (default `credentials: "same-origin"`).
     response = await fetchImpl(`${baseUrl}/api/chat`, {
       method: "POST",
       headers,
@@ -421,26 +418,20 @@ export async function streamChat(
 export interface CancelChatOptions {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
-  /** Bearer session token attached as `Authorization: Bearer <token>` when present. */
-  token?: string;
 }
 
 /**
  * Ask the backend to stop the in-flight turn for `sessionId`
  * (`POST /api/chat/{session}/cancel`, returns 202). The active stream then emits
- * a terminal `cancelled` event and closes on its own.
+ * a terminal `cancelled` event and closes on its own. The BFF injects `Authorization`
+ * from the httpOnly cookie (sent automatically on this same-origin fetch).
  */
 export async function cancelChat(
   sessionId: string,
   options: CancelChatOptions = {},
 ): Promise<void> {
-  const { baseUrl = "", fetchImpl = fetch, token } = options;
-  const init: RequestInit = { method: "POST" };
-  if (token) {
-    init.headers = { Authorization: `Bearer ${token}` };
-  }
-  await fetchImpl(
-    `${baseUrl}/api/chat/${encodeURIComponent(sessionId)}/cancel`,
-    init,
-  );
+  const { baseUrl = "", fetchImpl = fetch } = options;
+  await fetchImpl(`${baseUrl}/api/chat/${encodeURIComponent(sessionId)}/cancel`, {
+    method: "POST",
+  });
 }

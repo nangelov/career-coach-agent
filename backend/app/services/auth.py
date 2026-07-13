@@ -40,6 +40,14 @@ from app.services.session_store import SessionStore
 from app.services.user_store import UserStore
 
 
+class ConsentRequired(Exception):
+    """Raised when a session-creation request did not accept the ToS + privacy notice (§6.22).
+
+    No session is minted without consent — guest-session start and SSO login both raise this
+    when the request carries no consent flag. The API maps it to ``400 Bad Request``.
+    """
+
+
 class GuestAuthService:
     """Create anonymous guest sessions (Redis record + signed bearer JWT).
 
@@ -53,10 +61,12 @@ class GuestAuthService:
         tokens: SessionTokenCodec,
         *,
         session_ttl_seconds: int,
+        consent_policy_version: str,
     ) -> None:
         self._store = store
         self._tokens = tokens
         self._session_ttl_seconds = session_ttl_seconds
+        self._consent_policy_version = consent_policy_version
 
     @classmethod
     def from_settings(
@@ -65,27 +75,36 @@ class GuestAuthService:
         tokens: SessionTokenCodec,
         config: Settings = settings,
     ) -> GuestAuthService:
-        """Build from application config (guest session record TTL)."""
+        """Build from application config (guest session record TTL, consent policy version)."""
         return cls(
             store,
             tokens,
             session_ttl_seconds=config.GUEST_SESSION_TTL_SECONDS,
+            consent_policy_version=config.CONSENT_POLICY_VERSION,
         )
 
-    async def create_guest_session(self) -> GuestSessionResponse:
+    async def create_guest_session(self, *, consent: bool = False) -> GuestSessionResponse:
         """Start a guest session: mint a session id, persist a Redis record, sign a JWT.
+
+        The consent gate (§6.22): a guest session is per-session consent, so ``consent`` must
+        be truthy on **every** guest start — otherwise :class:`ConsentRequired` is raised and
+        no session is minted. The accepted policy version is stamped on the transient Redis
+        record for the life of the session (guests hold nothing durable — §6.18).
 
         The ``session_id`` is a server-minted ``uuid4().hex`` (32 chars, within the 64-char
         ``sessions.id`` / ``ChatRequest.session_id`` bound). Nothing is written to Postgres —
         the guest is Redis-only by design (§4). The returned token carries ``role="guest"``
         so downstream request handling can distinguish a guest from a logged-in user.
         """
+        if not consent:
+            raise ConsentRequired
         session_id = uuid4().hex
         record = SessionRecord(
             session_id=session_id,
             role="guest",
             user_id=None,
             created_at=datetime.now(UTC),
+            consent_policy_version=self._consent_policy_version,
         )
         await self._store.create(record, ttl_seconds=self._session_ttl_seconds)
 
@@ -137,6 +156,7 @@ class SsoAuthService:
         state_ttl_seconds: int,
         session_ttl_seconds: int,
         providers: frozenset[str],
+        consent_policy_version: str,
         upgrades: GuestUpgradeService | None = None,
     ) -> None:
         self._oidc = oidc
@@ -148,6 +168,7 @@ class SsoAuthService:
         self._state_ttl_seconds = state_ttl_seconds
         self._session_ttl_seconds = session_ttl_seconds
         self._providers = providers
+        self._consent_policy_version = consent_policy_version
         # Optional (P3-03): when wired, a login carrying a valid upgrade ticket carries the
         # originating guest session over to the new account. ``None`` → plain login only.
         self._upgrades = upgrades
@@ -175,6 +196,7 @@ class SsoAuthService:
             state_ttl_seconds=config.OAUTH_STATE_TTL_SECONDS,
             session_ttl_seconds=config.USER_SESSION_TTL_SECONDS,
             providers=frozenset(config.OAUTH_METADATA_URLS),
+            consent_policy_version=config.CONSENT_POLICY_VERSION,
             upgrades=upgrades,
         )
 
@@ -190,12 +212,23 @@ class SsoAuthService:
         if provider not in self._providers:
             raise UnknownProvider(provider)
 
-    async def begin_login(self, provider: str, *, upgrade_ticket: str | None = None) -> str:
+    async def begin_login(
+        self, provider: str, *, upgrade_ticket: str | None = None, consent: bool = False
+    ) -> str:
         """Start the OIDC flow: return the provider consent URL to redirect the user to.
 
+        The consent gate (§6.22): the login screen's ToS/privacy checkbox must have been
+        accepted — ``consent`` truthy — before the flow starts, otherwise
+        :class:`ConsentRequired` is raised **before** redirecting to the provider (and before
+        any upgrade ticket is consumed). The accepted policy version is stashed *server-side*
+        in the transaction so the callback can record it against the ``users`` row once it
+        exists (the row does not exist yet at this point). Every login re-checks and (via the
+        callback) re-records, so a bumped policy version re-collects consent on the next login.
+
         Builds a PKCE authorization request and persists the per-attempt transaction (state
-        → verifier + nonce + redirect_uri) so the callback can complete it. The ``state``
-        both keys the transaction and is the CSRF token echoed back by the provider.
+        → verifier + nonce + redirect_uri + accepted policy version) so the callback can
+        complete it. The ``state`` both keys the transaction and is the CSRF token echoed
+        back by the provider.
 
         When ``upgrade_ticket`` is supplied (a guest→account upgrade, P3-03) and the upgrade
         service is wired, the ticket is **consumed** here (single-use) and the guest session
@@ -204,6 +237,8 @@ class SsoAuthService:
         yields a plain login (no carry-over), never an error.
         """
         self._require_known_provider(provider)
+        if not consent:
+            raise ConsentRequired
         upgrade_session_id: str | None = None
         if upgrade_ticket and self._upgrades is not None:
             upgrade_session_id = await self._upgrades.resolve_ticket(upgrade_ticket)
@@ -220,6 +255,7 @@ class SsoAuthService:
                 redirect_uri=redirect_uri,
                 created_at=datetime.now(UTC),
                 upgrade_session_id=upgrade_session_id,
+                consent_policy_version=self._consent_policy_version,
             ),
             ttl_seconds=self._state_ttl_seconds,
         )
@@ -250,6 +286,11 @@ class SsoAuthService:
             sub=userinfo.sub,
             email=userinfo.email,
             display_name=userinfo.display_name,
+            # Consent recorded against the user (§6.22): the policy version accepted at
+            # login start, stamped now. Written on every login, so re-accepting a bumped
+            # version overwrites the stored one (re-prompt-on-version-bump).
+            consent_policy_version=record.consent_policy_version,
+            consent_accepted_at=datetime.now(UTC),
         )
 
         session_id = await self._resolve_session(record.upgrade_session_id, account.id)

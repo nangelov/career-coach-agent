@@ -24,8 +24,6 @@ const mockPoll = pollJobUntilTerminal as jest.MockedFunction<typeof pollJobUntil
 
 function session(role: Session["role"] = "guest"): Session {
   return {
-    accessToken: "tok",
-    tokenType: "bearer",
     sessionId: "sid",
     role,
     expiresAt: Date.now() + 3_600_000,
@@ -60,7 +58,7 @@ describe("CvUpload", () => {
     mockUploadCv.mockResolvedValue({ taskId: "t1" });
     let emitUpdate: ((s: JobStatus) => void) | undefined;
     let resolvePoll: ((s: JobStatus) => void) | undefined;
-    mockPoll.mockImplementation((_taskId, _session, options) => {
+    mockPoll.mockImplementation((_taskId, options) => {
       emitUpdate = options?.onUpdate;
       return new Promise<JobStatus>((resolve) => {
         resolvePoll = resolve;

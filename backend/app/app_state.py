@@ -50,3 +50,5 @@ class AppStateKeys(StrEnum):
     PROFILE_STORE = "profile_store"
     #: The app-scoped :class:`~app.services.jobs.JobStatusService` (P5-06 poll), cached.
     JOB_STATUS_SERVICE = "job_status_service"
+    #: The app-scoped :class:`~app.services.account.AccountService` (SEC-05 erase/export), cached.
+    ACCOUNT_SERVICE = "account_service"

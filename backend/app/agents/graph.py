@@ -85,15 +85,13 @@ from app.agents.responder import LLMResponder, Responder
 from app.agents.state import (
     AgentState,
     Citation,
-    GuardrailStage,
     Intent,
     PlannerDecision,
-    SafetyVerdict,
     WorkerName,
     WorkerResult,
 )
 from app.agents.web_searcher import SearchRunner, make_web_search_node
-from app.guardrails import REFUSAL_MESSAGE, screen_input
+from app.guardrails import REFUSAL_MESSAGE, screen_input, screen_output
 from app.llm.types import StreamChunk
 
 #: A node returns a **partial** state update as a mapping; LangGraph folds it into the
@@ -157,8 +155,25 @@ def input_guardrail_node(state: AgentState) -> NodeUpdate:
 
 
 def output_guardrail_node(state: AgentState) -> NodeUpdate:
-    """[STUB → P10] Output safety pass. Currently allow-all pass-through."""
-    return {"output_safety": SafetyVerdict(stage=GuardrailStage.OUTPUT, allowed=True)}
+    """Minimal output safety net (SEC-02, design §7.3 point 4). Coarse placeholder — P10.
+
+    Runs the deterministic :func:`app.guardrails.screen_output` heuristic over the composed
+    ``response``, **stripping** any canonical injection phrasing the answer echoed back out of
+    untrusted grounding material (a crawled page / CV that said "ignore previous instructions").
+    Writes the OUTPUT :class:`SafetyVerdict` for telemetry and, only when a redaction happened,
+    the scrubbed ``response`` (a scrub neutralises rather than blocks — the answer still returns,
+    just cleaned). Anything the deny-list does not recognise passes through unchanged
+    (default-open). Full injection/leakage detection is P10 (same ``SafetyVerdict`` hook).
+
+    Note: this node sees the **buffered** response (:func:`run_graph`). On the streaming path
+    (:class:`GraphTurnStreamer` → :class:`~app.services.chat.ChatService`) the same
+    :func:`~app.guardrails.screen_output` net is applied to the token stream as it is emitted.
+    """
+    screen = screen_output(state.response or "")
+    update: NodeUpdate = {"output_safety": screen.verdict}
+    if screen.modified:
+        update["response"] = screen.text
+    return update
 
 
 # --------------------------------------------------------------------------- #

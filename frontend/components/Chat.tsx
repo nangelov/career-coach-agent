@@ -5,12 +5,7 @@ import Link from "next/link";
 
 import Login from "@/components/Login";
 import UpgradePrompt from "@/components/UpgradePrompt";
-import {
-  clearSession,
-  loadSession,
-  logout,
-  type Session,
-} from "@/lib/auth";
+import { fetchSession, logout, type Session } from "@/lib/auth";
 import {
   cancelChat,
   streamChat,
@@ -65,11 +60,25 @@ export default function Chat() {
   const [rateLimit, setRateLimit] = useState<{ message: string } | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
 
-  // Resolve the session client-side (localStorage is unavailable during SSR). The backend
-  // owns session creation now (P3-01/P3-02) — the frontend no longer mints an id.
+  // Hydrate the session from the httpOnly cookie via the BFF `GET /api/auth/session`
+  // (SEC-04 — no localStorage). The token never reaches the browser; we only learn the
+  // token-free session state (sessionId/role/expiry) needed to render.
   useEffect(() => {
-    setSession(loadSession());
-    setAuthChecked(true);
+    let cancelled = false;
+    void fetchSession()
+      .then((next) => {
+        if (!cancelled) {
+          setSession(next);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setAuthChecked(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -83,13 +92,11 @@ export default function Chat() {
   }, []);
 
   const handleLogout = useCallback(async () => {
-    if (session) {
-      await logout(session);
-    }
+    await logout();
     setSession(null);
     setMessages([]);
     setRateLimit(null);
-  }, [session]);
+  }, []);
 
   // Update the assistant message of the turn in flight (always the last message).
   const updateAssistant = useCallback(
@@ -179,8 +186,8 @@ export default function Chat() {
           }));
           break;
         case "auth_error":
-          // Expired/invalid session: drop the credential and fall back to the login screen.
-          clearSession();
+          // Expired/invalid session: clear the cookie (best-effort) and fall back to login.
+          void logout();
           dropPendingAssistant();
           setLoginMessage(event.message);
           setSession(null);
@@ -224,7 +231,6 @@ export default function Chat() {
       await streamChat(
         { session_id: session.sessionId, message: text },
         handleEvent,
-        { token: session.accessToken },
       );
     } finally {
       setIsStreaming(false);
@@ -237,7 +243,7 @@ export default function Chat() {
     }
     // The backend sets a cancel flag and returns 202; the active stream then
     // emits a terminal `cancelled` event and closes on its own.
-    await cancelChat(session.sessionId, { token: session.accessToken });
+    await cancelChat(session.sessionId);
   }, [isStreaming, session]);
 
   const onInputKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {

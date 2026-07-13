@@ -27,6 +27,7 @@ class FakeStringRedis:
     def __init__(self) -> None:
         self.values: dict[str, str] = {}
         self.ttls: dict[str, int] = {}
+        self.sets: dict[str, set[str]] = {}
 
     async def set(self, name: str, value: Any, *, ex: int | None = None) -> bool:
         self.values[name] = str(value)
@@ -45,12 +46,50 @@ class FakeStringRedis:
             self.ttls.pop(name, None)
         return removed
 
+    async def sadd(self, name: str, *values: Any) -> int:
+        members = self.sets.setdefault(name, set())
+        added = 0
+        for value in values:
+            if str(value) not in members:
+                members.add(str(value))
+                added += 1
+        return added
+
+    async def srem(self, name: str, *values: Any) -> int:
+        members = self.sets.get(name, set())
+        removed = 0
+        for value in values:
+            if str(value) in members:
+                members.discard(str(value))
+                removed += 1
+        if not members:
+            self.sets.pop(name, None)
+        return removed
+
+    async def smembers(self, name: str) -> set[str]:
+        return set(self.sets.get(name, set()))
+
+    async def expire(self, name: str, time: int) -> bool:
+        if name in self.sets or name in self.values:
+            self.ttls[name] = time
+            return True
+        return False
+
 
 def _record(session_id: str = "sid-1", role: SessionRole = "guest") -> SessionRecord:
     return SessionRecord(
         session_id=session_id,
         role=role,
         user_id=None,
+        created_at=datetime.now(UTC),
+    )
+
+
+def _user_record(session_id: str, user_id: str) -> SessionRecord:
+    return SessionRecord(
+        session_id=session_id,
+        role="user",
+        user_id=user_id,
         created_at=datetime.now(UTC),
     )
 
@@ -104,6 +143,63 @@ async def test_ttl_floor_is_at_least_one() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Per-user session index (SEC-05) — the authoritative "all devices" enumeration
+# --------------------------------------------------------------------------- #
+async def test_user_sessions_are_indexed_and_enumerable() -> None:
+    fake = FakeStringRedis()
+    store = RedisSessionStore(fake)
+    # Two devices for the same user; the index must hold both (independent of any
+    # Postgres row — this is the login-shaped case the erasure fix relies on).
+    await store.create(_user_record("s1", "u1"), ttl_seconds=3600)
+    await store.create(_user_record("s2", "u1"), ttl_seconds=3600)
+
+    assert sorted(await store.list_user_sessions("u1")) == ["s1", "s2"]
+    # The index set is TTL'd so it self-cleans with the sessions it tracks.
+    assert fake.ttls["session:user:u1"] == 3600
+
+
+async def test_guest_sessions_are_not_indexed() -> None:
+    fake = FakeStringRedis()
+    store = RedisSessionStore(fake)
+    await store.create(_record("guest-1"), ttl_seconds=3600)
+    # A guest (user_id=None) has no user index entry.
+    assert fake.sets == {}
+
+
+async def test_list_user_sessions_empty_for_unknown_user() -> None:
+    store = RedisSessionStore(FakeStringRedis())
+    assert await store.list_user_sessions("nobody") == []
+
+
+async def test_delete_removes_session_from_user_index() -> None:
+    fake = FakeStringRedis()
+    store = RedisSessionStore(fake)
+    await store.create(_user_record("s1", "u1"), ttl_seconds=3600)
+    await store.create(_user_record("s2", "u1"), ttl_seconds=3600)
+
+    await store.delete("s1")
+
+    # The record is gone and the index no longer lists the revoked session.
+    assert await store.get("s1") is None
+    assert await store.list_user_sessions("u1") == ["s2"]
+
+
+async def test_erasure_revokes_every_indexed_session() -> None:
+    fake = FakeStringRedis()
+    store = RedisSessionStore(fake)
+    await store.create(_user_record("s1", "u1"), ttl_seconds=3600)
+    await store.create(_user_record("s2", "u1"), ttl_seconds=3600)
+
+    # Enumerate every device from the index, then revoke each (the erase path's shape).
+    for session_id in await store.list_user_sessions("u1"):
+        await store.delete(session_id)
+
+    assert await store.get("s1") is None
+    assert await store.get("s2") is None
+    assert await store.list_user_sessions("u1") == []
+
+
+# --------------------------------------------------------------------------- #
 # InMemorySessionStore (test double / interim default)
 # --------------------------------------------------------------------------- #
 async def test_in_memory_store_round_trip() -> None:
@@ -116,3 +212,15 @@ async def test_in_memory_store_round_trip() -> None:
 
 async def test_in_memory_store_missing_returns_none() -> None:
     assert await InMemorySessionStore().get("absent") is None
+
+
+async def test_in_memory_store_indexes_and_revokes_user_sessions() -> None:
+    store = InMemorySessionStore()
+    await store.create(_user_record("s1", "u1"), ttl_seconds=60)
+    await store.create(_user_record("s2", "u1"), ttl_seconds=60)
+    await store.create(_record("guest-1"), ttl_seconds=60)  # not indexed (user_id=None)
+
+    assert sorted(await store.list_user_sessions("u1")) == ["s1", "s2"]
+
+    await store.delete("s1")
+    assert await store.list_user_sessions("u1") == ["s2"]

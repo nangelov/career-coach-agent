@@ -81,9 +81,9 @@ export default function CvUpload({ session, onParsed }: CvUploadProps) {
     setProgress(null);
     setPhase("uploading");
     try {
-      const { taskId } = await uploadCv(file, session);
+      const { taskId } = await uploadCv(file);
       setPhase("processing");
-      const status = await pollJobUntilTerminal(taskId, session, {
+      const status = await pollJobUntilTerminal(taskId, {
         onUpdate: setProgress,
         signal: controller.signal,
       });
@@ -107,7 +107,7 @@ export default function CvUpload({ session, onParsed }: CvUploadProps) {
           : "Something went wrong uploading your CV. Please try again.",
       );
     }
-  }, [busy, file, onParsed, session]);
+  }, [busy, file, onParsed]);
 
   return (
     <section

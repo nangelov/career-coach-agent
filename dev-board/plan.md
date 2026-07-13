@@ -2,7 +2,7 @@
 
 > Execution plan for the v2 rebuild. Companion to [app-design-and-features.md](./app-design-and-features.md).
 > Strategy: **Foundation first, then features.** Build the new skeleton (backend + datastores + agent graph + frontend shell) end-to-end, then layer features behind it.
-> Status: **Proposed** · Last updated: 2026-06-28 (all 9 pre-work decisions locked; only learned-memory application open)
+> Status: **Proposed** · Last updated: 2026-07-13 — **scope + security revision**: P6 rescoped from *"Richer job search"* to **Market intelligence** (design §1.1 / §5.6 / §6.11); new **[SEC] block** between P5 and P6 (see "Security & privacy sequencing" below); P9/P10 extended with privacy, topic-scoping and abuse work; **new Phase 11 "Observability, telemetry & product analytics"** (OpenTelemetry + Sentry + GA4, design §7.8/§6.26–27) inserted after guardrails and before the 🛑 pre-go-live review, which shifted the old Phase 11 to **Phase 12 — Deploy, parity & cutover**.
 
 ---
 
@@ -103,25 +103,48 @@
 
 ---
 
-## Phase 6 — Richer job search
+## Phase 6 — Market intelligence (role requirements)
 
-**Goal:** upgrade beyond v1's single Google Jobs call.
+> **RESCOPED** (design §1.1 / §5.6 / §6.11). Was *"Richer job search"*. The app is **not a job board**: job
+> postings are mined as **evidence of what the market requires**, never surfaced as browsable inventory.
+> **Dropped from the old P6:** listings UI, location/remote/salary filters, save/track jobs, per-posting match
+> scoring, `GET/POST /api/jobs`.
 
-- [ ] **Job Search Agent**: multi-source, normalized listings, dedup into Postgres `jobs`.
-- [ ] Filters (location/remote/salary); **profile-aware match scoring**.
-- [ ] Crawl + extract structured role profiles (skills/requirements) via the web crawler, run as **Celery tasks**.
-- [ ] Save/track jobs per user; cache hot queries in Redis.
-- [ ] `GET/POST /api/jobs`.
+**Goal:** answer *"I'm a PM and want to become an AI Solution Architect — what does the market require?"*, and
+turn that into a **skills gap** that feeds the PDP.
 
-**Exit criteria:** filtered, deduped, profile-scored results; users can save jobs; repeat queries hit cache.
+- [ ] **Taxonomy seed first (no scraping):** ingest **ESCO / O\*NET** occupations + skills into the **shared**
+      KB (`kb_documents.user_id IS NULL`) — this is the corpus the RAG agent has been missing.
+- [ ] **`role_profiles`** table + migration: canonical role, aggregated `requirements JSONB`
+      (skill → frequency/weight/evidence), sources, `evidence_count`, `refreshed_at`. **Global, not user-scoped.**
+- [ ] **`job_postings`** (was `jobs`): raw **evidence only**, TTL-cached, deduped, **third-party PII stripped at
+      ingest** (recruiter name/email/phone).
+- [ ] **Market Intelligence Agent** (`agents/market_agent.py`, was `job_agent.py`): normalize target role →
+      taxonomy baseline → mine postings for the recency delta → aggregate → `role_profiles` + embed into pgvector.
+- [ ] Mining runs as **Celery tasks**; postings and pages are **untrusted content** (§7.3) and every fetch goes
+      through the **SSRF guard** (§7.2).
+- [ ] **Skills gap**: user profile △ `role_profile` → the input to P7's PDP.
+- [ ] **Search provider → Tavily with a rotating 3-key pool** (§5.7 / §6.19): `TAVILY_API_KEY_1|2|3` from Space
+      Secrets; ordered failover + **promote-the-survivor to primary** (persisted in Redis). **Reuse the §6.6 LLM
+      router pattern** — do not invent a second failover mechanism. *Replaces SerpAPI.*
+- [ ] **Learning-resource corpus (§5.7):** crawl Coursera / Udacity / Udemy / edX (and similar) → normalized,
+      **skill-keyed**, shared (`user_id IS NULL`), embedded, cited in the PDP. Prefer official catalogs/APIs over
+      scraping marketing pages. TTL refresh via Celery.
+- [ ] `GET /api/roles/{role}/requirements`, `GET /api/roles/{role}/gap`. Cache hot roles in Redis;
+      periodic refresh of stale `role_profiles`.
+- [ ] Source policy: respect `robots.txt`, rate-limit, **never scrape LinkedIn** (ToS).
+
+**Exit criteria:** for a target role, the app returns **cited, frequency-ranked market requirements** (taxonomy
+baseline + posting delta) and a **skills gap** against the user's profile. Extraction happens **once per role**
+and is reused across users. **No job listings are ever shown.**
 
 ---
 
 ## Phase 7 — PDP generator (rebuilt)
 
-**Goal:** same styled-PDF output, driven by structured profile + RAG.
+**Goal:** same styled-PDF output, driven by structured profile + **the P6 skills gap** + RAG.
 
-- [ ] **PDP Agent**: structured profile + RAG-grounded recommendations → structured PDP sections.
+- [ ] **PDP Agent**: structured profile + **skills gap vs the target `role_profile` (P6)** + RAG-grounded recommendations → structured PDP sections.
 - [ ] Keep reportlab builder (port `helpers/helper.py` → `pdf/`); keep section-header contract + validation gate.
 - [ ] `POST /api/pdp` uses the **stored profile** (no re-upload); regenerate on demand.
 
@@ -150,7 +173,9 @@
 - [ ] `message_feedback` capture: 👍/👎 (approve/disapprove) + optional reason on each assistant message; inline "try again".
 - [ ] `memory/` module on **LangMem** (in-process, over the pgvector `user_memories` store): **recall** step (explicit prefs + top-k `user_memories` → context) wired into the graph before the planner.
 - [ ] **Learn** step as a **Celery task** post-turn (LangMem extract/update): durable preferences, dedup/update, confidence; thumb-down demotes/removes.
-- [ ] **Decide open item: learned-memory application — silent-but-viewable vs require confirmation** (the one pre-work decision left TBD); implement the chosen behavior here.
+- [ ] **PII redaction before extraction** — durable `user_memories` are PII-free (design §7.6).
+- [ ] **GDPR Art. 9 exclusion filter** — health / disability / ethnicity / religion / union / sexuality are **never** made durable (usable within the turn only). A career coach *will* receive these (§7.6).
+- [ ] Learned-memory application = **silent-but-viewable/deletable (opt-out)** [DECIDED §6.10] — implement the memory panel, no per-fact confirmation prompts.
 - [ ] Responder adapts tone/depth to recalled preferences.
 - [ ] `GET/PUT/DELETE /api/memory` + a "What the coach knows about you" panel (view/edit/delete).
 - [ ] Guests: personalization session-only (Redis); account upgrade persists it.
@@ -162,28 +187,85 @@
 ## Phase 10 — Security & Guardrails
 
 **Goal:** harden input/output (design §7). *Note: input guardrails land minimally in Phase 4 and are completed here.*
+*Several items below are **pulled earlier** — see "Security & privacy sequencing" at the end of this file.*
 
-- [ ] Input guardrails: jailbreak / prompt-injection detection, abuse/off-topic filter, PII scrub before tools/external calls.
-- [ ] Output guardrails: block system-prompt leakage, strip injected instructions echoed from crawled pages.
+- [ ] Input guardrails: **real** jailbreak / prompt-injection classifier (the P4 regex deny-list is a placeholder and stops nobody) — e.g. Prompt-Guard / Llama-Guard.
+- [ ] **Topic scoping (§7.4):** `OFF_TOPIC` → refuse, `JOB_HUNTING` → **redirect** to market requirements. Implemented on the planner's **existing** `Intent` classification — **no extra LLM call**. Tune for low false-positives on legitimate career questions.
+- [ ] **Untrusted content (§7.3) — structural, not prompt-worded:** fencing for CV/OCR text, crawled pages, postings and snippets; **no tool-call may be initiated by untrusted text**; constrained-schema extraction; output guardrail strips echoed instructions.
+- [ ] **SSRF guard on every outbound fetch (§7.2)** — http(s) only, reject private/loopback/link-local resolved IPs, bounded + re-validated redirects, host allow/deny list, timeouts and size caps. *(Do this before P6 crawls at scale.)*
+- [ ] Output guardrails: block system-prompt leakage, strip injected instructions echoed from untrusted content.
 - [ ] Confirm the v1 `run_python_code` REPL is **removed** (ACE risk); sandboxed evaluator only if math is truly needed.
-- [ ] Rate-limit + abuse tests; treat all crawled/web content as untrusted.
+- [ ] Rate-limit + abuse tests; treat all crawled/web/document content as untrusted.
 
-**Exit criteria:** a jailbreak/injection test suite passes; no secret/prompt leakage; no arbitrary code execution.
+**Exit criteria:** a jailbreak/injection test suite passes (**including a CV with embedded injected instructions** and a poisoned crawled page); off-topic is refused and job-hunting is redirected; SSRF probes to loopback/link-local are blocked; no secret/prompt leakage; no arbitrary code execution.
 
 ---
 
-## Phase 11 — Deploy, parity & cutover
+## Phase 11 — Observability, telemetry & product analytics
+
+**Goal:** know when the app breaks and how people actually use it (design §7.8 / §6.26–27) — lands after
+guardrails, before the pre-go-live review, so the review can inspect real telemetry instead of a promise of it.
+
+- [ ] **OpenTelemetry instrumentation:** FastAPI auto-instrumentation (requests) + manual spans for the LangGraph
+      node graph (planner → workers → responder) + Celery task spans.
+- [ ] **S11 — PII redaction + retention limit** on traces/logs (design §7.6) — traces would otherwise contain full
+      CV text and every message; redact at the source, not after the fact.
+- [ ] **OTLP exporter**, env-configured endpoint/API key, targeting a free-tier hosted backend (owner's choice —
+      Grafana Cloud free / Honeycomb free / similar). OTel keeps this swappable — no vendor lock-in, no bespoke
+      in-app telemetry dashboard (YAGNI: use the backend's own UI).
+- [ ] **S15 — Sentry free tier** error notification, PII scrubbing on, low-noise alert rule (design §6.24 / §7.7).
+- [ ] **Admin-access ruling (no new endpoint):** access to the telemetry backend's dashboard is the provider's own
+      login (recommend enabling Google sign-in there). This app does **not** grow a second, password-based admin
+      surface — in-app admin actions keep using the existing `is_admin`-flagged SSO account (P3-05); the SSO-only
+      decision (§6.2) is not reopened.
+- [ ] **Google Analytics 4** in the Next.js frontend: `gtag.js` + pageviews + button-click engagement events
+      (send-message, stop, upload-cv, generate-pdp, submit-feedback, thumbs up/down, dashboard actions) —
+      mirrors the v1 `ChatBot.tsx` / `PDPDialog.tsx` pattern. Config via env (measurement ID); loads only after
+      the consent gate (§6.22) is accepted; **event payloads never carry message content, CV text, or PII.**
+
+**Exit criteria:** a full chat turn produces a trace with planner→worker→responder spans in the chosen OTel
+backend; a forced error reaches Sentry; GA4 real-time shows a pageview + at least one custom event; traces, logs,
+and GA payloads contain no CV/message content on inspection.
+
+---
+
+## Phase 12 — Deploy, parity & cutover
 
 **Goal:** ship to HF Spaces and retire v1.
 
+> ### 🛑 PRE-GO-LIVE REVIEW — a blocking checkpoint, owner + architect, before anything ships
+>
+> **Do not cut over until this conversation has happened.** P11 is the last point where a missing piece is
+> cheap to add and the first point where a mistake is public. The purpose is *not* to re-run the task
+> checklist — it is to ask what the checklist doesn't cover.
+>
+> **Agenda:**
+> 1. **Critical gaps sweep** — what's missing, half-done, or was quietly deferred across P0–P11? Re-read the
+>    [SEC] block (S1–S16): is every item *actually* done, or just ticked?
+> 2. **Security & privacy sign-off** — SSRF guard, untrusted-content fencing, topic guardrail, BFF/cookie,
+>    port lockdown, denial-of-wallet breakers, consent gate, retention purge, erasure/export. Any "we'll do it
+>    right after launch" item is a **launch blocker** by default.
+> 3. **Honesty check** — does the UI/privacy notice tell the truth about **data loss on restart** (§6.17),
+>    CV text going to a third-party LLM provider (§6.16), and retention (§6.18)?
+> 4. **Scope check** — has anything crept back toward a job board / job assistant (§1.1, §6.25)?
+> 5. **Admin panel + audit trail** — deliberately deferred (§7.6); design and scope it *here*.
+> 6. **Next-iteration planning** — what did we learn? Candidates parked so far: i18n / TTS / STT / voice agent
+>    (§6.23), managed datastore tier if durability starts to matter (§11), evaluation/regression gates on
+>    advice quality, scaling (k8s) *only if traffic ever justifies it*.
+>
+> **Exit:** an explicit, recorded **go / no-go** from the owner — not an implicit one.
+
 - [ ] HF Spaces Dockerfile: build Next.js + run FastAPI (single container).
-- [ ] Wire **self-hosted datastores** (Postgres+pgvector + Redis as co-located containers; **no managed tier** for now — §11) with connection strings via Space secrets. (Managed tier = documented escape hatch if Spaces persistence is needed.)
+- [ ] **Port lockdown (§7.2):** publish **only** the Next.js port. Postgres / Redis / FastAPI on the private Docker network with **no host ports**; local-dev exposure moves to an opt-in compose override. *(Today all three are published.)*
+- [ ] **Datastore durability — RESOLVED: accept data loss [§6.17].** Self-hosted Postgres+Redis co-located, no managed tier, **no backups**. **The obligation this creates:** the UI + privacy notice must state that **data may be lost on restart** — do not ship a "your history is saved" promise the architecture cannot keep.
+- [ ] **Key-rotation runbook (§7.7):** document the one-liner (rotate secret in Space Secrets → restart → all sessions invalidate). No schedule, no IR programme.
 - [ ] Run the **Celery worker** as a co-located process in the Space container.
-- [ ] Parity checklist vs v1 (chat, PDP, job search, feedback) + smoke tests.
-- [ ] Observability: structured logging, agent traces, error tracking.
+- [ ] **Denial-of-wallet gate (§7.5):** per-IP guest-session creation limit, **global daily LLM budget breaker** (degrade to "at capacity", don't exhaust the quota), bot check on guest creation.
+- [ ] Parity checklist vs v1 (chat, PDP, **market requirements**, feedback) + smoke tests. *(v1's job-listing search is intentionally **not** at parity — §1.1 scope ruling.)*
 - [ ] **Cut over**, then delete v1 (`app.py`, `output_parser.py`, old `frontend/` CRA, etc.).
 
-**Exit criteria:** v2 live on HF Spaces at full parity + new features; v1 removed.
+**Exit criteria:** v2 live on HF Spaces at full parity + new features (including P11 observability/analytics wired
+in and reporting real data); only the UI port is reachable; quota abuse is bounded; v1 removed.
 
 ---
 
@@ -191,12 +273,40 @@
 
 ```
 P0 Scaffolding ─▶ P1 Skeleton (stream + failover + 1 tool) ─▶ P2 Persistence ─▶ P3 Auth/guest
-   ─▶ P4 Multi-agent ─▶ P5 Doc-intel/CV+OCR ─▶ P6 Jobs ─▶ P7 PDP
-   ─▶ P8 Dashboard ─▶ P9 Personalization+Feedback ─▶ P10 Guardrails ─▶ P11 Deploy
+   ─▶ P4 Multi-agent ─▶ P5 Doc-intel/CV+OCR ─▶ [SEC] ─▶ P6 Market intel ─▶ P7 PDP
+   ─▶ P8 Dashboard ─▶ P9 Personalization+Feedback ─▶ P10 Guardrails ─▶ P11 Observability+Analytics
+   ─▶ 🛑 PRE-GO-LIVE REVIEW (blocking: owner + architect) ─▶ P12 Deploy
 ```
 
-Foundation = **P0–P3** (skeleton, reliability, data, identity). Features = **P4–P9**. Hardening + ship = **P10–P11**.
-Reliability (LLM failover) and async infra (Celery) land in the foundation so every feature inherits them. Guardrails are introduced minimally once the agent graph exists (P4) and *completed* in P10 — security isn't bolted on last, only finished there.
+Foundation = **P0–P3** (skeleton, reliability, data, identity). Features = **P4–P9**. Hardening + ship = **P10–P12**.
+Reliability (LLM failover) and async infra (Celery) land in the foundation so every feature inherits them. Guardrails are introduced minimally once the agent graph exists (P4) and *completed* in P10 — security isn't bolted on last, only finished there. Observability/analytics (P11) deliberately lands *before* the pre-go-live review, so that review inspects real telemetry rather than a promise of it.
+
+---
+
+## Security & privacy sequencing (the [SEC] block)
+
+The app is **not live** (branch-only), so nothing here is a production hotfix. But these items are ordered by
+**cost-to-unwind**, not by exposure — each gets more expensive the longer it waits, and two of them are
+*entrenched by the very next phase*. **[SEC] runs between P5 and P6.**
+
+| # | Item | Land it | Why then |
+|---|---|---|---|
+| **S1** | **SSRF guard** on all outbound fetches (§7.2) | **before P6** | The crawler today does `follow_redirects=True` with **no** scheme/IP validation. P6 crawls at scale — a latent hole becomes a live one, and by then it has 3 callers instead of 1. |
+| **S2** | **Untrusted-content fencing** for documents (§7.3) | **before P6** | P5 already feeds CV/OCR text into the model context. P6 adds postings. Fix the contract before a second source depends on it. |
+| **S3** | **Topic guardrail** — `OFF_TOPIC` refuse / `JOB_HUNTING` redirect (§7.4) | **with P6** | P6 *is* the boundary between "market requirements" and "job board". The guardrail is what keeps the scope ruling (§1.1) true in code. |
+| **S4** | **BFF + httpOnly cookie**, drop `localStorage` (§7.2 / §6.13) | **before P8** | Every new authed surface (dashboard, memory panel) that assumes a Bearer-in-JS token makes the migration bigger. Do it while the authed surface is still chat + profile. |
+| **S5** | **Compose port lockdown** (§7.2) | **anytime — trivial** | Postgres, Redis and FastAPI currently publish host ports. One-line-per-service change, zero risk. |
+| **S6** | **`DELETE /api/me` + `GET /api/me/export`** (§7.6) | **before P8/P9** | Erasure must cascade every store. Cheap with 8 tables; painful once dashboard + memories + PDPs reference `users`. |
+| **S7** | **PII redaction + Art. 9 exclusion** in the memory writer (§7.6) | **with P9** | It's the phase that creates durable memories — the filter must exist *before* the first one is written. |
+| **S8** | **Real injection classifier** replacing the regex deny-list (§7.4) | **P10** | The P4 heuristic is an honest placeholder; P10 is where it was always meant to be replaced. |
+| **S9** | **Denial-of-wallet**: per-IP guest limits + global budget breaker + bot check (§7.5) | **P12 (go-live gate)** | Only matters when there's a public URL — but it *must* gate the launch, not follow it. |
+| **S10** | **Contact-detail redaction at the LLM egress boundary** (§6.16 / §7.6) — name, email, phone, address, links, photo; keep employers/titles/dates/skills | **before P12** | One place (the LLM layer), not scattered across agents. |
+| **S11** | **Log/trace PII redaction + retention** (§7.6) | **P11 (dedicated observability phase)** | Observability is where privacy programs die: traces would otherwise hold full CV text. Now lands with the OTel/telemetry work itself, not bolted on at cutover. |
+| **S12** | ~~Datastore durability~~ → **RESOLVED: accept data loss** (§6.17) | — | Free app, ephemeral Space, no managed tier, no backups. **The obligation this creates is honesty:** UI + privacy notice must say data may be lost on restart. |
+| **S13** | **Consent gate** — ToS/privacy checkbox at SSO login (recorded w/ policy version) and at **every** guest-session start (§6.22 / §7.6) | **with S4 (BFF)** | Session creation is the natural chokepoint, and S4 is already rewriting it. |
+| **S14** | **Retention purge job** — SSO 30 days after last activity; guests session-only (§6.18) | **P9-ish** | Needs the durable stores to exist first; a periodic Celery task. |
+| **S15** | **Error notification** — Sentry free tier, PII scrubbing on, low-noise alerts (§7.7 / §6.24) | **P11 (dedicated observability phase)** | The app's real failure mode is *silently broken and nobody notices*; bundled with the rest of telemetry rather than tacked onto cutover. |
+| **S16** | **Key rotation runbook** — a documented **one-liner** (change secret → restart → sessions invalidate), not a process (§7.7) | **P12** | Right-sized: no rotation schedule, no IR programme. |
 
 ---
 
@@ -209,6 +319,7 @@ Everything is chosen to run at **zero or near-zero cost** (design §11):
 - **Datastores [decided]:** **Postgres + Redis only, self-hosted** via `docker-compose` (local) + co-located on Spaces — **no managed tier** for now. Postgres JSONB + pgvector absorbs Mongo's role; rationale is single-container simplicity, not cost (§4 / §11). Managed tier (Neon/Supabase + Upstash) is the escape hatch if Spaces persistence is required.
 - **Teachable memory [decided]:** **LangMem** in-process over the pgvector `user_memories` store — no external memory service (§6.7).
 - **Doc-intel/OCR, guardrails, Celery, crawler:** all OSS/self-hosted (docling, Tesseract, Llama-Guard/regex, Celery, crawl4ai/playwright).
+- **Observability/analytics [decided, §6.26–27]:** **OpenTelemetry** (OSS, vendor-neutral) exported to a free-tier OTLP backend + **Sentry free tier** (errors) + **Google Analytics 4** (engagement) — no paid APM/analytics tier, no bespoke in-app telemetry dashboard.
 
 ## Decisions locked before P1 (was: open items)
 
