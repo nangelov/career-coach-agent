@@ -1,511 +1,700 @@
-2026-07-13T13:10:33.0856563Z Current runner version: '2.335.1'
-2026-07-13T13:10:33.0882301Z ##[group]Runner Image Provisioner
-2026-07-13T13:10:33.0883255Z Hosted Compute Agent
-2026-07-13T13:10:33.0883915Z Version: 20260624.560
-2026-07-13T13:10:33.0884546Z Commit: 925d229a51159bc391ae97e54a2dd1fe20af789d
-2026-07-13T13:10:33.0885394Z Build Date: 2026-06-24T18:26:47Z
-2026-07-13T13:10:33.0886101Z Worker ID: {8d5f04c3-2f5d-4709-b31b-4a9bd1c792e0}
-2026-07-13T13:10:33.0887182Z Azure Region: northcentralus
-2026-07-13T13:10:33.0887871Z ##[endgroup]
-2026-07-13T13:10:33.0889239Z ##[group]Operating System
-2026-07-13T13:10:33.0890004Z Ubuntu
-2026-07-13T13:10:33.0890564Z 24.04.4
-2026-07-13T13:10:33.0891480Z LTS
-2026-07-13T13:10:33.0892141Z ##[endgroup]
-2026-07-13T13:10:33.0892720Z ##[group]Runner Image
-2026-07-13T13:10:33.0893385Z Image: ubuntu-24.04
-2026-07-13T13:10:33.0893995Z Version: 20260705.232.1
-2026-07-13T13:10:33.0895319Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260705.232/images/ubuntu/Ubuntu2404-Readme.md
-2026-07-13T13:10:33.0896859Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260705.232
-2026-07-13T13:10:33.0897808Z ##[endgroup]
-2026-07-13T13:10:33.0899060Z ##[group]GITHUB_TOKEN Permissions
-2026-07-13T13:10:33.0901404Z Contents: read
-2026-07-13T13:10:33.0902200Z Metadata: read
-2026-07-13T13:10:33.0902795Z ##[endgroup]
-2026-07-13T13:10:33.0905011Z Secret source: Actions
-2026-07-13T13:10:33.0905859Z Prepare workflow directory
-2026-07-13T13:10:33.1513888Z Prepare all required actions
-2026-07-13T13:10:33.1567846Z Getting action download info
-2026-07-13T13:10:33.3990505Z Download action repository 'actions/checkout@v4' (SHA:34e114876b0b11c390a56381ad16ebd13914f8d5)
-2026-07-13T13:10:33.4768799Z Download action repository 'astral-sh/setup-uv@v5' (SHA:d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86)
-2026-07-13T13:10:34.0178870Z Complete job name: backend
-2026-07-13T13:10:34.0704008Z ##[group]Checking docker version
-2026-07-13T13:10:34.0717037Z ##[command]/usr/bin/docker version --format '{{.Server.APIVersion}}'
-2026-07-13T13:10:34.1584943Z '1.48'
-2026-07-13T13:10:34.1597009Z Docker daemon API version: '1.48'
-2026-07-13T13:10:34.1597790Z ##[command]/usr/bin/docker version --format '{{.Client.APIVersion}}'
-2026-07-13T13:10:34.1841110Z '1.48'
-2026-07-13T13:10:34.1855027Z Docker client API version: '1.48'
-2026-07-13T13:10:34.1860979Z ##[endgroup]
-2026-07-13T13:10:34.1864277Z ##[group]Clean up resources from previous jobs
-2026-07-13T13:10:34.1869718Z ##[command]/usr/bin/docker ps --all --quiet --no-trunc --filter "label=dd54ac"
-2026-07-13T13:10:34.2013361Z ##[command]/usr/bin/docker network prune --force --filter "label=dd54ac"
-2026-07-13T13:10:34.2154952Z ##[endgroup]
-2026-07-13T13:10:34.2155694Z ##[group]Create local container network
-2026-07-13T13:10:34.2166462Z ##[command]/usr/bin/docker network create --label dd54ac github_network_89e1464a617a4124af0a7fe8e204fc67
-2026-07-13T13:10:34.2748250Z f8c3a65dfcee02ee838df10e3b36f42c4a00a84936b0e96e15efe68a77b9b673
-2026-07-13T13:10:34.2769675Z ##[endgroup]
-2026-07-13T13:10:34.2794743Z ##[group]Starting postgres service container
-2026-07-13T13:10:34.2815041Z ##[command]/usr/bin/docker pull pgvector/pgvector:pg16
-2026-07-13T13:10:34.6741198Z pg16: Pulling from pgvector/pgvector
-2026-07-13T13:10:34.7964671Z 68629629b516: Pulling fs layer
-2026-07-13T13:10:34.7966076Z 870f22c135c1: Pulling fs layer
-2026-07-13T13:10:34.7966851Z 41297627cf85: Pulling fs layer
-2026-07-13T13:10:34.7967605Z 65a3bbd5eb66: Pulling fs layer
-2026-07-13T13:10:34.7968363Z 7b66c0a82cb1: Pulling fs layer
-2026-07-13T13:10:34.7969111Z cc9adae34346: Pulling fs layer
-2026-07-13T13:10:34.7969879Z cc6107e54361: Pulling fs layer
-2026-07-13T13:10:34.7970622Z 612502b9ebdb: Pulling fs layer
-2026-07-13T13:10:34.7971568Z ff38c5d8ae68: Pulling fs layer
-2026-07-13T13:10:34.7972333Z f1c1c19fbf7f: Pulling fs layer
-2026-07-13T13:10:34.7973140Z 11bb405b3d26: Pulling fs layer
-2026-07-13T13:10:34.7973888Z c08a8fef47b5: Pulling fs layer
-2026-07-13T13:10:34.7974632Z c13bbcdab63c: Pulling fs layer
-2026-07-13T13:10:34.7975813Z 2b067480292d: Pulling fs layer
-2026-07-13T13:10:34.7976704Z a27863b3f8d2: Pulling fs layer
-2026-07-13T13:10:34.7977506Z 917c1c628740: Pulling fs layer
-2026-07-13T13:10:34.7978286Z ff38c5d8ae68: Waiting
-2026-07-13T13:10:34.7979014Z f1c1c19fbf7f: Waiting
-2026-07-13T13:10:34.7979727Z 11bb405b3d26: Waiting
-2026-07-13T13:10:34.7980437Z c08a8fef47b5: Waiting
-2026-07-13T13:10:34.7981462Z c13bbcdab63c: Waiting
-2026-07-13T13:10:34.7982233Z 2b067480292d: Waiting
-2026-07-13T13:10:34.7983065Z a27863b3f8d2: Waiting
-2026-07-13T13:10:34.7983997Z 917c1c628740: Waiting
-2026-07-13T13:10:34.7984903Z 7b66c0a82cb1: Waiting
-2026-07-13T13:10:34.7985830Z cc9adae34346: Waiting
-2026-07-13T13:10:34.7986774Z cc6107e54361: Waiting
-2026-07-13T13:10:34.7987702Z 612502b9ebdb: Waiting
-2026-07-13T13:10:34.7988726Z 65a3bbd5eb66: Waiting
-2026-07-13T13:10:34.8725142Z 870f22c135c1: Verifying Checksum
-2026-07-13T13:10:34.8726681Z 870f22c135c1: Download complete
-2026-07-13T13:10:34.8986963Z 41297627cf85: Verifying Checksum
-2026-07-13T13:10:34.8989615Z 41297627cf85: Download complete
-2026-07-13T13:10:34.9596832Z 65a3bbd5eb66: Verifying Checksum
-2026-07-13T13:10:34.9599532Z 65a3bbd5eb66: Download complete
-2026-07-13T13:10:34.9682906Z 68629629b516: Verifying Checksum
-2026-07-13T13:10:34.9684814Z 68629629b516: Download complete
-2026-07-13T13:10:35.0085782Z 7b66c0a82cb1: Verifying Checksum
-2026-07-13T13:10:35.0087636Z 7b66c0a82cb1: Download complete
-2026-07-13T13:10:35.0442354Z cc6107e54361: Verifying Checksum
-2026-07-13T13:10:35.0446269Z cc6107e54361: Download complete
-2026-07-13T13:10:35.0523269Z cc9adae34346: Download complete
-2026-07-13T13:10:35.0835480Z 612502b9ebdb: Verifying Checksum
-2026-07-13T13:10:35.0837614Z 612502b9ebdb: Download complete
-2026-07-13T13:10:35.1246321Z f1c1c19fbf7f: Verifying Checksum
-2026-07-13T13:10:35.1268963Z f1c1c19fbf7f: Download complete
-2026-07-13T13:10:35.1598703Z 11bb405b3d26: Verifying Checksum
-2026-07-13T13:10:35.1603438Z 11bb405b3d26: Download complete
-2026-07-13T13:10:35.1969787Z c08a8fef47b5: Verifying Checksum
-2026-07-13T13:10:35.1974035Z c08a8fef47b5: Download complete
-2026-07-13T13:10:35.2413133Z c13bbcdab63c: Verifying Checksum
-2026-07-13T13:10:35.2415054Z c13bbcdab63c: Download complete
-2026-07-13T13:10:35.2788251Z 2b067480292d: Verifying Checksum
-2026-07-13T13:10:35.2795462Z 2b067480292d: Download complete
-2026-07-13T13:10:35.3181720Z a27863b3f8d2: Verifying Checksum
-2026-07-13T13:10:35.3186397Z a27863b3f8d2: Download complete
-2026-07-13T13:10:35.3606130Z 917c1c628740: Download complete
-2026-07-13T13:10:35.5792606Z ff38c5d8ae68: Verifying Checksum
-2026-07-13T13:10:35.5793342Z ff38c5d8ae68: Download complete
-2026-07-13T13:10:36.1801824Z 68629629b516: Pull complete
-2026-07-13T13:10:37.6323873Z 870f22c135c1: Pull complete
-2026-07-13T13:10:37.7645131Z 41297627cf85: Pull complete
-2026-07-13T13:10:37.8041582Z 65a3bbd5eb66: Pull complete
-2026-07-13T13:10:38.0990446Z 7b66c0a82cb1: Pull complete
-2026-07-13T13:10:38.1724967Z cc9adae34346: Pull complete
-2026-07-13T13:10:38.1799068Z cc6107e54361: Pull complete
-2026-07-13T13:10:38.1901362Z 612502b9ebdb: Pull complete
-2026-07-13T13:10:41.1353299Z ff38c5d8ae68: Pull complete
-2026-07-13T13:10:41.1533720Z f1c1c19fbf7f: Pull complete
-2026-07-13T13:10:41.1677046Z 11bb405b3d26: Pull complete
-2026-07-13T13:10:41.1775160Z c08a8fef47b5: Pull complete
-2026-07-13T13:10:41.1883609Z c13bbcdab63c: Pull complete
-2026-07-13T13:10:41.2005192Z 2b067480292d: Pull complete
-2026-07-13T13:10:41.2506629Z a27863b3f8d2: Pull complete
-2026-07-13T13:10:41.3255425Z 917c1c628740: Pull complete
-2026-07-13T13:10:41.3293427Z Digest: sha256:1d533553fefe4f12e5d80c7b80622ba0c382abb5758856f52983d8789179f0fb
-2026-07-13T13:10:41.3304569Z Status: Downloaded newer image for pgvector/pgvector:pg16
-2026-07-13T13:10:41.3314169Z docker.io/pgvector/pgvector:pg16
-2026-07-13T13:10:41.3377122Z ##[command]/usr/bin/docker create --name 02a3b8859da144b8b0f769ebb4c09c1e_pgvectorpgvectorpg16_a0e7f2 --label dd54ac --network github_network_89e1464a617a4124af0a7fe8e204fc67 --network-alias postgres -p 5432:5432 --health-cmd "pg_isready -U postgres -d career_coach_test" --health-interval 5s --health-timeout 5s --health-retries 10 -e "POSTGRES_USER=postgres" -e "POSTGRES_PASSWORD=postgres" -e "POSTGRES_DB=career_coach_test" -e GITHUB_ACTIONS=true -e CI=true pgvector/pgvector:pg16
-2026-07-13T13:10:41.3629190Z d1c9f3556c140e25cff391b22c8888e0df5631459f2a9689e86898bfdfb7d917
-2026-07-13T13:10:41.3653753Z ##[command]/usr/bin/docker start d1c9f3556c140e25cff391b22c8888e0df5631459f2a9689e86898bfdfb7d917
-2026-07-13T13:10:41.7736615Z d1c9f3556c140e25cff391b22c8888e0df5631459f2a9689e86898bfdfb7d917
-2026-07-13T13:10:41.7759953Z ##[command]/usr/bin/docker ps --all --filter id=d1c9f3556c140e25cff391b22c8888e0df5631459f2a9689e86898bfdfb7d917 --filter status=running --no-trunc --format "{{.ID}} {{.Status}}"
-2026-07-13T13:10:41.7894184Z d1c9f3556c140e25cff391b22c8888e0df5631459f2a9689e86898bfdfb7d917 Up Less than a second (health: starting)
-2026-07-13T13:10:41.7913070Z ##[command]/usr/bin/docker port d1c9f3556c140e25cff391b22c8888e0df5631459f2a9689e86898bfdfb7d917
-2026-07-13T13:10:41.8055900Z 5432/tcp -> 0.0.0.0:5432
-2026-07-13T13:10:41.8056858Z 5432/tcp -> [::]:5432
-2026-07-13T13:10:41.8117236Z ##[endgroup]
-2026-07-13T13:10:41.8127481Z ##[group]Waiting for all services to be ready
-2026-07-13T13:10:41.8141649Z ##[command]/usr/bin/docker inspect --format="{{if .Config.Healthcheck}}{{print .State.Health.Status}}{{end}}" d1c9f3556c140e25cff391b22c8888e0df5631459f2a9689e86898bfdfb7d917
-2026-07-13T13:10:41.8294805Z starting
-2026-07-13T13:10:41.8323291Z postgres service is starting, waiting 2 seconds before checking again.
-2026-07-13T13:10:43.8317914Z ##[command]/usr/bin/docker inspect --format="{{if .Config.Healthcheck}}{{print .State.Health.Status}}{{end}}" d1c9f3556c140e25cff391b22c8888e0df5631459f2a9689e86898bfdfb7d917
-2026-07-13T13:10:43.8448431Z starting
-2026-07-13T13:10:43.8462115Z postgres service is starting, waiting 4 seconds before checking again.
-2026-07-13T13:10:48.0613269Z ##[command]/usr/bin/docker inspect --format="{{if .Config.Healthcheck}}{{print .State.Health.Status}}{{end}}" d1c9f3556c140e25cff391b22c8888e0df5631459f2a9689e86898bfdfb7d917
-2026-07-13T13:10:48.0748160Z healthy
-2026-07-13T13:10:48.0766247Z postgres service is healthy.
-2026-07-13T13:10:48.0767058Z ##[endgroup]
-2026-07-13T13:10:48.1032597Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
-2026-07-13T13:10:48.1040382Z ##[group]Run actions/checkout@v4
-2026-07-13T13:10:48.1040969Z with:
-2026-07-13T13:10:48.1041203Z   repository: nangelov/career-coach-agent
-2026-07-13T13:10:48.1043738Z   token: ***
-2026-07-13T13:10:48.1043958Z   ssh-strict: true
-2026-07-13T13:10:48.1044168Z   ssh-user: git
-2026-07-13T13:10:48.1044384Z   persist-credentials: true
-2026-07-13T13:10:48.1044627Z   clean: true
-2026-07-13T13:10:48.1044844Z   sparse-checkout-cone-mode: true
-2026-07-13T13:10:48.1045127Z   fetch-depth: 1
-2026-07-13T13:10:48.1045348Z   fetch-tags: false
-2026-07-13T13:10:48.1045559Z   show-progress: true
-2026-07-13T13:10:48.1045770Z   lfs: false
-2026-07-13T13:10:48.1046010Z   submodules: false
-2026-07-13T13:10:48.1046226Z   set-safe-directory: true
-2026-07-13T13:10:48.1046615Z env:
-2026-07-13T13:10:48.1046820Z   HF_API_TOKEN: ci-not-a-real-token
-2026-07-13T13:10:48.1047103Z   JWT_SECRET_KEY: ci-not-a-real-secret
-2026-07-13T13:10:48.1047686Z   DATABASE_URL: ***localhost:5432/career_coach_test
-2026-07-13T13:10:48.1047997Z ##[endgroup]
-2026-07-13T13:10:48.2079150Z Syncing repository: nangelov/career-coach-agent
-2026-07-13T13:10:48.2081410Z ##[group]Getting Git version info
-2026-07-13T13:10:48.2082098Z Working directory is '/home/runner/work/career-coach-agent/career-coach-agent'
-2026-07-13T13:10:48.2083083Z [command]/usr/bin/git version
-2026-07-13T13:10:48.2091488Z git version 2.54.0
-2026-07-13T13:10:48.2111935Z ##[endgroup]
-2026-07-13T13:10:48.2127040Z Temporarily overriding HOME='/home/runner/work/_temp/311b3b2b-1e6c-4f30-9138-8e5dd748ca6c' before making global git config changes
-2026-07-13T13:10:48.2128427Z Adding repository directory to the temporary git global config as a safe directory
-2026-07-13T13:10:48.2132790Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/career-coach-agent/career-coach-agent
-2026-07-13T13:10:48.2184014Z Deleting the contents of '/home/runner/work/career-coach-agent/career-coach-agent'
-2026-07-13T13:10:48.2187704Z ##[group]Initializing the repository
-2026-07-13T13:10:48.2193521Z [command]/usr/bin/git init /home/runner/work/career-coach-agent/career-coach-agent
-2026-07-13T13:10:48.2270054Z hint: Using 'master' as the name for the initial branch. This default branch name
-2026-07-13T13:10:48.2271345Z hint: will change to "main" in Git 3.0. To configure the initial branch name
-2026-07-13T13:10:48.2272150Z hint: to use in all of your new repositories, which will suppress this warning,
-2026-07-13T13:10:48.2272786Z hint: call:
-2026-07-13T13:10:48.2273068Z hint:
-2026-07-13T13:10:48.2273516Z hint: 	git config --global init.defaultBranch <name>
-2026-07-13T13:10:48.2274005Z hint:
-2026-07-13T13:10:48.2274461Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
-2026-07-13T13:10:48.2275289Z hint: 'development'. The just-created branch can be renamed via this command:
-2026-07-13T13:10:48.2275786Z hint:
-2026-07-13T13:10:48.2275991Z hint: 	git branch -m <name>
-2026-07-13T13:10:48.2276226Z hint:
-2026-07-13T13:10:48.2276563Z hint: Disable this message with "git config set advice.defaultBranchName false"
-2026-07-13T13:10:48.2277923Z Initialized empty Git repository in /home/runner/work/career-coach-agent/career-coach-agent/.git/
-2026-07-13T13:10:48.2290804Z [command]/usr/bin/git remote add origin https://github.com/nangelov/career-coach-agent
-2026-07-13T13:10:48.2342714Z ##[endgroup]
-2026-07-13T13:10:48.2343336Z ##[group]Disabling automatic garbage collection
-2026-07-13T13:10:48.2343949Z [command]/usr/bin/git config --local gc.auto 0
-2026-07-13T13:10:48.2382964Z ##[endgroup]
-2026-07-13T13:10:48.2383541Z ##[group]Setting up auth
-2026-07-13T13:10:48.2388394Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
-2026-07-13T13:10:48.2425986Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
-2026-07-13T13:10:48.2811673Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
-2026-07-13T13:10:48.2853392Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
-2026-07-13T13:10:48.3120034Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
-2026-07-13T13:10:48.3164109Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
-2026-07-13T13:10:48.3415550Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
-2026-07-13T13:10:48.3458916Z ##[endgroup]
-2026-07-13T13:10:48.3459557Z ##[group]Fetching the repository
-2026-07-13T13:10:48.3469123Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +4353469db7ae8d96d54bb1b8619d903a417ed349:refs/remotes/origin/version-2
-2026-07-13T13:10:49.0198397Z From https://github.com/nangelov/career-coach-agent
-2026-07-13T13:10:49.0232335Z  * [new ref]         4353469db7ae8d96d54bb1b8619d903a417ed349 -> origin/version-2
-2026-07-13T13:10:49.0234232Z ##[endgroup]
-2026-07-13T13:10:49.0234792Z ##[group]Determining the checkout info
-2026-07-13T13:10:49.0241809Z ##[endgroup]
-2026-07-13T13:10:49.0243311Z [command]/usr/bin/git sparse-checkout disable
-2026-07-13T13:10:49.0297676Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
-2026-07-13T13:10:49.0335303Z ##[group]Checking out the ref
-2026-07-13T13:10:49.0340619Z [command]/usr/bin/git checkout --progress --force -B version-2 refs/remotes/origin/version-2
-2026-07-13T13:10:49.0917181Z Switched to a new branch 'version-2'
-2026-07-13T13:10:49.0919230Z branch 'version-2' set up to track 'origin/version-2'.
-2026-07-13T13:10:49.0927276Z ##[endgroup]
-2026-07-13T13:10:49.0987782Z [command]/usr/bin/git log -1 --format=%H
-2026-07-13T13:10:49.1016749Z 4353469db7ae8d96d54bb1b8619d903a417ed349
-2026-07-13T13:10:49.1252300Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
-2026-07-13T13:10:49.1254239Z ##[group]Run astral-sh/setup-uv@v5
-2026-07-13T13:10:49.1254517Z with:
-2026-07-13T13:10:49.1254738Z   enable-cache: true
-2026-07-13T13:10:49.1257181Z   github-token: ***
-2026-07-13T13:10:49.1257472Z   cache-dependency-glob: **/uv.lock
+2026-07-13T17:26:35.9108681Z Current runner version: '2.335.1'
+2026-07-13T17:26:35.9129835Z ##[group]Runner Image Provisioner
+2026-07-13T17:26:35.9130741Z Hosted Compute Agent
+2026-07-13T17:26:35.9131352Z Version: 20260624.560
+2026-07-13T17:26:35.9131917Z Commit: 925d229a51159bc391ae97e54a2dd1fe20af789d
+2026-07-13T17:26:35.9132548Z Build Date: 2026-06-24T18:26:47Z
+2026-07-13T17:26:35.9133177Z Worker ID: {b7e3bac6-d1cd-4207-a169-9f364100291c}
+2026-07-13T17:26:35.9133778Z Azure Region: westus3
+2026-07-13T17:26:35.9134592Z ##[endgroup]
+2026-07-13T17:26:35.9135786Z ##[group]Operating System
+2026-07-13T17:26:35.9136338Z Ubuntu
+2026-07-13T17:26:35.9136841Z 24.04.4
+2026-07-13T17:26:35.9137307Z LTS
+2026-07-13T17:26:35.9137793Z ##[endgroup]
+2026-07-13T17:26:35.9138305Z ##[group]Runner Image
+2026-07-13T17:26:35.9138834Z Image: ubuntu-24.04
+2026-07-13T17:26:35.9139311Z Version: 20260705.232.1
+2026-07-13T17:26:35.9140679Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260705.232/images/ubuntu/Ubuntu2404-Readme.md
+2026-07-13T17:26:35.9142019Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260705.232
+2026-07-13T17:26:35.9142833Z ##[endgroup]
+2026-07-13T17:26:35.9143846Z ##[group]GITHUB_TOKEN Permissions
+2026-07-13T17:26:35.9145437Z Contents: read
+2026-07-13T17:26:35.9145942Z Metadata: read
+2026-07-13T17:26:35.9146531Z ##[endgroup]
+2026-07-13T17:26:35.9148250Z Secret source: Actions
+2026-07-13T17:26:35.9148938Z Prepare workflow directory
+2026-07-13T17:26:35.9546390Z Prepare all required actions
+2026-07-13T17:26:35.9580757Z Getting action download info
+2026-07-13T17:26:36.2623944Z Download action repository 'actions/checkout@v4' (SHA:34e114876b0b11c390a56381ad16ebd13914f8d5)
+2026-07-13T17:26:36.9215090Z Download action repository 'astral-sh/setup-uv@v5' (SHA:d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86)
+2026-07-13T17:26:38.6723067Z Complete job name: backend
+2026-07-13T17:26:38.7121563Z ##[group]Checking docker version
+2026-07-13T17:26:38.7131951Z ##[command]/usr/bin/docker version --format '{{.Server.APIVersion}}'
+2026-07-13T17:26:39.1324738Z '1.48'
+2026-07-13T17:26:39.1334345Z Docker daemon API version: '1.48'
+2026-07-13T17:26:39.1334728Z ##[command]/usr/bin/docker version --format '{{.Client.APIVersion}}'
+2026-07-13T17:26:39.1493046Z '1.48'
+2026-07-13T17:26:39.1505994Z Docker client API version: '1.48'
+2026-07-13T17:26:39.1514505Z ##[endgroup]
+2026-07-13T17:26:39.1519181Z ##[group]Clean up resources from previous jobs
+2026-07-13T17:26:39.1532097Z ##[command]/usr/bin/docker ps --all --quiet --no-trunc --filter "label=eb96b4"
+2026-07-13T17:26:39.1664222Z ##[command]/usr/bin/docker network prune --force --filter "label=eb96b4"
+2026-07-13T17:26:39.1771020Z ##[endgroup]
+2026-07-13T17:26:39.1771293Z ##[group]Create local container network
+2026-07-13T17:26:39.1778613Z ##[command]/usr/bin/docker network create --label eb96b4 github_network_fd835f7978db4312a21693348435446e
+2026-07-13T17:26:39.2917000Z 3fce0ed4c29aa0965795a2d300aac510e7e624e48ae6f4a4225c514639da9549
+2026-07-13T17:26:39.2936656Z ##[endgroup]
+2026-07-13T17:26:39.2958354Z ##[group]Starting postgres service container
+2026-07-13T17:26:39.2975841Z ##[command]/usr/bin/docker pull pgvector/pgvector:pg16
+2026-07-13T17:26:40.5545033Z pg16: Pulling from pgvector/pgvector
+2026-07-13T17:26:40.7941850Z 68629629b516: Pulling fs layer
+2026-07-13T17:26:40.7942310Z 870f22c135c1: Pulling fs layer
+2026-07-13T17:26:40.7942712Z 41297627cf85: Pulling fs layer
+2026-07-13T17:26:40.7942969Z 65a3bbd5eb66: Pulling fs layer
+2026-07-13T17:26:40.7943179Z 7b66c0a82cb1: Pulling fs layer
+2026-07-13T17:26:40.7943381Z cc9adae34346: Pulling fs layer
+2026-07-13T17:26:40.7943577Z cc6107e54361: Pulling fs layer
+2026-07-13T17:26:40.7943781Z 612502b9ebdb: Pulling fs layer
+2026-07-13T17:26:40.7944006Z ff38c5d8ae68: Pulling fs layer
+2026-07-13T17:26:40.7944231Z f1c1c19fbf7f: Pulling fs layer
+2026-07-13T17:26:40.7944457Z 11bb405b3d26: Pulling fs layer
+2026-07-13T17:26:40.7944651Z c08a8fef47b5: Pulling fs layer
+2026-07-13T17:26:40.7944844Z c13bbcdab63c: Pulling fs layer
+2026-07-13T17:26:40.7945313Z 2b067480292d: Pulling fs layer
+2026-07-13T17:26:40.7945541Z a27863b3f8d2: Pulling fs layer
+2026-07-13T17:26:40.7945724Z 917c1c628740: Pulling fs layer
+2026-07-13T17:26:40.7945907Z 65a3bbd5eb66: Waiting
+2026-07-13T17:26:40.7946094Z 7b66c0a82cb1: Waiting
+2026-07-13T17:26:40.7946268Z cc9adae34346: Waiting
+2026-07-13T17:26:40.7946444Z cc6107e54361: Waiting
+2026-07-13T17:26:40.7946614Z c13bbcdab63c: Waiting
+2026-07-13T17:26:40.7946784Z 612502b9ebdb: Waiting
+2026-07-13T17:26:40.7946949Z 2b067480292d: Waiting
+2026-07-13T17:26:40.7947113Z ff38c5d8ae68: Waiting
+2026-07-13T17:26:40.7947281Z a27863b3f8d2: Waiting
+2026-07-13T17:26:40.7947445Z f1c1c19fbf7f: Waiting
+2026-07-13T17:26:40.7947608Z 917c1c628740: Waiting
+2026-07-13T17:26:40.7947771Z 11bb405b3d26: Waiting
+2026-07-13T17:26:40.7947994Z c08a8fef47b5: Waiting
+2026-07-13T17:26:40.9838777Z 870f22c135c1: Verifying Checksum
+2026-07-13T17:26:40.9839225Z 870f22c135c1: Download complete
+2026-07-13T17:26:41.0093378Z 41297627cf85: Verifying Checksum
+2026-07-13T17:26:41.0095110Z 41297627cf85: Download complete
+2026-07-13T17:26:41.0632569Z 68629629b516: Verifying Checksum
+2026-07-13T17:26:41.0632879Z 68629629b516: Download complete
+2026-07-13T17:26:41.2017932Z 65a3bbd5eb66: Verifying Checksum
+2026-07-13T17:26:41.2018768Z 65a3bbd5eb66: Download complete
+2026-07-13T17:26:41.2292001Z 7b66c0a82cb1: Verifying Checksum
+2026-07-13T17:26:41.2292387Z 7b66c0a82cb1: Download complete
+2026-07-13T17:26:41.2635249Z cc9adae34346: Verifying Checksum
+2026-07-13T17:26:41.2635642Z cc9adae34346: Download complete
+2026-07-13T17:26:41.3709441Z cc6107e54361: Verifying Checksum
+2026-07-13T17:26:41.4204110Z 612502b9ebdb: Download complete
+2026-07-13T17:26:41.5452126Z f1c1c19fbf7f: Verifying Checksum
+2026-07-13T17:26:41.5452452Z f1c1c19fbf7f: Download complete
+2026-07-13T17:26:41.5969527Z 11bb405b3d26: Verifying Checksum
+2026-07-13T17:26:41.5971170Z 11bb405b3d26: Download complete
+2026-07-13T17:26:41.7201394Z c08a8fef47b5: Download complete
+2026-07-13T17:26:41.7218320Z ff38c5d8ae68: Download complete
+2026-07-13T17:26:41.7920272Z c13bbcdab63c: Download complete
+2026-07-13T17:26:41.8923123Z a27863b3f8d2: Download complete
+2026-07-13T17:26:41.9009088Z 2b067480292d: Verifying Checksum
+2026-07-13T17:26:41.9010310Z 2b067480292d: Download complete
+2026-07-13T17:26:41.9794216Z 917c1c628740: Verifying Checksum
+2026-07-13T17:26:41.9796500Z 917c1c628740: Download complete
+2026-07-13T17:26:42.4896880Z 68629629b516: Pull complete
+2026-07-13T17:26:45.3246741Z 870f22c135c1: Pull complete
+2026-07-13T17:26:45.7788746Z 41297627cf85: Pull complete
+2026-07-13T17:26:45.8347272Z 65a3bbd5eb66: Pull complete
+2026-07-13T17:26:46.2463053Z 7b66c0a82cb1: Pull complete
+2026-07-13T17:26:46.3373342Z cc9adae34346: Pull complete
+2026-07-13T17:26:46.3466660Z cc6107e54361: Pull complete
+2026-07-13T17:26:46.3575855Z 612502b9ebdb: Pull complete
+2026-07-13T17:26:49.8864248Z ff38c5d8ae68: Pull complete
+2026-07-13T17:26:49.8994982Z f1c1c19fbf7f: Pull complete
+2026-07-13T17:26:49.9096833Z 11bb405b3d26: Pull complete
+2026-07-13T17:26:49.9209327Z c08a8fef47b5: Pull complete
+2026-07-13T17:26:49.9308872Z c13bbcdab63c: Pull complete
+2026-07-13T17:26:49.9399460Z 2b067480292d: Pull complete
+2026-07-13T17:26:49.9836791Z a27863b3f8d2: Pull complete
+2026-07-13T17:26:50.0603867Z 917c1c628740: Pull complete
+2026-07-13T17:26:50.0641308Z Digest: sha256:1d533553fefe4f12e5d80c7b80622ba0c382abb5758856f52983d8789179f0fb
+2026-07-13T17:26:50.0652354Z Status: Downloaded newer image for pgvector/pgvector:pg16
+2026-07-13T17:26:50.0675560Z docker.io/pgvector/pgvector:pg16
+2026-07-13T17:26:50.0729646Z ##[command]/usr/bin/docker create --name cd4eea9c20c543f1b7fee359f2c17bf6_pgvectorpgvectorpg16_5d5f47 --label eb96b4 --network github_network_fd835f7978db4312a21693348435446e --network-alias postgres -p 5432:5432 --health-cmd "pg_isready -U postgres -d career_coach_test" --health-interval 5s --health-timeout 5s --health-retries 10 -e "POSTGRES_USER=postgres" -e "POSTGRES_PASSWORD=postgres" -e "POSTGRES_DB=career_coach_test" -e GITHUB_ACTIONS=true -e CI=true pgvector/pgvector:pg16
+2026-07-13T17:26:50.0943019Z c53a034b3b2b2b22a564c409d9e23a65ff54d03027740acf45a9ed437181c704
+2026-07-13T17:26:50.0962514Z ##[command]/usr/bin/docker start c53a034b3b2b2b22a564c409d9e23a65ff54d03027740acf45a9ed437181c704
+2026-07-13T17:26:50.3006817Z c53a034b3b2b2b22a564c409d9e23a65ff54d03027740acf45a9ed437181c704
+2026-07-13T17:26:50.3029635Z ##[command]/usr/bin/docker ps --all --filter id=c53a034b3b2b2b22a564c409d9e23a65ff54d03027740acf45a9ed437181c704 --filter status=running --no-trunc --format "{{.ID}} {{.Status}}"
+2026-07-13T17:26:50.3147892Z c53a034b3b2b2b22a564c409d9e23a65ff54d03027740acf45a9ed437181c704 Up Less than a second (health: starting)
+2026-07-13T17:26:50.3167675Z ##[command]/usr/bin/docker port c53a034b3b2b2b22a564c409d9e23a65ff54d03027740acf45a9ed437181c704
+2026-07-13T17:26:50.3303201Z 5432/tcp -> 0.0.0.0:5432
+2026-07-13T17:26:50.3303901Z 5432/tcp -> [::]:5432
+2026-07-13T17:26:50.3337662Z ##[endgroup]
+2026-07-13T17:26:50.3345430Z ##[group]Waiting for all services to be ready
+2026-07-13T17:26:50.3356466Z ##[command]/usr/bin/docker inspect --format="{{if .Config.Healthcheck}}{{print .State.Health.Status}}{{end}}" c53a034b3b2b2b22a564c409d9e23a65ff54d03027740acf45a9ed437181c704
+2026-07-13T17:26:50.3485599Z starting
+2026-07-13T17:26:50.3505387Z postgres service is starting, waiting 2 seconds before checking again.
+2026-07-13T17:26:52.3501961Z ##[command]/usr/bin/docker inspect --format="{{if .Config.Healthcheck}}{{print .State.Health.Status}}{{end}}" c53a034b3b2b2b22a564c409d9e23a65ff54d03027740acf45a9ed437181c704
+2026-07-13T17:26:52.3608866Z starting
+2026-07-13T17:26:52.3621815Z postgres service is starting, waiting 4 seconds before checking again.
+2026-07-13T17:26:56.5851499Z ##[command]/usr/bin/docker inspect --format="{{if .Config.Healthcheck}}{{print .State.Health.Status}}{{end}}" c53a034b3b2b2b22a564c409d9e23a65ff54d03027740acf45a9ed437181c704
+2026-07-13T17:26:56.5954705Z healthy
+2026-07-13T17:26:56.5968203Z postgres service is healthy.
+2026-07-13T17:26:56.5968834Z ##[endgroup]
+2026-07-13T17:26:56.6175456Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-07-13T17:26:56.6181625Z ##[group]Run actions/checkout@v4
+2026-07-13T17:26:56.6181943Z with:
+2026-07-13T17:26:56.6182137Z   repository: nangelov/career-coach-agent
+2026-07-13T17:26:56.6184093Z   token: ***
+2026-07-13T17:26:56.6184275Z   ssh-strict: true
+2026-07-13T17:26:56.6184451Z   ssh-user: git
+2026-07-13T17:26:56.6184635Z   persist-credentials: true
+2026-07-13T17:26:56.6184829Z   clean: true
+2026-07-13T17:26:56.6185003Z   sparse-checkout-cone-mode: true
+2026-07-13T17:26:56.6185215Z   fetch-depth: 1
+2026-07-13T17:26:56.6185383Z   fetch-tags: false
+2026-07-13T17:26:56.6185552Z   show-progress: true
+2026-07-13T17:26:56.6185727Z   lfs: false
+2026-07-13T17:26:56.6185924Z   submodules: false
+2026-07-13T17:26:56.6186111Z   set-safe-directory: true
+2026-07-13T17:26:56.6186397Z env:
+2026-07-13T17:26:56.6186565Z   HF_API_TOKEN: ci-not-a-real-token
+2026-07-13T17:26:56.6186791Z   JWT_SECRET_KEY: ci-not-a-real-secret
+2026-07-13T17:26:56.6187244Z   DATABASE_URL: ***localhost:5432/career_coach_test
+2026-07-13T17:26:56.6187483Z ##[endgroup]
+2026-07-13T17:26:56.6959653Z Syncing repository: nangelov/career-coach-agent
+2026-07-13T17:26:56.6960944Z ##[group]Getting Git version info
+2026-07-13T17:26:56.6961329Z Working directory is '/home/runner/work/career-coach-agent/career-coach-agent'
+2026-07-13T17:26:56.6961831Z [command]/usr/bin/git version
+2026-07-13T17:26:56.8672833Z git version 2.54.0
+2026-07-13T17:26:56.8688456Z ##[endgroup]
+2026-07-13T17:26:56.8700304Z Temporarily overriding HOME='/home/runner/work/_temp/8ffc409a-2263-49e5-a115-3ec46d212343' before making global git config changes
+2026-07-13T17:26:56.8701376Z Adding repository directory to the temporary git global config as a safe directory
+2026-07-13T17:26:56.8704916Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/career-coach-agent/career-coach-agent
+2026-07-13T17:26:56.8735157Z Deleting the contents of '/home/runner/work/career-coach-agent/career-coach-agent'
+2026-07-13T17:26:56.8738150Z ##[group]Initializing the repository
+2026-07-13T17:26:56.8742045Z [command]/usr/bin/git init /home/runner/work/career-coach-agent/career-coach-agent
+2026-07-13T17:26:57.2148273Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-07-13T17:26:57.2148980Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-07-13T17:26:57.2149609Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-07-13T17:26:57.2150066Z hint: call:
+2026-07-13T17:26:57.2150295Z hint:
+2026-07-13T17:26:57.2150838Z hint: 	git config --global init.defaultBranch <name>
+2026-07-13T17:26:57.2151233Z hint:
+2026-07-13T17:26:57.2151646Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-07-13T17:26:57.2152259Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-07-13T17:26:57.2152739Z hint:
+2026-07-13T17:26:57.2152978Z hint: 	git branch -m <name>
+2026-07-13T17:26:57.2153262Z hint:
+2026-07-13T17:26:57.2153641Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-07-13T17:26:57.2154350Z Initialized empty Git repository in /home/runner/work/career-coach-agent/career-coach-agent/.git/
+2026-07-13T17:26:57.2171328Z [command]/usr/bin/git remote add origin https://github.com/nangelov/career-coach-agent
+2026-07-13T17:26:57.2190290Z ##[endgroup]
+2026-07-13T17:26:57.2191056Z ##[group]Disabling automatic garbage collection
+2026-07-13T17:26:57.2194048Z [command]/usr/bin/git config --local gc.auto 0
+2026-07-13T17:26:57.2220054Z ##[endgroup]
+2026-07-13T17:26:57.2220673Z ##[group]Setting up auth
+2026-07-13T17:26:57.2227887Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-07-13T17:26:57.2256873Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-07-13T17:26:57.4071345Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-07-13T17:26:57.4097606Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-07-13T17:26:57.4311903Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-07-13T17:26:57.4336041Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-07-13T17:26:57.4516349Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-07-13T17:26:57.4882759Z ##[endgroup]
+2026-07-13T17:26:57.4883165Z ##[group]Fetching the repository
+2026-07-13T17:26:57.4889826Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +ea4bdace15ac585aa00546407f70387e0497ff0e:refs/remotes/origin/version-2
+2026-07-13T17:26:58.9171939Z From https://github.com/nangelov/career-coach-agent
+2026-07-13T17:26:58.9172586Z  * [new ref]         ea4bdace15ac585aa00546407f70387e0497ff0e -> origin/version-2
+2026-07-13T17:26:58.9192435Z ##[endgroup]
+2026-07-13T17:26:58.9193493Z ##[group]Determining the checkout info
+2026-07-13T17:26:58.9195009Z ##[endgroup]
+2026-07-13T17:26:58.9200837Z [command]/usr/bin/git sparse-checkout disable
+2026-07-13T17:26:58.9235077Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-07-13T17:26:58.9257520Z ##[group]Checking out the ref
+2026-07-13T17:26:58.9271274Z [command]/usr/bin/git checkout --progress --force -B version-2 refs/remotes/origin/version-2
+2026-07-13T17:26:58.9739958Z Switched to a new branch 'version-2'
+2026-07-13T17:26:58.9743835Z branch 'version-2' set up to track 'origin/version-2'.
+2026-07-13T17:26:58.9748064Z ##[endgroup]
+2026-07-13T17:26:58.9789782Z [command]/usr/bin/git log -1 --format=%H
+2026-07-13T17:26:58.9809979Z ea4bdace15ac585aa00546407f70387e0497ff0e
+2026-07-13T17:26:58.9990758Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-07-13T17:26:58.9992226Z ##[group]Run astral-sh/setup-uv@v5
+2026-07-13T17:26:58.9992443Z with:
+2026-07-13T17:26:58.9992607Z   enable-cache: true
+2026-07-13T17:26:58.9994481Z   github-token: ***
+2026-07-13T17:26:58.9994709Z   cache-dependency-glob: **/uv.lock
 **/requirements*.txt
 
-2026-07-13T13:10:49.1257800Z   prune-cache: true
-2026-07-13T13:10:49.1258030Z   ignore-nothing-to-cache: false
-2026-07-13T13:10:49.1258292Z   ignore-empty-workdir: false
-2026-07-13T13:10:49.1258530Z env:
-2026-07-13T13:10:49.1258742Z   HF_API_TOKEN: ci-not-a-real-token
-2026-07-13T13:10:49.1259018Z   JWT_SECRET_KEY: ci-not-a-real-secret
-2026-07-13T13:10:49.1259602Z   DATABASE_URL: ***localhost:5432/career_coach_test
-2026-07-13T13:10:49.1259919Z ##[endgroup]
-2026-07-13T13:10:49.3164682Z (node:2702) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
-2026-07-13T13:10:49.3165459Z (Use `node --trace-deprecation ...` to show where the warning was created)
-2026-07-13T13:10:49.6190213Z Downloading uv from "https://github.com/astral-sh/uv/releases/download/0.11.28/uv-x86_64-unknown-linux-gnu.tar.gz" ...
-2026-07-13T13:10:49.9369697Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/6b964d57-6d8d-4d6f-be72-25c45ff7e1c6 -f /home/runner/work/_temp/b7b624f6-04b8-4e36-b042-6771b923d44e
-2026-07-13T13:10:50.4892969Z Added /home/runner/.local/bin to the path
-2026-07-13T13:10:50.4895802Z Added /opt/hostedtoolcache/uv/0.11.28/x86_64 to the path
-2026-07-13T13:10:50.4922392Z Set UV_CACHE_DIR to /home/runner/work/_temp/setup-uv-cache
-2026-07-13T13:10:50.4922975Z Successfully installed uv version 0.11.28
-2026-07-13T13:10:50.4923664Z Searching files using cache dependency glob: **/uv.lock,**/requirements*.txt
-2026-07-13T13:10:50.5268949Z /home/runner/work/career-coach-agent/career-coach-agent/backend/uv.lock
-2026-07-13T13:10:50.5719118Z /home/runner/work/career-coach-agent/career-coach-agent/legacy-code/requirements.txt
-2026-07-13T13:10:50.5733816Z Found 2 files to hash.
-2026-07-13T13:10:50.6522961Z Trying to restore uv cache from GitHub Actions cache with key: setup-uv-1-x86_64-unknown-linux-gnu-3.12.3-a15202b9356d8255a7b8a8eea3526018cc02bf20a0633eb010b0133d9575fa7c
-2026-07-13T13:10:50.7484612Z Cache hit for: setup-uv-1-x86_64-unknown-linux-gnu-3.12.3-a15202b9356d8255a7b8a8eea3526018cc02bf20a0633eb010b0133d9575fa7c
-2026-07-13T13:10:50.7595898Z (node:2702) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
-2026-07-13T13:10:51.3904338Z Received 7081453 of 7081453 (100.0%), 15.0 MBs/sec
-2026-07-13T13:10:51.3905355Z Cache Size: ~7 MB (7081453 B)
-2026-07-13T13:10:51.3930389Z [command]/usr/bin/tar -xf /home/runner/work/_temp/cea9f980-1f56-435e-83ce-b57770d8aace/cache.tzst -P -C /home/runner/work/career-coach-agent/career-coach-agent --use-compress-program unzstd
-2026-07-13T13:10:51.4476053Z Cache restored successfully
-2026-07-13T13:10:51.4485807Z uv cache restored from GitHub Actions cache with key: setup-uv-1-x86_64-unknown-linux-gnu-3.12.3-a15202b9356d8255a7b8a8eea3526018cc02bf20a0633eb010b0133d9575fa7c
-2026-07-13T13:10:51.4676643Z ##[group]Run uv python install 3.11
-2026-07-13T13:10:51.4677007Z [36;1muv python install 3.11[0m
-2026-07-13T13:10:51.4717879Z shell: /usr/bin/bash -e {0}
-2026-07-13T13:10:51.4718162Z env:
-2026-07-13T13:10:51.4718383Z   HF_API_TOKEN: ci-not-a-real-token
-2026-07-13T13:10:51.4718695Z   JWT_SECRET_KEY: ci-not-a-real-secret
-2026-07-13T13:10:51.4719338Z   DATABASE_URL: ***localhost:5432/career_coach_test
-2026-07-13T13:10:51.4719721Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
-2026-07-13T13:10:51.4720040Z ##[endgroup]
-2026-07-13T13:10:51.5990163Z Downloading cpython-3.11.15-linux-x86_64-gnu (download) (29.5MiB)
-2026-07-13T13:10:52.3947431Z  Downloaded cpython-3.11.15-linux-x86_64-gnu (download)
-2026-07-13T13:10:52.3991617Z Installed Python 3.11.15 in 903ms
-2026-07-13T13:10:52.3992164Z  + cpython-3.11.15-linux-x86_64-gnu (python3.11)
-2026-07-13T13:10:52.4047100Z ##[group]Run uv sync --only-group dev
-2026-07-13T13:10:52.4047491Z [36;1muv sync --only-group dev[0m
-2026-07-13T13:10:52.4047938Z [36;1muv pip install fastapi pydantic pydantic-settings "celery[redis]" openai \[0m
-2026-07-13T13:10:52.4048524Z [36;1m  sqlalchemy asyncpg aiosqlite pgvector alembic joserfc authlib langgraph \[0m
-2026-07-13T13:10:52.4048956Z [36;1m  python-multipart[0m
-2026-07-13T13:10:52.4085310Z shell: /usr/bin/bash -e {0}
-2026-07-13T13:10:52.4085575Z env:
-2026-07-13T13:10:52.4085797Z   HF_API_TOKEN: ci-not-a-real-token
-2026-07-13T13:10:52.4086098Z   JWT_SECRET_KEY: ci-not-a-real-secret
-2026-07-13T13:10:52.4086726Z   DATABASE_URL: ***localhost:5432/career_coach_test
-2026-07-13T13:10:52.4087106Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
-2026-07-13T13:10:52.4087418Z ##[endgroup]
-2026-07-13T13:10:52.5559253Z Using CPython 3.11.15
-2026-07-13T13:10:52.5559746Z Creating virtual environment at: .venv
-2026-07-13T13:10:52.5717432Z Resolved 217 packages in 0.84ms
-2026-07-13T13:10:52.6570464Z Downloading ruff (11.0MiB)
-2026-07-13T13:10:52.6576745Z Downloading pygments (1.2MiB)
-2026-07-13T13:10:52.6579210Z Downloading mypy (14.2MiB)
-2026-07-13T13:10:52.6580548Z Downloading ast-serialize (1.2MiB)
-2026-07-13T13:10:52.7721152Z  Downloaded ast-serialize
-2026-07-13T13:10:52.9595338Z  Downloaded ruff
-2026-07-13T13:10:53.0205366Z  Downloaded pygments
-2026-07-13T13:10:53.1720119Z  Downloaded mypy
-2026-07-13T13:10:53.1722478Z Prepared 25 packages in 599ms
-2026-07-13T13:10:53.2212932Z Installed 25 packages in 48ms
-2026-07-13T13:10:53.2213400Z  + anyio==4.14.1
-2026-07-13T13:10:53.2213798Z  + ast-serialize==0.5.0
-2026-07-13T13:10:53.2214432Z  + attrs==26.1.0
-2026-07-13T13:10:53.2215036Z  + celery-types==0.26.0
-2026-07-13T13:10:53.2215751Z  + certifi==2026.6.17
-2026-07-13T13:10:53.2216462Z  + h11==0.16.0
-2026-07-13T13:10:53.2217090Z  + httpcore==1.0.9
-2026-07-13T13:10:53.2217798Z  + httpx==0.28.1
-2026-07-13T13:10:53.2218396Z  + idna==3.18
-2026-07-13T13:10:53.2219141Z  + iniconfig==2.3.0
-2026-07-13T13:10:53.2219826Z  + librt==0.11.0
-2026-07-13T13:10:53.2220450Z  + mypy==2.1.0
-2026-07-13T13:10:53.2221366Z  + mypy-extensions==1.1.0
-2026-07-13T13:10:53.2222119Z  + outcome==1.3.0.post0
-2026-07-13T13:10:53.2222739Z  + packaging==26.2
-2026-07-13T13:10:53.2223380Z  + pathspec==1.1.1
-2026-07-13T13:10:53.2224003Z  + pluggy==1.6.0
-2026-07-13T13:10:53.2224732Z  + pygments==2.20.0
-2026-07-13T13:10:53.2225416Z  + pytest==9.1.1
-2026-07-13T13:10:53.2226474Z  + pytest-asyncio==1.4.0
-2026-07-13T13:10:53.2226874Z  + ruff==0.15.20
-2026-07-13T13:10:53.2227634Z  + sniffio==1.3.1
-2026-07-13T13:10:53.2228374Z  + sortedcontainers==2.4.0
-2026-07-13T13:10:53.2229076Z  + trio==0.33.0
-2026-07-13T13:10:53.2229737Z  + typing-extensions==4.15.0
-2026-07-13T13:10:53.4988403Z Resolved 73 packages in 135ms
-2026-07-13T13:10:53.5113228Z Downloading zstandard (5.3MiB)
-2026-07-13T13:10:53.5191086Z Downloading asyncpg (2.8MiB)
-2026-07-13T13:10:53.5192137Z Downloading cryptography (4.5MiB)
-2026-07-13T13:10:53.5197920Z Downloading openai (1.6MiB)
-2026-07-13T13:10:53.5206423Z Downloading pydantic-core (2.0MiB)
-2026-07-13T13:10:53.5224540Z Downloading sqlalchemy (3.2MiB)
-2026-07-13T13:10:53.8403053Z  Downloaded pydantic-core
-2026-07-13T13:10:53.9344619Z  Downloaded zstandard
-2026-07-13T13:10:53.9459630Z  Downloaded asyncpg
-2026-07-13T13:10:53.9826708Z  Downloaded cryptography
-2026-07-13T13:10:54.0221831Z  Downloaded sqlalchemy
-2026-07-13T13:10:54.1429002Z  Downloaded openai
-2026-07-13T13:10:54.1431531Z Prepared 64 packages in 643ms
-2026-07-13T13:10:54.2214430Z Installed 64 packages in 77ms
-2026-07-13T13:10:54.2215015Z  + aiosqlite==0.22.1
-2026-07-13T13:10:54.2215424Z  + alembic==1.18.5
-2026-07-13T13:10:54.2215798Z  + amqp==5.3.1
-2026-07-13T13:10:54.2216178Z  + annotated-doc==0.0.4
-2026-07-13T13:10:54.2216611Z  + annotated-types==0.7.0
-2026-07-13T13:10:54.2217048Z  + asyncpg==0.31.0
-2026-07-13T13:10:54.2217422Z  + authlib==1.7.2
-2026-07-13T13:10:54.2217792Z  + billiard==4.2.4
-2026-07-13T13:10:54.2218153Z  + celery==5.6.3
-2026-07-13T13:10:54.2218847Z  + cffi==2.1.0
-2026-07-13T13:10:54.2219247Z  + charset-normalizer==3.4.9
-2026-07-13T13:10:54.2219688Z  + click==8.4.2
-2026-07-13T13:10:54.2220310Z  + click-didyoumean==0.3.1
-2026-07-13T13:10:54.2220933Z  + click-plugins==1.1.1.2
-2026-07-13T13:10:54.2221328Z  + click-repl==0.3.0
-2026-07-13T13:10:54.2221684Z  + cryptography==49.0.0
-2026-07-13T13:10:54.2222035Z  + distro==1.9.0
-2026-07-13T13:10:54.2222349Z  + fastapi==0.139.0
-2026-07-13T13:10:54.2222672Z  + greenlet==3.5.3
-2026-07-13T13:10:54.2222983Z  + jiter==0.16.0
-2026-07-13T13:10:54.2223282Z  + joserfc==1.7.3
-2026-07-13T13:10:54.2223595Z  + jsonpatch==1.33
-2026-07-13T13:10:54.2223924Z  + jsonpointer==3.1.1
-2026-07-13T13:10:54.2224264Z  + kombu==5.6.2
-2026-07-13T13:10:54.2224586Z  + langchain-core==1.4.9
-2026-07-13T13:10:54.2224972Z  + langchain-protocol==0.0.18
-2026-07-13T13:10:54.2225364Z  + langgraph==1.2.9
-2026-07-13T13:10:54.2225712Z  + langgraph-checkpoint==4.1.1
-2026-07-13T13:10:54.2226113Z  + langgraph-prebuilt==1.1.0
-2026-07-13T13:10:54.2226511Z  + langgraph-sdk==0.4.2
-2026-07-13T13:10:54.2226872Z  + langsmith==0.10.2
-2026-07-13T13:10:54.2227193Z  + mako==1.3.12
-2026-07-13T13:10:54.2227737Z  + markupsafe==3.0.3
-2026-07-13T13:10:54.2228220Z  + openai==2.45.0
-2026-07-13T13:10:54.2228932Z  + orjson==3.11.9
-2026-07-13T13:10:54.2229539Z  + ormsgpack==1.12.2
-2026-07-13T13:10:54.2230150Z  + pgvector==0.5.0
-2026-07-13T13:10:54.2231013Z  + prompt-toolkit==3.0.52
-2026-07-13T13:10:54.2231494Z  + pycparser==3.0
-2026-07-13T13:10:54.2232097Z  + pydantic==2.13.4
-2026-07-13T13:10:54.2232805Z  + pydantic-core==2.46.4
-2026-07-13T13:10:54.2233429Z  + pydantic-settings==2.14.2
-2026-07-13T13:10:54.2234247Z  + python-dateutil==2.9.0.post0
-2026-07-13T13:10:54.2234755Z  + python-dotenv==1.2.2
-2026-07-13T13:10:54.2235367Z  + python-multipart==0.0.32
-2026-07-13T13:10:54.2235945Z  + pyyaml==6.0.3
-2026-07-13T13:10:54.2236614Z  + redis==6.4.0
-2026-07-13T13:10:54.2237231Z  + requests==2.34.2
-2026-07-13T13:10:54.2237956Z  + requests-toolbelt==1.0.0
-2026-07-13T13:10:54.2238613Z  + six==1.17.0
-2026-07-13T13:10:54.2239293Z  + sqlalchemy==2.0.51
-2026-07-13T13:10:54.2239977Z  + starlette==1.3.1
-2026-07-13T13:10:54.2240491Z  + tenacity==9.1.4
-2026-07-13T13:10:54.2241376Z  + tqdm==4.68.4
-2026-07-13T13:10:54.2241990Z  + typing-inspection==0.4.2
-2026-07-13T13:10:54.2242548Z  + tzdata==2026.3
-2026-07-13T13:10:54.2243153Z  + tzlocal==5.4.4
-2026-07-13T13:10:54.2243774Z  + urllib3==2.7.0
-2026-07-13T13:10:54.2244480Z  + uuid-utils==0.17.0
-2026-07-13T13:10:54.2245085Z  + vine==5.1.0
-2026-07-13T13:10:54.2245724Z  + wcwidth==0.8.2
-2026-07-13T13:10:54.2246318Z  + websockets==15.0.1
-2026-07-13T13:10:54.2247006Z  + xxhash==3.8.1
-2026-07-13T13:10:54.2247636Z  + zstandard==0.25.0
-2026-07-13T13:10:54.2325862Z ##[group]Run uv run --no-sync ruff check .
-2026-07-13T13:10:54.2326210Z [36;1muv run --no-sync ruff check .[0m
-2026-07-13T13:10:54.2362471Z shell: /usr/bin/bash -e {0}
-2026-07-13T13:10:54.2362735Z env:
-2026-07-13T13:10:54.2362962Z   HF_API_TOKEN: ci-not-a-real-token
-2026-07-13T13:10:54.2363271Z   JWT_SECRET_KEY: ci-not-a-real-secret
-2026-07-13T13:10:54.2364085Z   DATABASE_URL: ***localhost:5432/career_coach_test
-2026-07-13T13:10:54.2364455Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
-2026-07-13T13:10:54.2364760Z ##[endgroup]
-2026-07-13T13:10:54.2854486Z All checks passed!
-2026-07-13T13:10:54.2899895Z ##[group]Run uv run --no-sync ruff format --check .
-2026-07-13T13:10:54.2900295Z [36;1muv run --no-sync ruff format --check .[0m
-2026-07-13T13:10:54.2936106Z shell: /usr/bin/bash -e {0}
-2026-07-13T13:10:54.2936368Z env:
-2026-07-13T13:10:54.2936598Z   HF_API_TOKEN: ci-not-a-real-token
-2026-07-13T13:10:54.2936889Z   JWT_SECRET_KEY: ci-not-a-real-secret
-2026-07-13T13:10:54.2937522Z   DATABASE_URL: ***localhost:5432/career_coach_test
-2026-07-13T13:10:54.2937893Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
-2026-07-13T13:10:54.2938220Z ##[endgroup]
-2026-07-13T13:10:54.3396284Z Would reformat: app/api/auth.py
-2026-07-13T13:10:54.3396747Z Would reformat: app/net/ssrf_guard.py
-2026-07-13T13:10:54.3397237Z Would reformat: tests/test_auth_service.py
-2026-07-13T13:10:54.3397720Z Would reformat: tests/test_llm_redaction.py
-2026-07-13T13:10:54.3398023Z Would reformat: tests/test_sso_service.py
-2026-07-13T13:10:54.3398377Z 5 files would be reformatted, 167 files already formatted
-2026-07-13T13:10:54.3429040Z ##[error]Process completed with exit code 1.
-2026-07-13T13:10:54.3553784Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
-2026-07-13T13:10:54.3554987Z Post job cleanup.
-2026-07-13T13:10:54.4401213Z [command]/usr/bin/git version
-2026-07-13T13:10:54.4450320Z git version 2.54.0
-2026-07-13T13:10:54.4495086Z Temporarily overriding HOME='/home/runner/work/_temp/65650c74-8fc2-491d-aef9-a9851491a39e' before making global git config changes
-2026-07-13T13:10:54.4496572Z Adding repository directory to the temporary git global config as a safe directory
-2026-07-13T13:10:54.4501263Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/career-coach-agent/career-coach-agent
-2026-07-13T13:10:54.4547398Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
-2026-07-13T13:10:54.4584218Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
-2026-07-13T13:10:54.4904838Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
-2026-07-13T13:10:54.4935532Z http.https://github.com/.extraheader
-2026-07-13T13:10:54.4948759Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
-2026-07-13T13:10:54.4985265Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
-2026-07-13T13:10:54.5270131Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
-2026-07-13T13:10:54.5306514Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
-2026-07-13T13:10:54.5703672Z Print service container logs: 02a3b8859da144b8b0f769ebb4c09c1e_pgvectorpgvectorpg16_a0e7f2
-2026-07-13T13:10:54.5708049Z ##[command]/usr/bin/docker logs --details d1c9f3556c140e25cff391b22c8888e0df5631459f2a9689e86898bfdfb7d917
-2026-07-13T13:10:54.5836874Z  The files belonging to this database system will be owned by user "postgres".
-2026-07-13T13:10:54.5839003Z  initdb: warning: enabling "trust" authentication for local connections
-2026-07-13T13:10:54.5840050Z  initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
-2026-07-13T13:10:54.5841676Z  2026-07-13 13:10:42.743 UTC [1] LOG:  starting PostgreSQL 16.14 (Debian 16.14-1.pgdg12+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 12.2.0-14+deb12u1) 12.2.0, 64-bit
-2026-07-13T13:10:54.5842841Z  2026-07-13 13:10:42.743 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
-2026-07-13T13:10:54.5843398Z  2026-07-13 13:10:42.743 UTC [1] LOG:  listening on IPv6 address "::", port 5432
-2026-07-13T13:10:54.5843921Z  2026-07-13 13:10:42.744 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
-2026-07-13T13:10:54.5844490Z  2026-07-13 13:10:42.747 UTC [64] LOG:  database system was shut down at 2026-07-13 13:10:42 UTC
-2026-07-13T13:10:54.5845017Z  2026-07-13 13:10:42.751 UTC [1] LOG:  database system is ready to accept connections
-2026-07-13T13:10:54.5845447Z  This user must also own the server process.
-2026-07-13T13:10:54.5845982Z  
-2026-07-13T13:10:54.5846558Z  The database cluster will be initialized with locale "en_US.utf8".
-2026-07-13T13:10:54.5847266Z  The default database encoding has accordingly been set to "UTF8".
-2026-07-13T13:10:54.5847894Z  The default text search configuration will be set to "english".
-2026-07-13T13:10:54.5848222Z  
-2026-07-13T13:10:54.5848430Z  Data page checksums are disabled.
-2026-07-13T13:10:54.5848678Z  
-2026-07-13T13:10:54.5849066Z  fixing permissions on existing directory /var/lib/postgresql/data ... ok
-2026-07-13T13:10:54.5849675Z  creating subdirectories ... ok
-2026-07-13T13:10:54.5850006Z  selecting dynamic shared memory implementation ... posix
-2026-07-13T13:10:54.5850365Z  selecting default max_connections ... 100
-2026-07-13T13:10:54.5851393Z  selecting default shared_buffers ... 128MB
-2026-07-13T13:10:54.5851872Z  selecting default time zone ... Etc/UTC
-2026-07-13T13:10:54.5852304Z  creating configuration files ... ok
-2026-07-13T13:10:54.5852756Z  running bootstrap script ... ok
-2026-07-13T13:10:54.5853217Z  performing post-bootstrap initialization ... ok
-2026-07-13T13:10:54.5853602Z  syncing data to disk ... ok
-2026-07-13T13:10:54.5853852Z  
-2026-07-13T13:10:54.5854065Z  
-2026-07-13T13:10:54.5854329Z  Success. You can now start the database server using:
-2026-07-13T13:10:54.5854641Z  
-2026-07-13T13:10:54.5854897Z      pg_ctl -D /var/lib/postgresql/data -l logfile start
-2026-07-13T13:10:54.5855206Z  
-2026-07-13T13:10:54.5855878Z  waiting for server to start....2026-07-13 13:10:42.432 UTC [48] LOG:  starting PostgreSQL 16.14 (Debian 16.14-1.pgdg12+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 12.2.0-14+deb12u1) 12.2.0, 64-bit
-2026-07-13T13:10:54.5856737Z  2026-07-13 13:10:42.433 UTC [48] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
-2026-07-13T13:10:54.5857306Z  2026-07-13 13:10:42.435 UTC [51] LOG:  database system was shut down at 2026-07-13 13:10:42 UTC
-2026-07-13T13:10:54.5857816Z  2026-07-13 13:10:42.439 UTC [48] LOG:  database system is ready to accept connections
-2026-07-13T13:10:54.5858198Z   done
-2026-07-13T13:10:54.5858396Z  server started
-2026-07-13T13:10:54.5858608Z  CREATE DATABASE
-2026-07-13T13:10:54.5858806Z  
-2026-07-13T13:10:54.5858989Z  
-2026-07-13T13:10:54.5859312Z  /usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
-2026-07-13T13:10:54.5859705Z  
-2026-07-13T13:10:54.5859963Z  2026-07-13 13:10:42.618 UTC [48] LOG:  received fast shutdown request
-2026-07-13T13:10:54.5860970Z  waiting for server to shut down....2026-07-13 13:10:42.618 UTC [48] LOG:  aborting any active transactions
-2026-07-13T13:10:54.5862055Z  2026-07-13 13:10:42.620 UTC [48] LOG:  background worker "logical replication launcher" (PID 54) exited with exit code 1
-2026-07-13T13:10:54.5862590Z  2026-07-13 13:10:42.621 UTC [49] LOG:  shutting down
-2026-07-13T13:10:54.5862984Z  2026-07-13 13:10:42.622 UTC [49] LOG:  checkpoint starting: shutdown immediate
-2026-07-13T13:10:54.5864063Z  2026-07-13 13:10:42.636 UTC [49] LOG:  checkpoint complete: wrote 922 buffers (5.6%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.012 s, sync=0.002 s, total=0.015 s; sync files=301, longest=0.001 s, average=0.001 s; distance=4255 kB, estimate=4255 kB; lsn=0/1912120, redo lsn=0/1912120
-2026-07-13T13:10:54.5865239Z  2026-07-13 13:10:42.643 UTC [48] LOG:  database system is shut down
-2026-07-13T13:10:54.5865572Z   done
-2026-07-13T13:10:54.5865764Z  server stopped
-2026-07-13T13:10:54.5865966Z  
-2026-07-13T13:10:54.5866208Z  PostgreSQL init process complete; ready for start up.
-2026-07-13T13:10:54.5866519Z  
-2026-07-13T13:10:54.5871961Z Stop and remove container: 02a3b8859da144b8b0f769ebb4c09c1e_pgvectorpgvectorpg16_a0e7f2
-2026-07-13T13:10:54.5876836Z ##[command]/usr/bin/docker rm --force d1c9f3556c140e25cff391b22c8888e0df5631459f2a9689e86898bfdfb7d917
-2026-07-13T13:10:55.4991992Z d1c9f3556c140e25cff391b22c8888e0df5631459f2a9689e86898bfdfb7d917
-2026-07-13T13:10:55.5021552Z Remove container network: github_network_89e1464a617a4124af0a7fe8e204fc67
-2026-07-13T13:10:55.5025852Z ##[command]/usr/bin/docker network rm github_network_89e1464a617a4124af0a7fe8e204fc67
-2026-07-13T13:10:55.5976117Z github_network_89e1464a617a4124af0a7fe8e204fc67
-2026-07-13T13:10:55.6047173Z Cleaning up orphan processes
-2026-07-13T13:10:55.6408012Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, astral-sh/setup-uv@v5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-07-13T17:26:58.9994980Z   prune-cache: true
+2026-07-13T17:26:58.9995169Z   ignore-nothing-to-cache: false
+2026-07-13T17:26:58.9995404Z   ignore-empty-workdir: false
+2026-07-13T17:26:58.9995605Z env:
+2026-07-13T17:26:58.9995775Z   HF_API_TOKEN: ci-not-a-real-token
+2026-07-13T17:26:58.9996008Z   JWT_SECRET_KEY: ci-not-a-real-secret
+2026-07-13T17:26:58.9996481Z   DATABASE_URL: ***localhost:5432/career_coach_test
+2026-07-13T17:26:58.9996731Z ##[endgroup]
+2026-07-13T17:26:59.1354196Z (node:2504) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-07-13T17:26:59.1354795Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-07-13T17:26:59.5485915Z Downloading uv from "https://github.com/astral-sh/uv/releases/download/0.11.28/uv-x86_64-unknown-linux-gnu.tar.gz" ...
+2026-07-13T17:27:00.0017975Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/35405203-201a-427f-aa96-9266596ab301 -f /home/runner/work/_temp/290fda42-d02c-485c-9b10-7800078b5bbe
+2026-07-13T17:27:00.6676149Z Added /home/runner/.local/bin to the path
+2026-07-13T17:27:00.6678082Z Added /opt/hostedtoolcache/uv/0.11.28/x86_64 to the path
+2026-07-13T17:27:00.6694904Z Set UV_CACHE_DIR to /home/runner/work/_temp/setup-uv-cache
+2026-07-13T17:27:00.6695225Z Successfully installed uv version 0.11.28
+2026-07-13T17:27:00.6695579Z Searching files using cache dependency glob: **/uv.lock,**/requirements*.txt
+2026-07-13T17:27:00.6968588Z /home/runner/work/career-coach-agent/career-coach-agent/backend/uv.lock
+2026-07-13T17:27:00.7357338Z /home/runner/work/career-coach-agent/career-coach-agent/legacy-code/requirements.txt
+2026-07-13T17:27:00.7368554Z Found 2 files to hash.
+2026-07-13T17:27:00.8042160Z Trying to restore uv cache from GitHub Actions cache with key: setup-uv-1-x86_64-unknown-linux-gnu-3.12.3-a15202b9356d8255a7b8a8eea3526018cc02bf20a0633eb010b0133d9575fa7c
+2026-07-13T17:27:01.0253062Z Cache hit for: setup-uv-1-x86_64-unknown-linux-gnu-3.12.3-a15202b9356d8255a7b8a8eea3526018cc02bf20a0633eb010b0133d9575fa7c
+2026-07-13T17:27:01.0338776Z (node:2504) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-07-13T17:27:02.1158105Z Received 7081453 of 7081453 (100.0%), 7.7 MBs/sec
+2026-07-13T17:27:02.1158575Z Cache Size: ~7 MB (7081453 B)
+2026-07-13T17:27:02.1177189Z [command]/usr/bin/tar -xf /home/runner/work/_temp/00655118-09d0-4b67-9bb9-07d0d7dd7960/cache.tzst -P -C /home/runner/work/career-coach-agent/career-coach-agent --use-compress-program unzstd
+2026-07-13T17:27:02.1599840Z Cache restored successfully
+2026-07-13T17:27:02.1608653Z uv cache restored from GitHub Actions cache with key: setup-uv-1-x86_64-unknown-linux-gnu-3.12.3-a15202b9356d8255a7b8a8eea3526018cc02bf20a0633eb010b0133d9575fa7c
+2026-07-13T17:27:02.1743379Z ##[group]Run uv python install 3.11
+2026-07-13T17:27:02.1743693Z [36;1muv python install 3.11[0m
+2026-07-13T17:27:02.1775282Z shell: /usr/bin/bash -e {0}
+2026-07-13T17:27:02.1775691Z env:
+2026-07-13T17:27:02.1775882Z   HF_API_TOKEN: ci-not-a-real-token
+2026-07-13T17:27:02.1776125Z   JWT_SECRET_KEY: ci-not-a-real-secret
+2026-07-13T17:27:02.1776664Z   DATABASE_URL: ***localhost:5432/career_coach_test
+2026-07-13T17:27:02.1776978Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-07-13T17:27:02.1777226Z ##[endgroup]
+2026-07-13T17:27:02.3460214Z Downloading cpython-3.11.15-linux-x86_64-gnu (download) (29.5MiB)
+2026-07-13T17:27:03.0515884Z  Downloaded cpython-3.11.15-linux-x86_64-gnu (download)
+2026-07-13T17:27:03.2413450Z Installed Python 3.11.15 in 1.04s
+2026-07-13T17:27:03.2413920Z  + cpython-3.11.15-linux-x86_64-gnu (python3.11)
+2026-07-13T17:27:03.2459371Z ##[group]Run uv sync --only-group dev
+2026-07-13T17:27:03.2459664Z [36;1muv sync --only-group dev[0m
+2026-07-13T17:27:03.2460018Z [36;1muv pip install fastapi pydantic pydantic-settings "celery[redis]" openai \[0m
+2026-07-13T17:27:03.2460821Z [36;1m  sqlalchemy asyncpg aiosqlite pgvector alembic joserfc authlib langgraph \[0m
+2026-07-13T17:27:03.2461180Z [36;1m  python-multipart[0m
+2026-07-13T17:27:03.2488306Z shell: /usr/bin/bash -e {0}
+2026-07-13T17:27:03.2488518Z env:
+2026-07-13T17:27:03.2488692Z   HF_API_TOKEN: ci-not-a-real-token
+2026-07-13T17:27:03.2488929Z   JWT_SECRET_KEY: ci-not-a-real-secret
+2026-07-13T17:27:03.2489441Z   DATABASE_URL: ***localhost:5432/career_coach_test
+2026-07-13T17:27:03.2489752Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-07-13T17:27:03.2490002Z ##[endgroup]
+2026-07-13T17:27:03.3623234Z Using CPython 3.11.15
+2026-07-13T17:27:03.3623646Z Creating virtual environment at: .venv
+2026-07-13T17:27:03.3748072Z Resolved 217 packages in 0.65ms
+2026-07-13T17:27:03.4754987Z Downloading ast-serialize (1.2MiB)
+2026-07-13T17:27:03.4761558Z Downloading ruff (11.0MiB)
+2026-07-13T17:27:03.4764235Z Downloading pygments (1.2MiB)
+2026-07-13T17:27:03.4769934Z Downloading mypy (14.2MiB)
+2026-07-13T17:27:03.8852276Z  Downloaded ast-serialize
+2026-07-13T17:27:03.9567401Z  Downloaded ruff
+2026-07-13T17:27:03.9951976Z  Downloaded pygments
+2026-07-13T17:27:04.1057544Z  Downloaded mypy
+2026-07-13T17:27:04.1058950Z Prepared 25 packages in 730ms
+2026-07-13T17:27:04.1344956Z Installed 25 packages in 28ms
+2026-07-13T17:27:04.1345328Z  + anyio==4.14.1
+2026-07-13T17:27:04.1345612Z  + ast-serialize==0.5.0
+2026-07-13T17:27:04.1345897Z  + attrs==26.1.0
+2026-07-13T17:27:04.1346155Z  + celery-types==0.26.0
+2026-07-13T17:27:04.1346437Z  + certifi==2026.6.17
+2026-07-13T17:27:04.1346691Z  + h11==0.16.0
+2026-07-13T17:27:04.1346929Z  + httpcore==1.0.9
+2026-07-13T17:27:04.1347190Z  + httpx==0.28.1
+2026-07-13T17:27:04.1347430Z  + idna==3.18
+2026-07-13T17:27:04.1355904Z  + iniconfig==2.3.0
+2026-07-13T17:27:04.1356187Z  + librt==0.11.0
+2026-07-13T17:27:04.1356432Z  + mypy==2.1.0
+2026-07-13T17:27:04.1356668Z  + mypy-extensions==1.1.0
+2026-07-13T17:27:04.1356890Z  + outcome==1.3.0.post0
+2026-07-13T17:27:04.1357081Z  + packaging==26.2
+2026-07-13T17:27:04.1357254Z  + pathspec==1.1.1
+2026-07-13T17:27:04.1357432Z  + pluggy==1.6.0
+2026-07-13T17:27:04.1357610Z  + pygments==2.20.0
+2026-07-13T17:27:04.1357774Z  + pytest==9.1.1
+2026-07-13T17:27:04.1357944Z  + pytest-asyncio==1.4.0
+2026-07-13T17:27:04.1358188Z  + ruff==0.15.20
+2026-07-13T17:27:04.1358434Z  + sniffio==1.3.1
+2026-07-13T17:27:04.1358705Z  + sortedcontainers==2.4.0
+2026-07-13T17:27:04.1359016Z  + trio==0.33.0
+2026-07-13T17:27:04.1359354Z  + typing-extensions==4.15.0
+2026-07-13T17:27:04.5993602Z Resolved 73 packages in 353ms
+2026-07-13T17:27:04.6257192Z Downloading openai (1.6MiB)
+2026-07-13T17:27:04.6261248Z Downloading zstandard (5.3MiB)
+2026-07-13T17:27:04.6264143Z Downloading sqlalchemy (3.2MiB)
+2026-07-13T17:27:04.6265869Z Downloading asyncpg (2.8MiB)
+2026-07-13T17:27:04.6355949Z Downloading cryptography (4.5MiB)
+2026-07-13T17:27:04.6360569Z Downloading pydantic-core (2.0MiB)
+2026-07-13T17:27:04.9068111Z  Downloaded pydantic-core
+2026-07-13T17:27:04.9523410Z  Downloaded asyncpg
+2026-07-13T17:27:04.9633619Z  Downloaded zstandard
+2026-07-13T17:27:04.9911966Z  Downloaded cryptography
+2026-07-13T17:27:05.0033483Z  Downloaded sqlalchemy
+2026-07-13T17:27:05.1014714Z  Downloaded openai
+2026-07-13T17:27:05.1016014Z Prepared 64 packages in 501ms
+2026-07-13T17:27:05.2159944Z Installed 64 packages in 114ms
+2026-07-13T17:27:05.2160543Z  + aiosqlite==0.22.1
+2026-07-13T17:27:05.2160836Z  + alembic==1.18.5
+2026-07-13T17:27:05.2161111Z  + amqp==5.3.1
+2026-07-13T17:27:05.2161386Z  + annotated-doc==0.0.4
+2026-07-13T17:27:05.2161700Z  + annotated-types==0.7.0
+2026-07-13T17:27:05.2162011Z  + asyncpg==0.31.0
+2026-07-13T17:27:05.2162279Z  + authlib==1.7.2
+2026-07-13T17:27:05.2162546Z  + billiard==4.2.4
+2026-07-13T17:27:05.2162818Z  + celery==5.6.3
+2026-07-13T17:27:05.2163380Z  + cffi==2.1.0
+2026-07-13T17:27:05.2163662Z  + charset-normalizer==3.4.9
+2026-07-13T17:27:05.2163969Z  + click==8.4.2
+2026-07-13T17:27:05.2164260Z  + click-didyoumean==0.3.1
+2026-07-13T17:27:05.2164570Z  + click-plugins==1.1.1.2
+2026-07-13T17:27:05.2164868Z  + click-repl==0.3.0
+2026-07-13T17:27:05.2165165Z  + cryptography==49.0.0
+2026-07-13T17:27:05.2165436Z  + distro==1.9.0
+2026-07-13T17:27:05.2165707Z  + fastapi==0.139.0
+2026-07-13T17:27:05.2165970Z  + greenlet==3.5.3
+2026-07-13T17:27:05.2166228Z  + jiter==0.16.0
+2026-07-13T17:27:05.2166476Z  + joserfc==1.7.3
+2026-07-13T17:27:05.2166748Z  + jsonpatch==1.33
+2026-07-13T17:27:05.2167010Z  + jsonpointer==3.1.1
+2026-07-13T17:27:05.2167283Z  + kombu==5.6.2
+2026-07-13T17:27:05.2167544Z  + langchain-core==1.4.9
+2026-07-13T17:27:05.2167853Z  + langchain-protocol==0.0.18
+2026-07-13T17:27:05.2168170Z  + langgraph==1.2.9
+2026-07-13T17:27:05.2168458Z  + langgraph-checkpoint==4.1.1
+2026-07-13T17:27:05.2169278Z  + langgraph-prebuilt==1.1.0
+2026-07-13T17:27:05.2169649Z  + langgraph-sdk==0.4.2
+2026-07-13T17:27:05.2169947Z  + langsmith==0.10.2
+2026-07-13T17:27:05.2170219Z  + mako==1.3.12
+2026-07-13T17:27:05.2170589Z  + markupsafe==3.0.3
+2026-07-13T17:27:05.2170856Z  + openai==2.45.0
+2026-07-13T17:27:05.2171122Z  + orjson==3.11.9
+2026-07-13T17:27:05.2171384Z  + ormsgpack==1.12.2
+2026-07-13T17:27:05.2171662Z  + pgvector==0.5.0
+2026-07-13T17:27:05.2171944Z  + prompt-toolkit==3.0.52
+2026-07-13T17:27:05.2172239Z  + pycparser==3.0
+2026-07-13T17:27:05.2172532Z  + pydantic==2.13.4
+2026-07-13T17:27:05.2172806Z  + pydantic-core==2.46.4
+2026-07-13T17:27:05.2173112Z  + pydantic-settings==2.14.2
+2026-07-13T17:27:05.2173439Z  + python-dateutil==2.9.0.post0
+2026-07-13T17:27:05.2173807Z  + python-dotenv==1.2.2
+2026-07-13T17:27:05.2174110Z  + python-multipart==0.0.32
+2026-07-13T17:27:05.2174423Z  + pyyaml==6.0.3
+2026-07-13T17:27:05.2174682Z  + redis==6.4.0
+2026-07-13T17:27:05.2174930Z  + requests==2.34.2
+2026-07-13T17:27:05.2175204Z  + requests-toolbelt==1.0.0
+2026-07-13T17:27:05.2175506Z  + six==1.17.0
+2026-07-13T17:27:05.2175764Z  + sqlalchemy==2.0.51
+2026-07-13T17:27:05.2176034Z  + starlette==1.3.1
+2026-07-13T17:27:05.2176298Z  + tenacity==9.1.4
+2026-07-13T17:27:05.2176551Z  + tqdm==4.68.4
+2026-07-13T17:27:05.2176811Z  + typing-inspection==0.4.2
+2026-07-13T17:27:05.2177110Z  + tzdata==2026.3
+2026-07-13T17:27:05.2177371Z  + tzlocal==5.4.4
+2026-07-13T17:27:05.2177626Z  + urllib3==2.7.0
+2026-07-13T17:27:05.2177879Z  + uuid-utils==0.17.0
+2026-07-13T17:27:05.2178158Z  + vine==5.1.0
+2026-07-13T17:27:05.2178402Z  + wcwidth==0.8.2
+2026-07-13T17:27:05.2178655Z  + websockets==15.0.1
+2026-07-13T17:27:05.2178885Z  + xxhash==3.8.1
+2026-07-13T17:27:05.2179103Z  + zstandard==0.25.0
+2026-07-13T17:27:05.2246761Z ##[group]Run uv run --no-sync ruff check .
+2026-07-13T17:27:05.2247063Z [36;1muv run --no-sync ruff check .[0m
+2026-07-13T17:27:05.2275735Z shell: /usr/bin/bash -e {0}
+2026-07-13T17:27:05.2275968Z env:
+2026-07-13T17:27:05.2276162Z   HF_API_TOKEN: ci-not-a-real-token
+2026-07-13T17:27:05.2276411Z   JWT_SECRET_KEY: ci-not-a-real-secret
+2026-07-13T17:27:05.2277016Z   DATABASE_URL: ***localhost:5432/career_coach_test
+2026-07-13T17:27:05.2277320Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-07-13T17:27:05.2277585Z ##[endgroup]
+2026-07-13T17:27:05.2854311Z All checks passed!
+2026-07-13T17:27:05.2894975Z ##[group]Run uv run --no-sync ruff format --check .
+2026-07-13T17:27:05.2895301Z [36;1muv run --no-sync ruff format --check .[0m
+2026-07-13T17:27:05.2923000Z shell: /usr/bin/bash -e {0}
+2026-07-13T17:27:05.2923214Z env:
+2026-07-13T17:27:05.2923400Z   HF_API_TOKEN: ci-not-a-real-token
+2026-07-13T17:27:05.2923634Z   JWT_SECRET_KEY: ci-not-a-real-secret
+2026-07-13T17:27:05.2924169Z   DATABASE_URL: ***localhost:5432/career_coach_test
+2026-07-13T17:27:05.2924473Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-07-13T17:27:05.2924725Z ##[endgroup]
+2026-07-13T17:27:05.3336303Z 204 files already formatted
+2026-07-13T17:27:05.3375814Z ##[group]Run uv run --no-sync mypy app/ migrations/
+2026-07-13T17:27:05.3376152Z [36;1muv run --no-sync mypy app/ migrations/[0m
+2026-07-13T17:27:05.3404000Z shell: /usr/bin/bash -e {0}
+2026-07-13T17:27:05.3404218Z env:
+2026-07-13T17:27:05.3404405Z   HF_API_TOKEN: ci-not-a-real-token
+2026-07-13T17:27:05.3404642Z   JWT_SECRET_KEY: ci-not-a-real-secret
+2026-07-13T17:27:05.3405183Z   DATABASE_URL: ***localhost:5432/career_coach_test
+2026-07-13T17:27:05.3405485Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-07-13T17:27:05.3405736Z ##[endgroup]
+2026-07-13T17:27:18.9451637Z Success: no issues found in 123 source files
+2026-07-13T17:27:18.9918949Z ##[group]Run docker exec -i "c53a034b3b2b2b22a564c409d9e23a65ff54d03027740acf45a9ed437181c704" \
+2026-07-13T17:27:18.9919511Z [36;1mdocker exec -i "c53a034b3b2b2b22a564c409d9e23a65ff54d03027740acf45a9ed437181c704" \[0m
+2026-07-13T17:27:18.9919914Z [36;1m  psql -U postgres -d career_coach_test \[0m
+2026-07-13T17:27:18.9920194Z [36;1m  < migrations/init/01_enable_pgvector.sql[0m
+2026-07-13T17:27:18.9948790Z shell: /usr/bin/bash -e {0}
+2026-07-13T17:27:18.9949003Z env:
+2026-07-13T17:27:18.9949185Z   HF_API_TOKEN: ci-not-a-real-token
+2026-07-13T17:27:18.9949436Z   JWT_SECRET_KEY: ci-not-a-real-secret
+2026-07-13T17:27:18.9950124Z   DATABASE_URL: ***localhost:5432/career_coach_test
+2026-07-13T17:27:18.9950601Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-07-13T17:27:18.9950857Z ##[endgroup]
+2026-07-13T17:27:19.1571364Z CREATE EXTENSION
+2026-07-13T17:27:19.1624394Z ##[group]Run uv run --no-sync alembic upgrade head
+2026-07-13T17:27:19.1624717Z [36;1muv run --no-sync alembic upgrade head[0m
+2026-07-13T17:27:19.1652613Z shell: /usr/bin/bash -e {0}
+2026-07-13T17:27:19.1652830Z env:
+2026-07-13T17:27:19.1653004Z   HF_API_TOKEN: ci-not-a-real-token
+2026-07-13T17:27:19.1653238Z   JWT_SECRET_KEY: ci-not-a-real-secret
+2026-07-13T17:27:19.1653783Z   DATABASE_URL: ***localhost:5432/career_coach_test
+2026-07-13T17:27:19.1654080Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-07-13T17:27:19.1654329Z ##[endgroup]
+2026-07-13T17:27:21.3255351Z INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+2026-07-13T17:27:21.3255790Z INFO  [alembic.runtime.migration] Will assume transactional DDL.
+2026-07-13T17:27:21.3824963Z INFO  [alembic.runtime.migration] Running upgrade  -> 0001, baseline — empty starting point for the v2 schema.
+2026-07-13T17:27:21.3838563Z INFO  [alembic.runtime.migration] Running upgrade 0001 -> 0002, identity and docs tables — first real v2 schema (P2-03).
+2026-07-13T17:27:21.7699164Z INFO  [alembic.runtime.migration] Running upgrade 0002 -> 0003, knowledge and vector tables — pgvector table group (P2-04).
+2026-07-13T17:27:21.7886407Z INFO  [alembic.runtime.migration] Running upgrade 0003 -> 0004, structured records — jobs, PDPs & dashboard table group (P2-05).
+2026-07-13T17:27:21.8924944Z INFO  [alembic.runtime.migration] Running upgrade 0004 -> 0005, admin flag on users — real admin auth (P3-05).
+2026-07-13T17:27:21.8941212Z INFO  [alembic.runtime.migration] Running upgrade 0005 -> 0006, consent columns on users — ToS/privacy acceptance gate (SEC-06).
+2026-07-13T17:27:21.8957725Z INFO  [alembic.runtime.migration] Running upgrade 0006 -> 0007, market intelligence — role_profiles + job_postings table group (P6-02).
+2026-07-13T17:27:22.1258621Z ##[group]Run uv run --no-sync pytest
+2026-07-13T17:27:22.1259047Z [36;1muv run --no-sync pytest[0m
+2026-07-13T17:27:22.1287326Z shell: /usr/bin/bash -e {0}
+2026-07-13T17:27:22.1287543Z env:
+2026-07-13T17:27:22.1287719Z   HF_API_TOKEN: ci-not-a-real-token
+2026-07-13T17:27:22.1287956Z   JWT_SECRET_KEY: ci-not-a-real-secret
+2026-07-13T17:27:22.1288490Z   DATABASE_URL: ***localhost:5432/career_coach_test
+2026-07-13T17:27:22.1288788Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-07-13T17:27:22.1289031Z ##[endgroup]
+2026-07-13T17:27:26.1624388Z ============================= test session starts ==============================
+2026-07-13T17:27:26.1624968Z platform linux -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0
+2026-07-13T17:27:26.1625361Z rootdir: /home/runner/work/career-coach-agent/career-coach-agent/backend
+2026-07-13T17:27:26.1625692Z configfile: pyproject.toml
+2026-07-13T17:27:26.1625896Z testpaths: tests
+2026-07-13T17:27:26.1626187Z plugins: asyncio-1.4.0, langsmith-0.10.2, anyio-4.14.1
+2026-07-13T17:27:26.1626649Z asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+2026-07-13T17:27:26.1627067Z collected 668 items
+2026-07-13T17:27:26.1627176Z 
+2026-07-13T17:27:26.8931740Z tests/test_account_repository_postgres.py ....                           [  0%]
+2026-07-13T17:27:26.8968318Z tests/test_account_service.py ....                                       [  1%]
+2026-07-13T17:27:26.9196311Z tests/test_admin_feedback_api.py .....                                   [  1%]
+2026-07-13T17:27:27.0369068Z tests/test_admin_feedback_postgres.py ..                                 [  2%]
+2026-07-13T17:27:27.1251616Z tests/test_agent_graph.py ...........                                    [  3%]
+2026-07-13T17:27:27.1961200Z tests/test_agent_planner.py ..............................               [  8%]
+2026-07-13T17:27:27.2431696Z tests/test_agent_responder.py .............                              [ 10%]
+2026-07-13T17:27:27.2531074Z tests/test_agent_state.py ...........                                    [ 11%]
+2026-07-13T17:27:27.2692632Z tests/test_auth_api.py ...                                               [ 12%]
+2026-07-13T17:27:27.2737848Z tests/test_auth_service.py .....                                         [ 13%]
+2026-07-13T17:27:27.2969031Z tests/test_authz_ratelimit_api.py ...                                    [ 13%]
+2026-07-13T17:27:27.3851835Z tests/test_chat_api.py ....                                              [ 14%]
+2026-07-13T17:27:27.4004855Z tests/test_chat_cancel.py .............                                  [ 16%]
+2026-07-13T17:27:27.4098525Z tests/test_chat_persistence.py .........                                 [ 17%]
+2026-07-13T17:27:27.4156019Z tests/test_chat_service.py ......                                        [ 18%]
+2026-07-13T17:27:27.7328871Z tests/test_conversation_store.py ....                                    [ 19%]
+2026-07-13T17:27:27.7421192Z tests/test_crawl.py ......                                               [ 19%]
+2026-07-13T17:27:27.7555044Z tests/test_embeddings.py ..........                                      [ 21%]
+2026-07-13T17:27:27.7581040Z tests/test_feedback_reader.py ...                                        [ 21%]
+2026-07-13T17:27:27.7755301Z tests/test_guest_upgrade_api.py ....                                     [ 22%]
+2026-07-13T17:27:27.7808961Z tests/test_guest_upgrade_service.py .......                              [ 23%]
+2026-07-13T17:27:27.7825925Z tests/test_health.py .                                                   [ 23%]
+2026-07-13T17:27:28.1232440Z tests/test_identity_models.py ......                                     [ 24%]
+2026-07-13T17:27:28.1410221Z tests/test_ingestion_ocr.py .....................s                       [ 27%]
+2026-07-13T17:27:28.1561748Z tests/test_ingestion_parser.py ............ss                            [ 29%]
+2026-07-13T17:27:28.1680145Z tests/test_ingestion_structuring.py ...............                      [ 32%]
+2026-07-13T17:27:28.2295011Z tests/test_input_guardrails.py ......................                    [ 35%]
+2026-07-13T17:27:28.2338872Z tests/test_job_status_service.py ..........                              [ 36%]
+2026-07-13T17:27:28.2492584Z tests/test_jobs_api.py ......                                            [ 37%]
+2026-07-13T17:27:28.7791600Z tests/test_knowledge_models.py .........                                 [ 39%]
+2026-07-13T17:27:28.8164487Z tests/test_learning_resources.py ...............                         [ 41%]
+2026-07-13T17:27:29.4314557Z tests/test_llm_client.py ....                                            [ 42%]
+2026-07-13T17:27:29.4390935Z tests/test_llm_redaction.py ..............                               [ 44%]
+2026-07-13T17:27:29.4986293Z tests/test_llm_router.py ..........                                      [ 45%]
+2026-07-13T17:27:29.5249283Z tests/test_market_agent.py .................                             [ 48%]
+2026-07-13T17:27:29.7620713Z tests/test_market_models.py .......                                      [ 49%]
+2026-07-13T17:27:29.7802354Z tests/test_me_api.py .......                                             [ 50%]
+2026-07-13T17:27:29.7872970Z tests/test_message_id.py ........                                        [ 51%]
+2026-07-13T17:27:29.7895990Z tests/test_oauth_state_store.py ...                                      [ 51%]
+2026-07-13T17:27:29.7952250Z tests/test_oidc_client.py ....                                           [ 52%]
+2026-07-13T17:27:30.1295562Z tests/test_p2_exit_verification.py .....                                 [ 53%]
+2026-07-13T17:27:30.1794699Z tests/test_p3_exit_verification.py ......                                [ 54%]
+2026-07-13T17:27:30.2331719Z tests/test_p4_exit_verification.py ....                                  [ 54%]
+2026-07-13T17:27:30.4169517Z tests/test_p5_exit_verification.py .s......                              [ 55%]
+2026-07-13T17:27:30.6844223Z tests/test_p6_exit_verification.py ..........                            [ 57%]
+2026-07-13T17:27:30.7244632Z tests/test_postgres_repository.py ............                           [ 59%]
+2026-07-13T17:27:30.7523123Z tests/test_profile_api.py .........                                      [ 60%]
+2026-07-13T17:27:30.7820160Z tests/test_profile_cv_api.py .........                                   [ 61%]
+2026-07-13T17:27:30.8668469Z tests/test_profile_ingest_persistence.py .                               [ 62%]
+2026-07-13T17:27:30.8739595Z tests/test_profile_ingest_task.py .........                              [ 63%]
+2026-07-13T17:27:30.9845255Z tests/test_profile_store_postgres.py ..                                  [ 63%]
+2026-07-13T17:27:31.0095604Z tests/test_rag_agent.py ..............                                   [ 65%]
+2026-07-13T17:27:31.0157570Z tests/test_rate_limiting.py ........                                     [ 67%]
+2026-07-13T17:27:31.0334604Z tests/test_roles_api.py ........                                         [ 68%]
+2026-07-13T17:27:31.0423125Z tests/test_roles_service.py ........                                     [ 69%]
+2026-07-13T17:27:31.0474464Z tests/test_sec_exit_verification.py ....                                 [ 70%]
+2026-07-13T17:27:31.0522119Z tests/test_session_authenticator.py .....                                [ 70%]
+2026-07-13T17:27:31.0603746Z tests/test_session_memory.py ..........                                  [ 72%]
+2026-07-13T17:27:31.0717724Z tests/test_session_store.py .............                                [ 74%]
+2026-07-13T17:27:31.0768905Z tests/test_session_token.py ..........                                   [ 75%]
+2026-07-13T17:27:31.0831314Z tests/test_skills_gap.py ...........                                     [ 77%]
+2026-07-13T17:27:31.0883513Z tests/test_source_policy.py .......                                      [ 78%]
+2026-07-13T17:27:31.1090608Z tests/test_sso_api.py ........                                           [ 79%]
+2026-07-13T17:27:31.1167633Z tests/test_sso_service.py .........                                      [ 80%]
+2026-07-13T17:27:31.1958913Z tests/test_ssrf_guard.py ..................................              [ 86%]
+2026-07-13T17:27:31.6323823Z tests/test_structured_models.py ........                                 [ 87%]
+2026-07-13T17:27:31.6414492Z tests/test_tavily_pool.py ........                                       [ 88%]
+2026-07-13T17:27:31.8182872Z tests/test_taxonomy_seed.py ..........F.....                             [ 90%]
+2026-07-13T17:27:31.8384485Z tests/test_tools.py ...................                                  [ 93%]
+2026-07-13T17:27:31.8607497Z tests/test_topic_guardrail.py ..                                         [ 94%]
+2026-07-13T17:27:31.8667903Z tests/test_untrusted_content.py ..........                               [ 95%]
+2026-07-13T17:27:31.8699390Z tests/test_upgrade_ticket_store.py ....                                  [ 96%]
+2026-07-13T17:27:31.8731099Z tests/test_user_store.py ....                                            [ 96%]
+2026-07-13T17:27:32.4736183Z tests/test_user_store_postgres.py ..                                     [ 97%]
+2026-07-13T17:27:32.8418648Z tests/test_vector_search.py ......                                       [ 97%]
+2026-07-13T17:27:33.2422552Z tests/test_web_searcher.py ..............                                [100%]
+2026-07-13T17:27:33.2422959Z 
+2026-07-13T17:27:33.2423082Z =================================== FAILURES ===================================
+2026-07-13T17:27:33.2423443Z ___________________ test_bundled_fixture_loads_and_is_valid ____________________
+2026-07-13T17:27:33.2423667Z 
+2026-07-13T17:27:33.2423807Z     def test_bundled_fixture_loads_and_is_valid() -> None:
+2026-07-13T17:27:33.2424103Z >       occupations = load_seed_occupations()
+2026-07-13T17:27:33.2424339Z                       ^^^^^^^^^^^^^^^^^^^^^^^
+2026-07-13T17:27:33.2424475Z 
+2026-07-13T17:27:33.2424575Z tests/test_taxonomy_seed.py:165: 
+2026-07-13T17:27:33.2424862Z _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+2026-07-13T17:27:33.2425196Z app/ingestion/taxonomy_seed.py:176: in load_seed_occupations
+2026-07-13T17:27:33.2425528Z     text = Path(path).read_text(encoding="utf-8")
+2026-07-13T17:27:33.2425772Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-07-13T17:27:33.2426156Z ../../../../.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/pathlib.py:1058: in read_text
+2026-07-13T17:27:33.2426602Z     with self.open(mode='r', encoding=encoding, errors=errors) as f:
+2026-07-13T17:27:33.2426908Z          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-07-13T17:27:33.2427177Z _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+2026-07-13T17:27:33.2427360Z 
+2026-07-13T17:27:33.2427672Z self = PosixPath('/home/runner/work/career-coach-agent/career-coach-agent/backend/app/ingestion/data/taxonomy_seed.json')
+2026-07-13T17:27:33.2428188Z mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
+2026-07-13T17:27:33.2428414Z 
+2026-07-13T17:27:33.2428529Z     def open(self, mode='r', buffering=-1, encoding=None,
+2026-07-13T17:27:33.2428814Z              errors=None, newline=None):
+2026-07-13T17:27:33.2429025Z         """
+2026-07-13T17:27:33.2429255Z         Open the file pointed by this path and return a file object, as
+2026-07-13T17:27:33.2429556Z         the built-in open() function does.
+2026-07-13T17:27:33.2429768Z         """
+2026-07-13T17:27:33.2429927Z         if "b" not in mode:
+2026-07-13T17:27:33.2430163Z             encoding = io.text_encoding(encoding)
+2026-07-13T17:27:33.2430694Z >       return io.open(self, mode, buffering, encoding, errors, newline)
+2026-07-13T17:27:33.2431007Z                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-07-13T17:27:33.2431568Z E       FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/career-coach-agent/career-coach-agent/backend/app/ingestion/data/taxonomy_seed.json'
+2026-07-13T17:27:33.2432041Z 
+2026-07-13T17:27:33.2432543Z ../../../../.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/pathlib.py:1044: FileNotFoundError
+2026-07-13T17:27:33.2433129Z =========================== short test summary info ============================
+2026-07-13T17:27:33.2433948Z FAILED tests/test_taxonomy_seed.py::test_bundled_fixture_loads_and_is_valid - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/career-coach-agent/career-coach-agent/backend/app/ingestion/data/taxonomy_seed.json'
+2026-07-13T17:27:33.2434736Z =================== 1 failed, 663 passed, 4 skipped in 9.63s ===================
+2026-07-13T17:27:36.8206852Z ##[error]Process completed with exit code 1.
+2026-07-13T17:27:36.8295105Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-07-13T17:27:36.8296024Z Post job cleanup.
+2026-07-13T17:27:36.8955219Z [command]/usr/bin/git version
+2026-07-13T17:27:36.8985503Z git version 2.54.0
+2026-07-13T17:27:36.9012481Z Temporarily overriding HOME='/home/runner/work/_temp/12206782-fc6b-4890-9d92-d91219e98d91' before making global git config changes
+2026-07-13T17:27:36.9013213Z Adding repository directory to the temporary git global config as a safe directory
+2026-07-13T17:27:36.9016566Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/career-coach-agent/career-coach-agent
+2026-07-13T17:27:36.9044431Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-07-13T17:27:36.9070798Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-07-13T17:27:36.9257725Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-07-13T17:27:36.9276711Z http.https://github.com/.extraheader
+2026-07-13T17:27:36.9284740Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-07-13T17:27:36.9308857Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-07-13T17:27:36.9523510Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-07-13T17:27:36.9547012Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-07-13T17:27:36.9825505Z Print service container logs: cd4eea9c20c543f1b7fee359f2c17bf6_pgvectorpgvectorpg16_5d5f47
+2026-07-13T17:27:36.9829465Z ##[command]/usr/bin/docker logs --details c53a034b3b2b2b22a564c409d9e23a65ff54d03027740acf45a9ed437181c704
+2026-07-13T17:27:36.9932953Z  The files belonging to this database system will be owned by user "postgres".
+2026-07-13T17:27:36.9936115Z  initdb: warning: enabling "trust" authentication for local connections
+2026-07-13T17:27:36.9936710Z  initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
+2026-07-13T17:27:36.9937486Z  2026-07-13 17:26:51.519 UTC [1] LOG:  starting PostgreSQL 16.14 (Debian 16.14-1.pgdg12+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 12.2.0-14+deb12u1) 12.2.0, 64-bit
+2026-07-13T17:27:36.9938079Z  2026-07-13 17:26:51.520 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+2026-07-13T17:27:36.9938489Z  2026-07-13 17:26:51.520 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+2026-07-13T17:27:36.9938901Z  2026-07-13 17:26:51.521 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+2026-07-13T17:27:36.9939334Z  2026-07-13 17:26:51.523 UTC [64] LOG:  database system was shut down at 2026-07-13 17:26:51 UTC
+2026-07-13T17:27:36.9939727Z  2026-07-13 17:26:51.526 UTC [1] LOG:  database system is ready to accept connections
+2026-07-13T17:27:36.9940654Z  2026-07-13 17:27:27.890 UTC [155] ERROR:  duplicate key value violates unique constraint "uq_users_provider_sub"
+2026-07-13T17:27:36.9941492Z  2026-07-13 17:27:27.890 UTC [155] DETAIL:  Key (provider, sub)=(google, sub-025f623582bd) already exists.
+2026-07-13T17:27:36.9943063Z  2026-07-13 17:27:27.890 UTC [155] STATEMENT:  INSERT INTO users (id, provider, sub, email, display_name, consent_policy_version, consent_accepted_at) VALUES ($1::UUID, $2::VARCHAR, $3::VARCHAR, $4::VARCHAR, $5::VARCHAR, $6::VARCHAR, $7::TIMESTAMP WITH TIME ZONE) RETURNING users.is_admin, users.settings, users.created_at
+2026-07-13T17:27:36.9944161Z  2026-07-13 17:27:27.943 UTC [157] ERROR:  duplicate key value violates unique constraint "messages_message_id_key"
+2026-07-13T17:27:36.9944658Z  2026-07-13 17:27:27.943 UTC [157] DETAIL:  Key (message_id)=(58258cd87671443ba1db5a818565bc15) already exists.
+2026-07-13T17:27:36.9945354Z  2026-07-13 17:27:27.943 UTC [157] STATEMENT:  INSERT INTO messages (id, conversation_id, message_id, role, content) VALUES ($1::UUID, $2::UUID, $3::VARCHAR, $4::VARCHAR, $5::VARCHAR) RETURNING messages.created_at
+2026-07-13T17:27:36.9946071Z  2026-07-13 17:27:27.996 UTC [159] ERROR:  new row for relation "messages" violates check constraint "ck_messages_role"
+2026-07-13T17:27:36.9946909Z  2026-07-13 17:27:27.996 UTC [159] DETAIL:  Failing row contains (3d38c756-50dc-4395-a0cc-534eff7c4992, 489c43c2-c1d6-46aa-a225-921f6d39073f, 6a0adc04f1554549b09e374196c1b9d2, robot, x, null, 2026-07-13 17:27:27.988915+00).
+2026-07-13T17:27:36.9947919Z  2026-07-13 17:27:27.996 UTC [159] STATEMENT:  INSERT INTO messages (id, conversation_id, message_id, role, content) VALUES ($1::UUID, $2::UUID, $3::VARCHAR, $4::VARCHAR, $5::VARCHAR) RETURNING messages.created_at
+2026-07-13T17:27:36.9948680Z  2026-07-13 17:27:28.531 UTC [173] ERROR:  new row for relation "kb_documents" violates check constraint "ck_kb_documents_source_type"
+2026-07-13T17:27:36.9949424Z  2026-07-13 17:27:28.531 UTC [173] DETAIL:  Failing row contains (8ba17a38-921a-4468-942f-fff02fcf3dfb, bad, null, nonsense, null, null, {}, 2026-07-13 17:27:28.52855+00, 2026-07-13 17:27:28.52855+00).
+2026-07-13T17:27:36.9950649Z  2026-07-13 17:27:28.531 UTC [173] STATEMENT:  INSERT INTO kb_documents (id, title, source, source_type, user_id, content) VALUES ($1::UUID, $2::VARCHAR, $3::VARCHAR, $4::VARCHAR, $5::UUID, $6::VARCHAR) RETURNING kb_documents.metadata, kb_documents.updated_at, kb_documents.created_at
+2026-07-13T17:27:36.9951816Z  2026-07-13 17:27:28.586 UTC [175] ERROR:  new row for relation "user_memories" violates check constraint "ck_user_memories_memory_type"
+2026-07-13T17:27:36.9952746Z  2026-07-13 17:27:28.586 UTC [175] DETAIL:  Failing row contains (e344e437-bf16-49fc-99b9-5675dd344b28, 86435e5b-07ae-4bbd-bada-4186f758992f, x, [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0..., mood, 1, null, 2026-07-13 17:27:28.574405+00, 2026-07-13 17:27:28.574405+00).
+2026-07-13T17:27:36.9954007Z  2026-07-13 17:27:28.586 UTC [175] STATEMENT:  INSERT INTO user_memories (id, user_id, text, embedding, memory_type, source_message_id) VALUES ($1::UUID, $2::UUID, $3::VARCHAR, $4, $5::VARCHAR, $6::VARCHAR) RETURNING user_memories.confidence, user_memories.updated_at, user_memories.created_at
+2026-07-13T17:27:36.9954959Z  2026-07-13 17:27:29.619 UTC [185] ERROR:  duplicate key value violates unique constraint "uq_job_postings_source_external_id"
+2026-07-13T17:27:36.9955396Z  This user must also own the server process.
+2026-07-13T17:27:36.9955620Z  
+2026-07-13T17:27:36.9955852Z  The database cluster will be initialized with locale "en_US.utf8".
+2026-07-13T17:27:36.9956203Z  The default database encoding has accordingly been set to "UTF8".
+2026-07-13T17:27:36.9956550Z  The default text search configuration will be set to "english".
+2026-07-13T17:27:36.9956810Z  
+2026-07-13T17:27:36.9956976Z  Data page checksums are disabled.
+2026-07-13T17:27:36.9957173Z  
+2026-07-13T17:27:36.9957412Z  fixing permissions on existing directory /var/lib/postgresql/data ... ok
+2026-07-13T17:27:36.9957840Z  creating subdirectories ... ok
+2026-07-13T17:27:36.9958099Z  selecting dynamic shared memory implementation ... posix
+2026-07-13T17:27:36.9958376Z  selecting default max_connections ... 100
+2026-07-13T17:27:36.9958620Z  selecting default shared_buffers ... 128MB
+2026-07-13T17:27:36.9958857Z  selecting default time zone ... Etc/UTC
+2026-07-13T17:27:36.9959089Z  creating configuration files ... ok
+2026-07-13T17:27:36.9959313Z  running bootstrap script ... ok
+2026-07-13T17:27:36.9959557Z  performing post-bootstrap initialization ... ok
+2026-07-13T17:27:36.9959808Z  syncing data to disk ... ok
+2026-07-13T17:27:36.9959996Z  
+2026-07-13T17:27:36.9960145Z  
+2026-07-13T17:27:36.9960336Z  Success. You can now start the database server using:
+2026-07-13T17:27:36.9961073Z  
+2026-07-13T17:27:36.9961403Z      pg_ctl -D /var/lib/postgresql/data -l logfile start
+2026-07-13T17:27:36.9961804Z  
+2026-07-13T17:27:36.9962660Z  waiting for server to start....2026-07-13 17:26:51.119 UTC [48] LOG:  starting PostgreSQL 16.14 (Debian 16.14-1.pgdg12+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 12.2.0-14+deb12u1) 12.2.0, 64-bit
+2026-07-13T17:27:36.9963824Z  2026-07-13 17:26:51.120 UTC [48] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+2026-07-13T17:27:36.9964542Z  2026-07-13 17:26:51.124 UTC [51] LOG:  database system was shut down at 2026-07-13 17:26:50 UTC
+2026-07-13T17:27:36.9965195Z  2026-07-13 17:26:51.127 UTC [48] LOG:  database system is ready to accept connections
+2026-07-13T17:27:36.9965651Z   done
+2026-07-13T17:27:36.9965876Z  server started
+2026-07-13T17:27:36.9966126Z  CREATE DATABASE
+2026-07-13T17:27:36.9966373Z  
+2026-07-13T17:27:36.9966596Z  
+2026-07-13T17:27:36.9966997Z  /usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
+2026-07-13T17:27:36.9967469Z  
+2026-07-13T17:27:36.9967894Z  waiting for server to shut down...2026-07-13 17:26:51.300 UTC [48] LOG:  received fast shutdown request
+2026-07-13T17:27:36.9968554Z  .2026-07-13 17:26:51.301 UTC [48] LOG:  aborting any active transactions
+2026-07-13T17:27:36.9969336Z  2026-07-13 17:26:51.302 UTC [48] LOG:  background worker "logical replication launcher" (PID 54) exited with exit code 1
+2026-07-13T17:27:36.9970024Z  2026-07-13 17:26:51.304 UTC [49] LOG:  shutting down
+2026-07-13T17:27:36.9970650Z  2026-07-13 17:26:51.304 UTC [49] LOG:  checkpoint starting: shutdown immediate
+2026-07-13T17:27:36.9972224Z  2026-07-13 17:26:51.410 UTC [49] LOG:  checkpoint complete: wrote 922 buffers (5.6%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.072 s, sync=0.034 s, total=0.107 s; sync files=301, longest=0.015 s, average=0.001 s; distance=4255 kB, estimate=4255 kB; lsn=0/1912120, redo lsn=0/1912120
+2026-07-13T17:27:36.9973588Z  2026-07-13 17:26:51.416 UTC [48] LOG:  database system is shut down
+2026-07-13T17:27:36.9973982Z   done
+2026-07-13T17:27:36.9974218Z  server stopped
+2026-07-13T17:27:36.9974464Z  
+2026-07-13T17:27:36.9974684Z  PostgreSQL init process complete; ready for start up.
+2026-07-13T17:27:36.9974938Z  
+2026-07-13T17:27:36.9975260Z  2026-07-13 17:27:29.619 UTC [185] DETAIL:  Key (source, external_id)=(linkedin, ext-c1442f9b) already exists.
+2026-07-13T17:27:36.9976511Z  2026-07-13 17:27:29.619 UTC [185] STATEMENT:  INSERT INTO job_postings (id, source, external_id, target_role, source_url, title, company, location, description, expires_at, fetched_at) VALUES ($1::UUID, $2::VARCHAR, $3::VARCHAR, $4::VARCHAR, $5::VARCHAR, $6::VARCHAR, $7::VARCHAR, $8::VARCHAR, $9::VARCHAR, $10::TIMESTAMP WITH TIME ZONE, $11::TIMESTAMP WITH TIME ZONE) RETURNING job_postings.raw, job_postings.updated_at, job_postings.created_at
+2026-07-13T17:27:36.9977827Z  2026-07-13 17:27:29.757 UTC [191] ERROR:  duplicate key value violates unique constraint "role_profiles_canonical_role_key"
+2026-07-13T17:27:36.9978346Z  2026-07-13 17:27:29.757 UTC [191] DETAIL:  Key (canonical_role)=(Platform Engineer 301bc3) already exists.
+2026-07-13T17:27:36.9979363Z  2026-07-13 17:27:29.757 UTC [191] STATEMENT:  INSERT INTO role_profiles (id, canonical_role, taxonomy_id, refreshed_at) VALUES ($1::UUID, $2::VARCHAR, $3::VARCHAR, $4::TIMESTAMP WITH TIME ZONE) RETURNING role_profiles.requirements, role_profiles.sources, role_profiles.evidence_count, role_profiles.updated_at, role_profiles.created_at
+2026-07-13T17:27:36.9980840Z  2026-07-13 17:27:31.530 UTC [235] ERROR:  new row for relation "tasks" violates check constraint "ck_tasks_status"
+2026-07-13T17:27:36.9981665Z  2026-07-13 17:27:31.530 UTC [235] DETAIL:  Failing row contains (ee3c70b7-1137-47b4-bd60-f6d23f8f7cf0, cbe60936-ec28-425f-95bb-f29bc7d77cee, null, t, null, null, nonsense, user, 2026-07-13 17:27:31.523289+00, 2026-07-13 17:27:31.523289+00).
+2026-07-13T17:27:36.9982814Z  2026-07-13 17:27:31.530 UTC [235] STATEMENT:  INSERT INTO tasks (id, goal_id, milestone_id, title, description, due_date, status) VALUES ($1::UUID, $2::UUID, $3::UUID, $4::VARCHAR, $5::VARCHAR, $6::DATE, $7::VARCHAR) RETURNING tasks.source, tasks.updated_at, tasks.created_at
+2026-07-13T17:27:36.9983668Z  2026-07-13 17:27:31.579 UTC [237] ERROR:  new row for relation "tasks" violates check constraint "ck_tasks_source"
+2026-07-13T17:27:36.9984455Z  2026-07-13 17:27:31.579 UTC [237] DETAIL:  Failing row contains (1477b676-fa22-44db-9f6a-d91581b2d489, a350f717-2330-418c-bf44-480d86b30b0e, null, t, null, null, todo, robot, 2026-07-13 17:27:31.573575+00, 2026-07-13 17:27:31.573575+00).
+2026-07-13T17:27:36.9985564Z  2026-07-13 17:27:31.579 UTC [237] STATEMENT:  INSERT INTO tasks (id, goal_id, milestone_id, title, description, due_date, source) VALUES ($1::UUID, $2::UUID, $3::UUID, $4::VARCHAR, $5::VARCHAR, $6::DATE, $7::VARCHAR) RETURNING tasks.status, tasks.updated_at, tasks.created_at
+2026-07-13T17:27:36.9991157Z Stop and remove container: cd4eea9c20c543f1b7fee359f2c17bf6_pgvectorpgvectorpg16_5d5f47
+2026-07-13T17:27:36.9994934Z ##[command]/usr/bin/docker rm --force c53a034b3b2b2b22a564c409d9e23a65ff54d03027740acf45a9ed437181c704
+2026-07-13T17:27:37.4545223Z c53a034b3b2b2b22a564c409d9e23a65ff54d03027740acf45a9ed437181c704
+2026-07-13T17:27:37.4567943Z Remove container network: github_network_fd835f7978db4312a21693348435446e
+2026-07-13T17:27:37.4571447Z ##[command]/usr/bin/docker network rm github_network_fd835f7978db4312a21693348435446e
+2026-07-13T17:27:37.5598919Z github_network_fd835f7978db4312a21693348435446e
+2026-07-13T17:27:37.5671956Z Cleaning up orphan processes
+2026-07-13T17:27:37.5922875Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, astral-sh/setup-uv@v5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

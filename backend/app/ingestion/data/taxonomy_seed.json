@@ -1,0 +1,184 @@
+[
+  {
+    "taxonomy": "onet",
+    "id": "15-1252.00",
+    "title": "Software Developers",
+    "description": "Research, design, and develop computer and network software or specialized utility programs. Analyze user needs and develop software solutions, applying principles and techniques of computer science, engineering, and mathematical analysis. Update software or enhance existing software capabilities.",
+    "skills": ["software design", "software architecture", "debugging", "unit testing", "version control (Git)", "code review", "agile development", "REST API design", "object-oriented programming", "Python", "Java", "SQL"]
+  },
+  {
+    "taxonomy": "onet",
+    "id": "15-2051.00",
+    "title": "Data Scientists",
+    "description": "Develop and implement a set of techniques or analytics applications to transform raw data into meaningful information using data-oriented programming languages and visualization software. Apply data mining, data modeling, natural language processing, and machine learning to extract and analyze information from large structured and unstructured datasets.",
+    "skills": ["machine learning", "statistical modeling", "Python", "R", "SQL", "data visualization", "data mining", "feature engineering", "A/B testing", "pandas", "scikit-learn", "experimental design"]
+  },
+  {
+    "taxonomy": "onet",
+    "id": "15-2051.01",
+    "title": "Business Intelligence Analysts",
+    "description": "Produce financial and market intelligence by querying data repositories and generating periodic reports. Devise methods for identifying data patterns and trends in available information sources to support business decision-making.",
+    "skills": ["SQL", "data warehousing", "dashboard design", "business analysis", "ETL", "reporting", "Power BI", "Tableau", "requirements gathering", "KPI definition"]
+  },
+  {
+    "taxonomy": "onet",
+    "id": "15-1211.00",
+    "title": "Computer Systems Analysts",
+    "description": "Analyze science, engineering, business, and other data processing problems to develop and implement solutions to complex applications problems, system administration issues, or network concerns. Analyze user requirements, procedures, and problems to automate or improve existing systems.",
+    "skills": ["systems analysis", "requirements engineering", "business process modeling", "solution design", "stakeholder management", "SQL", "documentation", "cost-benefit analysis"]
+  },
+  {
+    "taxonomy": "onet",
+    "id": "15-1243.00",
+    "title": "Database Architects",
+    "description": "Design strategies for enterprise databases, data warehouse systems, and multidimensional networks. Set standards for database operations, programming, query processes, and security. Model, design, and construct large relational databases or data warehouses.",
+    "skills": ["database design", "data modeling", "SQL", "PostgreSQL", "data warehousing", "query optimization", "data governance", "ETL", "schema design", "indexing"]
+  },
+  {
+    "taxonomy": "onet",
+    "id": "15-1244.00",
+    "title": "Network and Computer Systems Administrators",
+    "description": "Install, configure, and maintain an organization's local area network, wide area network, data communications network, operating systems, and physical and virtual servers. Perform system monitoring and verify the integrity and availability of hardware, network, and server resources and systems.",
+    "skills": ["Linux administration", "networking (TCP/IP)", "system monitoring", "shell scripting", "backup and recovery", "DNS", "firewall configuration", "virtualization", "troubleshooting"]
+  },
+  {
+    "taxonomy": "onet",
+    "id": "15-1241.00",
+    "title": "Computer Network Architects",
+    "description": "Design and implement computer and information networks, such as local area networks, wide area networks, intranets, extranets, and other data communications networks. Perform network modeling, analysis, and planning, including analysis of capacity needs for network infrastructures.",
+    "skills": ["network design", "cloud networking", "capacity planning", "network security", "TCP/IP", "routing and switching", "load balancing", "VPN", "infrastructure architecture"]
+  },
+  {
+    "taxonomy": "onet",
+    "id": "15-1254.00",
+    "title": "Web Developers",
+    "description": "Develop and implement websites and web applications using authoring or scripting languages, content creation tools, management tools, and digital media. Write, design, or edit web page content and integrate front-end interfaces with back-end services and databases.",
+    "skills": ["HTML", "CSS", "JavaScript", "TypeScript", "React", "responsive design", "REST API integration", "web performance", "accessibility (WCAG)", "Next.js"]
+  },
+  {
+    "taxonomy": "onet",
+    "id": "15-1255.00",
+    "title": "Web and Digital Interface Designers",
+    "description": "Design digital user interfaces or websites. Develop and test layouts, interfaces, functionality, and navigation menus to ensure compatibility and usability across browsers or devices. Combine aesthetics with technical functionality to create engaging user experiences.",
+    "skills": ["UI design", "UX research", "wireframing", "prototyping", "Figma", "interaction design", "usability testing", "design systems", "information architecture", "accessibility (WCAG)"]
+  },
+  {
+    "taxonomy": "onet",
+    "id": "15-1299.08",
+    "title": "Computer Systems Engineers/Architects",
+    "description": "Design and develop solutions to complex applications problems, system administration issues, or network concerns. Perform systems management and integration functions, improve existing computer systems, and review computer system capabilities, workflow, and scheduling limitations.",
+    "skills": ["systems architecture", "cloud architecture (AWS)", "distributed systems", "microservices", "scalability", "integration design", "solution architecture", "technical leadership", "containerization (Docker)"]
+  },
+  {
+    "taxonomy": "onet",
+    "id": "11-3021.00",
+    "title": "Computer and Information Systems Managers",
+    "description": "Plan, direct, or coordinate activities in such fields as electronic data processing, information systems, systems analysis, and computer programming. Manage backup, security, and user help systems and consult with users, management, vendors, and technicians to assess computing needs and system requirements.",
+    "skills": ["IT strategy", "team leadership", "budget management", "vendor management", "project portfolio management", "risk management", "stakeholder communication", "resource planning"]
+  },
+  {
+    "taxonomy": "onet",
+    "id": "13-1082.00",
+    "title": "Project Management Specialists",
+    "description": "Analyze and coordinate the schedule, timeline, procurement, staffing, and budget of a product or service on a per-project basis. Lead and guide the work of technical staff and serve as a liaison between business and technical aspects of projects.",
+    "skills": ["project planning", "agile (Scrum)", "risk management", "budget management", "stakeholder management", "roadmapping", "Jira", "scope management", "communication", "resource allocation"]
+  },
+  {
+    "taxonomy": "onet",
+    "id": "11-2021.00",
+    "title": "Marketing Managers",
+    "description": "Plan, direct, or coordinate marketing policies and programs, such as determining the demand for products and services offered by a firm and its competitors, and identify potential customers. Develop pricing strategies with the goal of maximizing profits or share of the market while ensuring customer satisfaction.",
+    "skills": ["market research", "product marketing", "go-to-market strategy", "brand management", "digital marketing", "analytics", "campaign management", "stakeholder communication", "budgeting"]
+  },
+  {
+    "taxonomy": "onet",
+    "id": "15-1232.00",
+    "title": "Computer User Support Specialists",
+    "description": "Provide technical assistance to computer users. Answer questions or resolve computer problems for clients in person, via telephone, or electronically. Provide assistance concerning the use of computer hardware and software, including printing, installation, word processing, electronic mail, and operating systems.",
+    "skills": ["technical support", "troubleshooting", "customer service", "ticketing systems", "operating systems", "hardware diagnostics", "documentation", "communication"]
+  },
+  {
+    "taxonomy": "onet",
+    "id": "17-2061.00",
+    "title": "Computer Hardware Engineers",
+    "description": "Research, design, develop, or test computer or computer-related equipment for commercial, industrial, military, or scientific use. May supervise the manufacturing and installation of computer or computer-related equipment and components.",
+    "skills": ["hardware design", "embedded systems", "circuit design", "prototyping", "testing and validation", "computer architecture", "firmware", "problem solving"]
+  },
+  {
+    "taxonomy": "esco",
+    "id": "2512",
+    "title": "Software developer",
+    "description": "Software developers implement or program software of various kinds based on specifications and designs, using programming languages, tools, and platforms. They write and maintain source code and adapt software to the needs of the organization or user.",
+    "skills": ["computer programming", "software design", "debugging", "software testing", "algorithms", "data structures", "Git", "web application development", "software configuration management"]
+  },
+  {
+    "taxonomy": "esco",
+    "id": "2519",
+    "title": "Software and applications developer/analyst not elsewhere classified",
+    "description": "This unit group covers software and applications developers and analysts not classified elsewhere, including quality assurance analysts and testers who design and execute software test plans to ensure software meets requirements.",
+    "skills": ["software testing", "test automation", "quality assurance", "requirements analysis", "defect tracking", "test case design", "continuous integration", "Selenium"]
+  },
+  {
+    "taxonomy": "esco",
+    "id": "2511",
+    "title": "Systems analyst",
+    "description": "Systems analysts research, analyse, and evaluate requirements for existing or new ICT systems. They design information systems solutions in order to meet user needs and produce specifications for developers to implement.",
+    "skills": ["systems analysis", "requirements engineering", "UML modeling", "business process analysis", "solution design", "SQL", "stakeholder management", "technical documentation"]
+  },
+  {
+    "taxonomy": "esco",
+    "id": "2513",
+    "title": "Web and multimedia developer",
+    "description": "Web and multimedia developers combine design and technical knowledge to research, analyse, evaluate, design, program, and modify websites and applications that combine text with sounds, pictures, graphics, and video clips.",
+    "skills": ["HTML", "CSS", "JavaScript", "web design", "multimedia integration", "front-end frameworks", "content management systems", "responsive design", "UX principles"]
+  },
+  {
+    "taxonomy": "esco",
+    "id": "2514",
+    "title": "Applications programmer",
+    "description": "Applications programmers write, test, and maintain computer programs based on and to meet the specifications drawn up by software and applications developers and analysts, using programming languages and development tools.",
+    "skills": ["computer programming", "Java", "Python", "C#", "unit testing", "debugging", "object-oriented programming", "code documentation", "version control"]
+  },
+  {
+    "taxonomy": "esco",
+    "id": "2521",
+    "title": "Database designer and administrator",
+    "description": "Database designers and administrators design, program, and manage databases and database management systems, ensuring database availability, integrity, security, and performance to serve the storage and retrieval needs of the organisation.",
+    "skills": ["database administration", "SQL", "PostgreSQL", "data modeling", "backup and recovery", "performance tuning", "database security", "high availability", "indexing"]
+  },
+  {
+    "taxonomy": "esco",
+    "id": "2523",
+    "title": "Computer network professional",
+    "description": "Computer network professionals research, analyse, design, test, and recommend strategies to architect and monitor data communication networks including local, wide-area, and internet systems, ensuring performance, security, and availability.",
+    "skills": ["network administration", "TCP/IP", "network security", "routing and switching", "cloud networking", "monitoring", "troubleshooting", "firewall configuration"]
+  },
+  {
+    "taxonomy": "esco",
+    "id": "1330",
+    "title": "Information and communications technology service manager",
+    "description": "ICT service managers plan, direct, and coordinate the acquisition, development, maintenance, and use of computer and telecommunication systems. They lead ICT teams and align technology services with organisational strategy and user needs.",
+    "skills": ["IT service management", "team leadership", "ITIL", "budget management", "vendor management", "strategic planning", "service delivery", "stakeholder communication"]
+  },
+  {
+    "taxonomy": "esco",
+    "id": "2166",
+    "title": "Graphic and multimedia designer",
+    "description": "Graphic and multimedia designers create designs and layouts for digital and print media, and design user interfaces and interactive experiences, communicating ideas that inspire, inform, or engage consumers through visual and interactive concepts.",
+    "skills": ["graphic design", "UI design", "typography", "visual communication", "Figma", "Adobe Creative Suite", "prototyping", "design systems", "branding"]
+  },
+  {
+    "taxonomy": "esco",
+    "id": "2529",
+    "title": "Database and network professional not elsewhere classified",
+    "description": "This unit group covers database and network professionals not classified elsewhere, such as ICT security specialists who plan and implement security measures to protect computer systems, networks, and data from cyber threats.",
+    "skills": ["information security", "threat analysis", "penetration testing", "security auditing", "incident response", "encryption", "identity and access management", "risk assessment", "SIEM"]
+  },
+  {
+    "taxonomy": "onet",
+    "id": "15-2031.00",
+    "title": "Operations Research Analysts",
+    "description": "Formulate and apply mathematical modeling and other optimizing methods to develop and interpret information that assists management with decision-making, policy formulation, or other managerial functions. Collect and analyze data and develop decision support software, services, or products.",
+    "skills": ["optimization", "mathematical modeling", "operations research", "Python", "linear programming", "simulation", "statistical analysis", "decision analysis", "data analysis"]
+  }
+]

@@ -93,3 +93,5 @@ The orchestrator's board. One row per task. See `.claude/skills/agent-handoff/SK
 | P6-09-manual-verify | P6 exit: cited ranked requirements + gap + cache + redirect | P6 | DONE | 1 | APPROVED | APPROVED |
 | FIX-07-market-role-canonicalization-kind-filter | market_agent canonicalization must filter shared KB by meta.kind, not just source_type | cross-cutting | DONE | 1 | APPROVED | APPROVED |
 | P6-10-cicd-verify | P6 CI/CD verification | P6 | DONE | 1 | APPROVED | APPROVED |
+| FIX-08-frontend-ci-node-deprecation | Bump frontend-ci off deprecated Node 20 actions | cross-cutting | DONE | 1 | APPROVED | APPROVED |
+| FIX-09-taxonomy-fixture-gitignored | backend-ci fails: taxonomy_seed.json excluded by over-broad .gitignore | cross-cutting | DONE | 1 | APPROVED | APPROVED |
