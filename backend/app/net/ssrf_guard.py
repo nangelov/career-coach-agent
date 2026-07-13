@@ -89,9 +89,7 @@ ALLOWED_SCHEMES: Final = frozenset({"http", "https"})
 
 #: Exact hostnames that are always denied (loopback alias + compose service names). The
 #: co-located ``db`` / ``redis`` / ``backend`` names are the SSRF pivot targets §7.2 warns of.
-DEFAULT_DENY_HOSTS: Final[frozenset[str]] = frozenset(
-    {"localhost", "db", "redis", "backend"}
-)
+DEFAULT_DENY_HOSTS: Final[frozenset[str]] = frozenset({"localhost", "db", "redis", "backend"})
 
 #: Hostname suffixes that are always denied (internal service naming conventions).
 DEFAULT_DENY_SUFFIXES: Final[tuple[str, ...]] = (".internal", ".local", ".localhost")
@@ -264,9 +262,7 @@ def _resolve_ips(host: str, resolver: Resolver) -> list[IPAddress]:
     return ips
 
 
-async def _resolve_ips_async(
-    host: str, resolver: Resolver, timeout: float
-) -> list[IPAddress]:
+async def _resolve_ips_async(host: str, resolver: Resolver, timeout: float) -> list[IPAddress]:
     """Resolve ``host`` off the event loop under ``timeout`` seconds.
 
     The blocking resolver runs in a worker thread via ``anyio.to_thread.run_sync``; the wait is

@@ -21,9 +21,7 @@ _POLICY = "2026-07-13"
 
 def _service(store: InMemorySessionStore, *, ttl: int = 3600) -> GuestAuthService:
     codec = SessionTokenCodec(secret=_SECRET, expire_minutes=60)
-    return GuestAuthService(
-        store, codec, session_ttl_seconds=ttl, consent_policy_version=_POLICY
-    )
+    return GuestAuthService(store, codec, session_ttl_seconds=ttl, consent_policy_version=_POLICY)
 
 
 async def test_create_guest_session_persists_record() -> None:

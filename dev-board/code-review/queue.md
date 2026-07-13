@@ -81,3 +81,4 @@ The orchestrator's board. One row per task. See `.claude/skills/agent-handoff/SK
 | SEC-08-contact-redaction | S10 — Contact-detail redaction at LLM egress | SEC | DONE | 1 | APPROVED | APPROVED |
 | SEC-09-verify | SEC exit: SSRF/injection/port/cookie/erasure verify | SEC | DONE | 1 | APPROVED | APPROVED |
 | SEC-10-container-verify | Live docker-compose + fresh test-suite verification | SEC | DONE | 1 | APPROVED | APPROVED |
+| FIX-06-ruff-format-check | Backend CI failing on `ruff format --check` | cross-cutting | DONE | 1 | APPROVED | APPROVED |

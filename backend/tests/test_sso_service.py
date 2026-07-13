@@ -129,9 +129,7 @@ async def test_complete_login_records_current_policy_on_returning_stale_user() -
     states = InMemoryOAuthStateStore()
 
     # First login under an old policy version.
-    old = _service(
-        oidc=oidc, states=states, users=users, consent_policy_version="2025-01-01"
-    )
+    old = _service(oidc=oidc, states=states, users=users, consent_policy_version="2025-01-01")
     await old.begin_login("google", consent=True)
     await old.complete_login("google", code="c1", state="state-1")
     assert (
@@ -140,9 +138,7 @@ async def test_complete_login_records_current_policy_on_returning_stale_user() -
     )
 
     # Next login under the bumped policy re-records the current version (same identity).
-    current = _service(
-        oidc=oidc, states=states, users=users, consent_policy_version="2026-07-13"
-    )
+    current = _service(oidc=oidc, states=states, users=users, consent_policy_version="2026-07-13")
     await current.begin_login("google", consent=True)
     await current.complete_login("google", code="c2", state="state-2")
     assert (

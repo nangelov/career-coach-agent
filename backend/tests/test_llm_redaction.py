@@ -211,9 +211,12 @@ async def test_stream_redacts_before_client_call() -> None:
     client = _RecordingClient("primary")
     router = _router(client)
 
-    chunks = [chunk async for chunk in router.stream(
-        [ChatMessage(role="user", content="my number is +1 (415) 555-0198")]
-    )]
+    chunks = [
+        chunk
+        async for chunk in router.stream(
+            [ChatMessage(role="user", content="my number is +1 (415) 555-0198")]
+        )
+    ]
 
     assert chunks  # stream produced output
     forwarded = client.received[0].content or ""

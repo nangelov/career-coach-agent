@@ -166,9 +166,7 @@ async def sso_login(
     the guest session it names so the callback preserves that conversation (P3-03).
     """
     try:
-        url = await service.begin_login(
-            provider, upgrade_ticket=upgrade_ticket, consent=consent
-        )
+        url = await service.begin_login(provider, upgrade_ticket=upgrade_ticket, consent=consent)
     except UnknownProvider as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

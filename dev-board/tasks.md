@@ -3,6 +3,12 @@
 > Actionable task breakdown for the v2 rebuild. Derived from [plan.md](./plan.md) (phases P0–P12) and [app-design-and-features.md](./app-design-and-features.md).
 > Convention: tasks are grouped by phase; each phase ends in a runnable/demoable state. `[ ]` = todo, `[~]` = in progress, `[x]` = done.
 > Tags: **(B)** backend · **(F)** frontend · **(I)** infra/devops · **(D)** decision · **(T)** test/verify.
+> **2026-07-13 (later) revision:** from **P6 onward**, every phase closes with a dedicated **(T) CI/CD
+> verification** task — run the full backend + frontend CI command sets **locally** (the same commands
+> `.github/workflows/backend-ci.yml` / `frontend-ci.yml` run: ruff + mypy + pytest; eslint + tsc + jest) and
+> confirm both are green before the phase is considered done. (The project's CI runs on **GitHub Actions**,
+> not GitLab — CLAUDE.md/`dev-board/plan.md` already say so; this step just means "run the CI pipeline's own
+> commands ahead of pushing," whichever host runs them.)
 > **2026-07-13 revision:** product scope locked to coaching/personal-development (§1.1) → **P6 rescoped** from
 > *"Richer job search"* to **Market intelligence**; a new **[SEC]** block lands between P5 and P6; P9/P10
 > extended with privacy, topic-scoping and abuse work; **new P11 "Observability, telemetry & product analytics"**
@@ -176,6 +182,7 @@ users. **No job listings are ever shown.**
 - [ ] **(I)** Source policy: respect `robots.txt`, rate-limit, **never scrape LinkedIn** (ToS).
 - [ ] **(F)** Role-requirements UI: target role, frequency-ranked skills **with citations**, gap vs profile. **No listings, no apply, no save/track.**
 - [ ] **(T)** "PM → AI Solution Architect" returns cited, ranked requirements + a gap; second user hits the cache (no re-extraction); *"find me jobs in Berlin"* is **redirected**, not answered with listings.
+- [ ] **(T)** **CI/CD verification** — run the full backend + frontend CI command sets locally (ruff + ruff format --check + mypy + pytest; eslint + tsc + jest — the exact commands in `.github/workflows/backend-ci.yml` / `frontend-ci.yml`) and confirm both are green before closing the phase.
 
 ---
 
@@ -188,6 +195,7 @@ users. **No job listings are ever shown.**
 - [ ] **(B)** `POST /api/pdp` uses the **stored profile** (no re-upload); regenerate on demand.
 - [ ] **(F)** PDP generation UI (uses stored profile) + download.
 - [ ] **(T)** PDP PDF quality vs v1; section headers stay in sync with prompt + PDF builder.
+- [ ] **(T)** **CI/CD verification** — run the full backend + frontend CI command sets locally (ruff + ruff format --check + mypy + pytest; eslint + tsc + jest — the exact commands in `.github/workflows/backend-ci.yml` / `frontend-ci.yml`) and confirm both are green before closing the phase.
 
 ---
 
@@ -201,6 +209,7 @@ users. **No job listings are ever shown.**
 - [ ] **(B)** PDP generation **seeds** goals/tasks into the dashboard.
 - [ ] **(F)** Dashboard UI: goals/tasks board, progress charts/streaks, % to target date; approve/reject AI proposals.
 - [ ] **(T)** User edits plan; assistant proposes tasks; approval flow; progress renders.
+- [ ] **(T)** **CI/CD verification** — run the full backend + frontend CI command sets locally (ruff + ruff format --check + mypy + pytest; eslint + tsc + jest — the exact commands in `.github/workflows/backend-ci.yml` / `frontend-ci.yml`) and confirm both are green before closing the phase.
 
 ---
 
@@ -220,6 +229,7 @@ users. **No job listings are ever shown.**
 - [ ] **(B)** **S14 — Retention purge** (§6.18): periodic Celery job deleting SSO users' conversations / CVs / profiles / memories / traces **30 days after last activity**; guests expire with the session TTL.
 - [ ] **(F)** 👍/👎 on messages + inline "try again"; "What the coach knows about you" panel.
 - [ ] **(T)** Cross-session adaptation; 👎 changes behavior; inspect + delete memories.
+- [ ] **(T)** **CI/CD verification** — run the full backend + frontend CI command sets locally (ruff + ruff format --check + mypy + pytest; eslint + tsc + jest — the exact commands in `.github/workflows/backend-ci.yml` / `frontend-ci.yml`) and confirm both are green before closing the phase.
 
 ---
 
@@ -233,6 +243,7 @@ users. **No job listings are ever shown.**
 - [ ] **(B)** Confirm v1 `run_python_code` REPL is **removed** (ACE risk); sandboxed evaluator only if math truly needed.
 - [ ] **(B)** Per-session/per-user/**per-IP**/per-tool rate-limit enforcement + abuse handling; all crawled/web/**document** content untrusted.
 - [ ] **(T)** Jailbreak/injection suite **including a CV with embedded injected instructions and a poisoned crawled page**; off-topic refused + job-hunting redirected; secret/prompt-leak checks; no arbitrary code execution.
+- [ ] **(T)** **CI/CD verification** — run the full backend + frontend CI command sets locally (ruff + ruff format --check + mypy + pytest; eslint + tsc + jest — the exact commands in `.github/workflows/backend-ci.yml` / `frontend-ci.yml`) and confirm both are green before closing the phase.
 
 ---
 
@@ -249,6 +260,7 @@ no CV or message content.
 - [ ] **(D)** **Admin-access ruling:** access to the telemetry backend's dashboard is the provider's own login (recommend enabling Google sign-in there). **No new username/password admin surface is added to this app** — in-app admin actions keep using the existing `is_admin`-flagged SSO account (P3-05); the SSO-only decision (§6.2) is not reopened.
 - [ ] **(F)** Reintroduce **Google Analytics 4** (`gtag.js`) in the Next.js frontend: pageviews + button-click engagement events (send-message, stop, upload-cv, generate-pdp, submit-feedback, thumbs up/down, dashboard actions) — mirrors the v1 `ChatBot.tsx` / `PDPDialog.tsx` pattern. Measurement ID via env; loads only after the consent gate (§6.22); **event payloads never carry message content, CV text, or PII.**
 - [ ] **(T)** Verify a full chat turn traces end-to-end in the OTel backend; force an error and confirm it reaches Sentry; confirm GA4 real-time events; grep exported traces/logs/GA payloads for CV/message content — none found.
+- [ ] **(T)** **CI/CD verification** — run the full backend + frontend CI command sets locally (ruff + ruff format --check + mypy + pytest; eslint + tsc + jest — the exact commands in `.github/workflows/backend-ci.yml` / `frontend-ci.yml`) and confirm both are green before closing the phase.
 
 ---
 
@@ -276,6 +288,7 @@ no CV or message content.
 - [ ] **(I)** **S5 — Port lockdown in the Space image**: only the UI port reachable; FastAPI/Postgres/Redis internal-only.
 - [ ] **(T)** Parity checklist vs v1 (chat, PDP, **market requirements**, feedback) + smoke tests. *(v1's job-listing search is intentionally **not** at parity — §1.1 scope ruling.)*
 - [ ] **(T)** Confirm P11's OTel traces/Sentry/GA4 are wired and reporting from the deployed Space, not just locally.
+- [ ] **(T)** **CI/CD verification** — run the full backend + frontend CI command sets locally (ruff + ruff format --check + mypy + pytest; eslint + tsc + jest — the exact commands in `.github/workflows/backend-ci.yml` / `frontend-ci.yml`) and confirm both are green before cutover.
 - [ ] **(I)** Cut over to v2.
 - [ ] **(I)** Delete v1: `app.py`, `output_parser.py`, old CRA `frontend/`, `helpers/feedback_handler.py` JSON store, etc.
 
