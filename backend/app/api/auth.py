@@ -40,6 +40,7 @@ from app.services.auth import (
     ConsentRequired,
     GuestAuthService,
     InvalidOAuthState,
+    ProviderNotConfigured,
     SessionAuthenticator,
     SsoAuthService,
     UnknownProvider,
@@ -162,8 +163,10 @@ async def sso_login(
     stores the pending transaction; the browser is sent to the provider. The consent gate
     (§6.22): without ``consent=true`` (the login screen's checkbox) the attempt is rejected
     ``400`` **before** redirecting to the provider and before any upgrade ticket is consumed.
-    An unsupported ``{provider}`` is a ``404``. A valid ``upgrade_ticket`` binds this login to
-    the guest session it names so the callback preserves that conversation (P3-03).
+    An unsupported ``{provider}`` is a ``404``; a *supported* provider with no OAuth
+    credentials configured on this deployment is a ``503`` (fail cleanly in-stack rather than
+    redirect to the provider with a blank ``client_id``). A valid ``upgrade_ticket`` binds this
+    login to the guest session it names so the callback preserves that conversation (P3-03).
     """
     try:
         url = await service.begin_login(provider, upgrade_ticket=upgrade_ticket, consent=consent)
@@ -171,6 +174,14 @@ async def sso_login(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Unknown SSO provider: {provider}",
+        ) from exc
+    except ProviderNotConfigured as exc:
+        # A supported provider without OAuth credentials on this deployment (§7.1): fail
+        # cleanly inside our own stack (503) instead of redirecting the browser to the
+        # provider with a blank client_id. The BFF maps this to ?login_error=provider_unavailable.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"SSO provider is not configured: {provider}",
         ) from exc
     except ConsentRequired as exc:
         raise HTTPException(

@@ -16,6 +16,7 @@ from app.security.tokens import SessionTokenCodec
 from app.services.auth import (
     ConsentRequired,
     InvalidOAuthState,
+    ProviderNotConfigured,
     SsoAuthService,
     UnknownProvider,
 )
@@ -29,6 +30,12 @@ _BASE_URL = "https://app.example"
 _POLICY = "2026-07-13"
 
 
+_CONFIGURED_CREDENTIALS = {
+    "google": ("google-client-id", "google-client-secret"),
+    "linkedin": ("linkedin-client-id", "linkedin-client-secret"),
+}
+
+
 def _service(
     *,
     oidc: FakeOIDCClient | None = None,
@@ -36,6 +43,7 @@ def _service(
     users: InMemoryUserStore | None = None,
     sessions: InMemorySessionStore | None = None,
     consent_policy_version: str = _POLICY,
+    provider_credentials: dict[str, tuple[str, str]] | None = None,
 ) -> SsoAuthService:
     return SsoAuthService(
         oidc or FakeOIDCClient(),
@@ -47,6 +55,9 @@ def _service(
         state_ttl_seconds=600,
         session_ttl_seconds=3600,
         providers=frozenset({"google", "linkedin"}),
+        provider_credentials=(
+            _CONFIGURED_CREDENTIALS if provider_credentials is None else provider_credentials
+        ),
         consent_policy_version=consent_policy_version,
     )
 
@@ -84,6 +95,47 @@ async def test_begin_login_without_consent_is_rejected() -> None:
 async def test_begin_login_unknown_provider_raises() -> None:
     with pytest.raises(UnknownProvider):
         await _service().begin_login("myspace", consent=True)
+
+
+@pytest.mark.parametrize(
+    ("provider", "credentials"),
+    [
+        # Both providers, both credential fields blank in turn (§7.1): a known provider that
+        # this deployment has no OAuth credentials for must fail cleanly, not redirect.
+        ("google", {"google": ("", "google-secret"), "linkedin": ("li-id", "li-secret")}),
+        ("google", {"google": ("google-id", ""), "linkedin": ("li-id", "li-secret")}),
+        ("google", {"google": ("", ""), "linkedin": ("li-id", "li-secret")}),
+        ("linkedin", {"google": ("g-id", "g-secret"), "linkedin": ("", "linkedin-secret")}),
+        ("linkedin", {"google": ("g-id", "g-secret"), "linkedin": ("linkedin-id", "")}),
+        ("linkedin", {"google": ("g-id", "g-secret"), "linkedin": ("", "")}),
+    ],
+)
+async def test_begin_login_unconfigured_provider_raises(
+    provider: str, credentials: dict[str, tuple[str, str]]
+) -> None:
+    oidc = FakeOIDCClient()
+    states = InMemoryOAuthStateStore()
+    service = _service(oidc=oidc, states=states, provider_credentials=credentials)
+
+    with pytest.raises(ProviderNotConfigured):
+        await service.begin_login(provider, consent=True)
+
+    # Failed pre-flight: no OIDC call was made and no PKCE transaction was persisted.
+    assert oidc.authorization_requests == []
+    assert await states.pop("state-1") is None
+
+
+async def test_begin_login_configured_provider_still_works_when_other_unconfigured() -> None:
+    # Running with only one provider provisioned is intentionally allowed (§7.1) — the
+    # configured provider keeps working while the unconfigured one fails.
+    credentials = {"google": ("google-id", "google-secret"), "linkedin": ("", "")}
+    service = _service(provider_credentials=credentials)
+
+    url = await service.begin_login("google", consent=True)
+    assert url.startswith("https://provider.example/consent")
+
+    with pytest.raises(ProviderNotConfigured):
+        await service.begin_login("linkedin", consent=True)
 
 
 async def test_complete_login_mints_user_session() -> None:

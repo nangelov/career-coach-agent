@@ -8,6 +8,7 @@ The orchestrator's board. One row per task. See `.claude/skills/agent-handoff/SK
 
 | task-id | title | phase | status | rev | code-review | arch-review |
 |---------|-------|-------|--------|-----|-------------|-------------|
+| FIX-12-sso-unconfigured-provider-error | SSO login must fail cleanly when a provider is unconfigured | cross-cutting | DONE | 1 | APPROVED | APPROVED |
 | P0-01-backend-skeleton | backend/ directory skeleton | P0 | DONE | 1 | APPROVED | APPROVED |
 | P0-02-pyproject-uv | backend/pyproject.toml via uv | P0 | DONE | 1 | APPROVED | APPROVED |
 | P0-03-config | app/config.py pydantic-settings | P0 | DONE | 1 | APPROVED | APPROVED |

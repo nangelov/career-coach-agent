@@ -31,11 +31,13 @@ from tests.fakes import FakeOIDCClient
 _SECRET = "sso-api-test-secret"
 
 
-@pytest.fixture
-async def client() -> AsyncIterator[httpx.AsyncClient]:
-    store = InMemorySessionStore()
-    codec = SessionTokenCodec(secret=_SECRET, expire_minutes=60)
-    sso = SsoAuthService(
+def _build_sso(
+    store: InMemorySessionStore,
+    codec: SessionTokenCodec,
+    *,
+    provider_credentials: dict[str, tuple[str, str]] | None = None,
+) -> SsoAuthService:
+    return SsoAuthService(
         FakeOIDCClient(),
         InMemoryOAuthStateStore(),
         InMemoryUserStore(),
@@ -45,8 +47,23 @@ async def client() -> AsyncIterator[httpx.AsyncClient]:
         state_ttl_seconds=600,
         session_ttl_seconds=3600,
         providers=frozenset({"google", "linkedin"}),
+        provider_credentials=(
+            {
+                "google": ("google-id", "google-secret"),
+                "linkedin": ("linkedin-id", "linkedin-secret"),
+            }
+            if provider_credentials is None
+            else provider_credentials
+        ),
         consent_policy_version="2026-07-13",
     )
+
+
+@pytest.fixture
+async def client() -> AsyncIterator[httpx.AsyncClient]:
+    store = InMemorySessionStore()
+    codec = SessionTokenCodec(secret=_SECRET, expire_minutes=60)
+    sso = _build_sso(store, codec)
     authenticator = SessionAuthenticator(codec, store)
     app.dependency_overrides[get_sso_auth_service] = lambda: sso
     app.dependency_overrides[get_session_authenticator] = lambda: authenticator
@@ -81,6 +98,33 @@ async def test_login_without_consent_is_rejected(client: httpx.AsyncClient) -> N
 async def test_login_unknown_provider_404(client: httpx.AsyncClient) -> None:
     response = await client.get("/api/auth/login/myspace", params={"consent": "1"})
     assert response.status_code == 404
+
+
+async def test_login_unconfigured_provider_503() -> None:
+    # A supported provider with no OAuth credentials on this deployment must return 503 (a
+    # non-redirect the BFF maps to ?login_error=provider_unavailable), never a 302 to the
+    # provider with a blank client_id (the manual-test bug this fix addresses).
+    store = InMemorySessionStore()
+    codec = SessionTokenCodec(secret=_SECRET, expire_minutes=60)
+    sso = _build_sso(
+        store,
+        codec,
+        provider_credentials={
+            "google": ("", ""),
+            "linkedin": ("linkedin-id", "linkedin-secret"),
+        },
+    )
+    app.dependency_overrides[get_sso_auth_service] = lambda: sso
+    transport = ASGITransport(app=app)
+    try:
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
+            response = await http.get("/api/auth/login/google", params={"consent": "1"})
+            assert response.status_code == 503
+            # A configured provider on the same deployment still redirects to consent.
+            ok = await http.get("/api/auth/login/linkedin", params={"consent": "1"})
+            assert ok.status_code == 302
+    finally:
+        app.dependency_overrides.pop(get_sso_auth_service, None)
 
 
 async def test_callback_completes_and_redirects_with_token(client: httpx.AsyncClient) -> None:

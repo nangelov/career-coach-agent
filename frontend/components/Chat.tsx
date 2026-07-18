@@ -41,6 +41,19 @@ interface ChatMessageView {
   errorMessage?: string;
 }
 
+// Friendly messages for the `?login_error=<reason>` the SSO login BFF redirects back with
+// when a login could not start (FIX-12). Keyed by the reason codes emitted in
+// `app/api/auth/login/[provider]/route.ts`; `default` covers any unmapped reason.
+const LOGIN_ERROR_MESSAGES: Record<string, string> = {
+  provider_unavailable:
+    "That sign-in option isn't available right now. Please try another provider or continue as a guest.",
+  unknown_provider:
+    "That sign-in option isn't supported. Please try another provider or continue as a guest.",
+  consent_required:
+    "Please accept the Terms of Service and Privacy Notice to sign in.",
+  default: "Sign-in could not be completed. Please try again or continue as a guest.",
+};
+
 function randomId(): string {
   if (
     typeof crypto !== "undefined" &&
@@ -80,6 +93,26 @@ export default function Chat() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Surface a login failure the SSO BFF signalled via `?login_error=...` (FIX-12): an
+  // unconfigured provider now fails in-stack and redirects back here with a reason instead
+  // of dumping the user on the provider's own error page. Show it once on the login screen,
+  // then strip the param so a refresh is clean.
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const reason = params.get("login_error");
+    if (!reason) {
+      return;
+    }
+    setLoginMessage(LOGIN_ERROR_MESSAGES[reason] ?? LOGIN_ERROR_MESSAGES.default);
+    params.delete("login_error");
+    const query = params.toString();
+    const cleanUrl = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+    window.history.replaceState(null, "", cleanUrl);
   }, []);
 
   useEffect(() => {

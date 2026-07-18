@@ -93,6 +93,10 @@ class _Wiring:
             state_ttl_seconds=600,
             session_ttl_seconds=3600,
             providers=frozenset({"google", "linkedin"}),
+            provider_credentials={
+                "google": ("google-id", "google-secret"),
+                "linkedin": ("linkedin-id", "linkedin-secret"),
+            },
             consent_policy_version="2026-07-13",
             upgrades=self.upgrades,
         )

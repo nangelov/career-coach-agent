@@ -22,6 +22,7 @@ history"*): the only server-side state a guest gets is the Redis session record,
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -133,6 +134,19 @@ class InvalidOAuthState(Exception):
     """
 
 
+class ProviderNotConfigured(Exception):
+    """Raised when a *known* provider has no ``client_id``/``client_secret`` configured (§7.1).
+
+    Distinct from :class:`UnknownProvider` (the ``{provider}`` name is supported, but this
+    deployment has not been given its OAuth credentials — a common state when only one of the
+    two providers is provisioned, which is intentionally allowed). Caught **before** any call
+    into the OIDC client, so an unconfigured provider fails cleanly inside our own stack
+    instead of 302-redirecting the browser to the provider with a blank ``client_id`` (which
+    surfaces as the provider's own "invalid_request / Missing required parameter: client_id"
+    error page). The API maps it to ``503 Service Unavailable``.
+    """
+
+
 class SsoAuthService:
     """The OIDC login flow (§7.1) — begin at the provider, complete into a session JWT.
 
@@ -156,6 +170,7 @@ class SsoAuthService:
         state_ttl_seconds: int,
         session_ttl_seconds: int,
         providers: frozenset[str],
+        provider_credentials: Mapping[str, tuple[str, str]],
         consent_policy_version: str,
         upgrades: GuestUpgradeService | None = None,
     ) -> None:
@@ -168,6 +183,10 @@ class SsoAuthService:
         self._state_ttl_seconds = state_ttl_seconds
         self._session_ttl_seconds = session_ttl_seconds
         self._providers = providers
+        # provider name → (client_id, client_secret); a provider is "configured" only when
+        # both are non-empty. Kept as plain settings values (env / HF Space Secret) so the
+        # pre-flight check below never touches the OIDC client / network.
+        self._provider_credentials = provider_credentials
         self._consent_policy_version = consent_policy_version
         # Optional (P3-03): when wired, a login carrying a valid upgrade ticket carries the
         # originating guest session over to the new account. ``None`` → plain login only.
@@ -196,6 +215,10 @@ class SsoAuthService:
             state_ttl_seconds=config.OAUTH_STATE_TTL_SECONDS,
             session_ttl_seconds=config.USER_SESSION_TTL_SECONDS,
             providers=frozenset(config.OAUTH_METADATA_URLS),
+            provider_credentials={
+                "google": (config.GOOGLE_CLIENT_ID, config.GOOGLE_CLIENT_SECRET),
+                "linkedin": (config.LINKEDIN_CLIENT_ID, config.LINKEDIN_CLIENT_SECRET),
+            },
             consent_policy_version=config.CONSENT_POLICY_VERSION,
             upgrades=upgrades,
         )
@@ -211,6 +234,18 @@ class SsoAuthService:
     def _require_known_provider(self, provider: str) -> None:
         if provider not in self._providers:
             raise UnknownProvider(provider)
+
+    def _require_configured_provider(self, provider: str) -> None:
+        """Fail fast if a *known* provider has no OAuth credentials (§7.1).
+
+        Both ``client_id`` and ``client_secret`` must be non-empty. Checked before any call
+        into the OIDC client (and before an upgrade ticket is consumed), so an unconfigured
+        provider raises :class:`ProviderNotConfigured` inside our own stack instead of
+        302-redirecting the browser to the provider with a blank ``client_id``.
+        """
+        client_id, client_secret = self._provider_credentials.get(provider, ("", ""))
+        if not client_id or not client_secret:
+            raise ProviderNotConfigured(provider)
 
     async def begin_login(
         self, provider: str, *, upgrade_ticket: str | None = None, consent: bool = False
@@ -237,6 +272,7 @@ class SsoAuthService:
         yields a plain login (no carry-over), never an error.
         """
         self._require_known_provider(provider)
+        self._require_configured_provider(provider)
         if not consent:
             raise ConsentRequired
         upgrade_session_id: str | None = None

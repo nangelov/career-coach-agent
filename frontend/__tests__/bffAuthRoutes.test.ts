@@ -188,6 +188,19 @@ describe("GET /api/auth/login/{provider}", () => {
     );
   });
 
+  it("reports provider_unavailable when the backend returns 503 (provider unconfigured)", async () => {
+    // FIX-12: an unconfigured provider now fails in-stack with 503 (not a 302 to the
+    // provider with a blank client_id); it flows through the "anything else" branch.
+    fetchSpy.mockResolvedValue(new Response(null, { status: 503 }));
+    const request = new NextRequest("http://localhost:3000/api/auth/login/google");
+    const response = await loginGET(request, {
+      params: Promise.resolve({ provider: "google" }),
+    });
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3000/?login_error=provider_unavailable",
+    );
+  });
+
   it("reports consent_required when the backend rejects with 400 (§6.22)", async () => {
     fetchSpy.mockResolvedValue(new Response(null, { status: 400 }));
     const request = new NextRequest("http://localhost:3000/api/auth/login/google");
