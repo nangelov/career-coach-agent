@@ -203,13 +203,14 @@ users. **No job listings are ever shown.**
 
 **Exit:** user edits a plan in the UI; assistant proposes tasks from chat/PDP and user approves; progress renders.
 
-- [ ] **(B)** Confirm `goals`/`milestones`/`tasks`/`progress_entries` tables (from P2) + any refinements.
-- [ ] **(B)** `api/dashboard.py` — CRUD goals/milestones/tasks, log progress, summary endpoint (`GET /api/dashboard`).
-- [ ] **(B)** Expose dashboard as **native tools** (read + propose); AI writes user-scoped, `source=ai`, confirmable (proposed → approved), never silent.
-- [ ] **(B)** PDP generation **seeds** goals/tasks into the dashboard.
-- [ ] **(F)** Dashboard UI: goals/tasks board, progress charts/streaks, % to target date; approve/reject AI proposals.
-- [ ] **(T)** User edits plan; assistant proposes tasks; approval flow; progress renders.
-- [ ] **(T)** **CI/CD verification** — run the full backend + frontend CI command sets locally (ruff + ruff format --check + mypy + pytest; eslint + tsc + jest — the exact commands in `.github/workflows/backend-ci.yml` / `frontend-ci.yml`) and confirm both are green before closing the phase.
+- [x] **(B)** Confirm `goals`/`milestones`/`tasks`/`progress_entries` tables (from P2) + any refinements.
+- [x] **(B)** `api/dashboard.py` — CRUD goals/milestones/tasks, log progress, summary endpoint (`GET /api/dashboard`).
+- [x] **(B)** Expose dashboard as **native tools** (read + propose); AI writes user-scoped, `source=ai`, confirmable (proposed → approved), never silent.
+- [x] **(B)** PDP generation **seeds** goals/tasks into the dashboard.
+- [x] **(F)** Dashboard UI: goals/tasks board, progress charts/streaks, % to target date; approve/reject AI proposals.
+- [x] **(T)** User edits plan; assistant proposes tasks; approval flow; progress renders.
+- [x] **(T)** **CI/CD verification** — run the full backend + frontend CI command sets locally (ruff + ruff format --check + mypy + pytest; eslint + tsc + jest — the exact commands in `.github/workflows/backend-ci.yml` / `frontend-ci.yml`) and confirm both are green before closing the phase.
+- [x] **(I)** **Guard against curated-CI-dependency drift** — backend CI deliberately runs a hand-curated `uv pip install <light-deps>` list (not a full `uv sync`) to avoid pulling the heavy ML stack (torch/docling), mirrored in `backend/Makefile`'s `install` target. This exact class of bug ("a new always-imported runtime dep lands in `pyproject.toml` but nobody adds it to the curated list") has broken the real pipeline **six times** across P1–P7 (FIX-01, FIX-02, FIX-03, FIX-04, FIX-09, FIX-11 — most recently `reportlab`, P7-02). Add an automated guard so it can't recur silently: a small script/test (e.g. `scripts/check_curated_deps.py` or a `pytest` case) that statically walks `app/`'s imports (or diffs `pyproject.toml`'s light/runtime deps against the curated list, excluding an explicit ML-stack allowlist) and fails with a clear message naming the missing package — wired as an early step in `backend-ci.yml` (and/or a pre-commit/`make lint` check) so a future PR that adds a new light dependency fails fast locally instead of only surfacing in a real `pytest` collection error on `main`/`version-2` after merge.
 
 ---
 

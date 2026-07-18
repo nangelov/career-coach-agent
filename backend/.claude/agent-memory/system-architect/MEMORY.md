@@ -15,3 +15,4 @@
 - [Shared-KB corpus discrimination ruling](ruling-shared-kb-corpus-discrimination.md) — Multiple shared corpora share source_type="curated", discriminated by meta.kind; reads must filter on kind (P6-06 learning resources)
 - [Market cache-key raw-param ruling](ruling-market-cache-key-raw-param.md) — Roles response cache keys on cheap raw-param norm, not taxonomy canonical (canonicalize reads DB); deliberate, don't flag
 - [Market-query rate-limit action ruling](ruling-market-query-rate-limit-action.md) — /api/roles requirements reuses RateLimitAction.MESSAGE; dedicated MARKET_QUERY is a live follow-up, not a blocker
+- [Dashboard worker write-path ruling](ruling-dashboard-worker-write-path.md) — First write-capable worker (P8-03); safe via source=ai→proposed in service, guest fail-soft in node, per-turn user_id closure; template for P9 write paths

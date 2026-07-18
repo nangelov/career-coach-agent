@@ -1,0 +1,17 @@
+# Code review — P8-02-dashboard-api · engineer revision 1
+
+## Verdict: APPROVED
+
+## Findings
+| id | severity | file:line | issue | required change |
+|----|----------|-----------|-------|-----------------|
+| C1 | minor | app/repositories/dashboard_store.py:167,394 | Create paths (`create_goal`, `add_progress`) use raw `uuid.UUID(user_id)` while every read/delete path uses the fail-safe `_as_uuid`. `user_id` is the verified token subject so this cannot be attacker-triggered, but a malformed subject would 500 instead of the store's uniform fail-safe. | Optional: route create paths through `_as_uuid` too for consistency; defer if you prefer to let a bad token subject fail loudly. |
+| C2 | minor | app/services/dashboard_store.py:338 / repositories:374 | `add_progress` validates `goal_id` and `task_id` are each owned by the caller, but not that the referenced task actually sits under the referenced goal when both are supplied. Both are user-owned so no cross-user leak — only a self-inconsistent reference. | Optional: when both are set, verify `task.goal_id == goal_id` (mirrors the task-create/repoint check). Not a gate. |
+
+## Notes
+- **Security / AuthZ — solid.** Every route gates `require_auth` → `_require_user` (guest `user_id is None` → 403), and every store method is user-scoped: goals by `user_id`, milestones/tasks via join to the owning goal, progress by `user_id`. Cross-user access is a uniform 404 (`_not_found` never distinguishes missing vs not-owned). Deletes use `DELETE … WHERE id=? AND <owned>` with `rowcount>0`, so a non-owned id is a no-op. Verified across service + Postgres adapter — parity is faithful.
+- **Attribution honesty at the boundary — correct.** `source` is response-only (absent from all Create/Update schemas), fixed to `"user"` server-side; a client cannot write `source="ai"`. Human `*Update.status` literals exclude `proposed` (→ 422), so the AI-`proposed` state is unreachable via HTTP; approve = PATCH status off `proposed`, reject = DELETE. Service resolves `source`/`status` per caller, keeping the P8-03 reuse seam clean.
+- **Correctness.** `expire_on_commit=False` on the shared session factory makes the post-`commit()` `_*_to_response(row)` reads in `_persist`-based creates safe (checked). `update_task` milestone-repoint is validated to the task's own goal. Summary is a single bulk `snapshot` (4 scoped queries, no N+1). Date helpers (`_time_progress_pct` clamp/degenerate-span, `_current_streak` today-or-yesterday anchor) are pure and unit-tested. Progress list is bounded (`le=200`, `offset ge=0`).
+- **Layering.** Router → Service → Store port respected; router has no DB/SQLAlchemy imports; single cohesive `DashboardStore` port with in-memory double + Postgres adapter; wired via `build_dashboard_service` (mirrors `build_pdp_service`) and registered in `main.py`. Idioms match `pdp.py`/`profile.py`.
+- **Verification.** `tests/test_dashboard_service.py`+`test_dashboard_api.py` → 34 passed locally; ruff + mypy clean on all 5 new source files. Tests cover 401, guest-403, CRUD round-trip, cross-user-404, `source="user"`, `proposed`-422, and summary shape — matches acceptance criteria. Postgres integration tests noted as passing by the engineer (not re-run here; no DB spun up).
+- Out of scope (correctly deferred): the `progress_entries` composite-index model/migration change in the tree is P8-01 work; no native tools (P8-03), seeding (P8-04), or frontend (P8-05).

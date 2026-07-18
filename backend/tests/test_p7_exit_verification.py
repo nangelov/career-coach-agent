@@ -61,6 +61,8 @@ from app.repositories.models.knowledge import KbDocument
 from app.schemas.pdp import SECTION_HEADINGS, PdpContent
 from app.schemas.skills_gap import SkillsGapResult
 from app.security.dependencies import get_rate_limit_service, require_auth
+from app.services.dashboard import DashboardService
+from app.services.dashboard_store import InMemoryDashboardStore
 from app.services.pdp import PdpGenerated, PdpResult, PdpService
 from app.services.pdp_store import InMemoryPdpStore
 from app.services.profile_store import InMemoryProfileStore
@@ -195,6 +197,7 @@ def _real_service(
         pdp_store=store,
         router=completer,
         db=FakeDBProvider(resource_session),
+        dashboard=DashboardService(InMemoryDashboardStore()),
     )
 
 

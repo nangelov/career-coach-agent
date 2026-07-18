@@ -14,7 +14,7 @@
 # (root .env) must be present for the migrate-* targets.
 
 .PHONY: install lint format format-check typecheck test test-integration \
-        test-integration-full check \
+        test-integration-full check check-deps \
         migrate migrate-integration migrate-down migrate-base migrate-status revision
 
 # ---------------------------------------------------------------------------
@@ -56,6 +56,12 @@ install:
 	uv pip install fastapi pydantic pydantic-settings "celery[redis]" openai \
 		sqlalchemy asyncpg aiosqlite pgvector alembic joserfc authlib langgraph \
 		python-multipart reportlab
+
+# Guard against curated-dependency drift: fails (naming the package) if a runtime
+# dep in pyproject.toml is missing from this file's `install` list / backend CI.
+# Stdlib-only, so it needs no venv — mirrors the early backend-ci.yml step.
+check-deps:
+	python3 scripts/check_curated_deps.py
 
 lint:
 	uv run --no-sync ruff check .
@@ -100,8 +106,9 @@ test-integration-full:
 	$(MAKE) test-integration
 	$(COMPOSE) down
 
-# The full local gate — everything CI runs, in one command.
-check: lint format-check typecheck test
+# The full local gate — everything CI runs, in one command. `check-deps` runs
+# first (fail fast on dependency drift before the slow lint/type/test steps).
+check: check-deps lint format-check typecheck test
 
 # ---------------------------------------------------------------------------
 # Migrations

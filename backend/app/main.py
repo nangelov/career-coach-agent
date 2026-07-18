@@ -28,6 +28,7 @@ from starlette.responses import Response
 
 from .api.auth import router as auth_router
 from .api.chat import router as chat_router
+from .api.dashboard import router as dashboard_router
 from .api.feedback import router as feedback_router
 from .api.jobs import router as jobs_router
 from .api.me import router as me_router
@@ -163,6 +164,7 @@ def create_app() -> FastAPI:
     app.include_router(me_router)
     app.include_router(roles_router)
     app.include_router(pdp_router)
+    app.include_router(dashboard_router)
 
     return app
 

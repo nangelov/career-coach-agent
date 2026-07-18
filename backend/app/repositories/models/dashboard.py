@@ -55,6 +55,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     String,
     Text,
     func,
@@ -252,6 +253,12 @@ class ProgressEntry(CreatedAtMixin, Base):
             f"source IN ({', '.join(repr(v) for v in _SOURCE_VALUES)})",
             name="ck_progress_entries_source",
         ),
+        # Streak / trend views (§5.2) scan a user's log ordered by time: filter by
+        # ``user_id`` and group/order by ``created_at``. A composite ``(user_id,
+        # created_at)`` index serves that directly; because ``user_id`` is the leading
+        # column it also covers the plain per-user FK lookup, so no separate
+        # single-column ``user_id`` index is kept (it would be redundant).
+        Index("ix_progress_entries_user_id_created_at", "user_id", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -259,7 +266,6 @@ class ProgressEntry(CreatedAtMixin, Base):
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     # Optional references — SET NULL so the append-only log outlives plan edits.
     goal_id: Mapped[uuid.UUID | None] = mapped_column(

@@ -52,6 +52,8 @@ from app.agents.pdp_agent import ResourceLookup, generate_pdp
 from app.agents.planner import LLMCompleter
 from app.pdf import build_pdp_pdf, validate_pdp_content
 from app.schemas.pdp import PdpContent
+from app.services.dashboard import DashboardService
+from app.services.pdp_seed import seed_dashboard_from_pdp
 from app.services.pdp_store import PdpStore
 from app.services.profile_store import ProfileStore
 from app.services.skills_gap import SkillsGapService
@@ -103,8 +105,9 @@ class PdpService:
     """Generate → validate → render → persist a PDP (Router → Service → Agent/Repository, §8).
 
     Depends only on ports: the profile store, the reused P6-05 skills-gap service, the PDP
-    store, an :class:`LLMCompleter` and a :class:`ResourceLookup` (session provider). Built once
-    by the composition root (:func:`app.bootstrap.build_pdp_service`).
+    store, an :class:`LLMCompleter`, a :class:`ResourceLookup` (session provider), and the P8-02
+    :class:`~app.services.dashboard.DashboardService` (to seed the living PDP after a success).
+    Built once by the composition root (:func:`app.bootstrap.build_pdp_service`).
     """
 
     def __init__(
@@ -115,12 +118,14 @@ class PdpService:
         pdp_store: PdpStore,
         router: LLMCompleter,
         db: ResourceLookup,
+        dashboard: DashboardService,
     ) -> None:
         self._profile_store = profile_store
         self._skills_gap = skills_gap
         self._pdp_store = pdp_store
         self._router = router
         self._db = db
+        self._dashboard = dashboard
 
     async def generate(
         self,
@@ -199,7 +204,31 @@ class PdpService:
             target_date=target_date,
             content=content,
         )
+        await self._seed_dashboard(user_id, career_goal, target_date, content)
         return PdpGenerated(pdf=pdf, pdp_id=pdp_id, status=content.status)
+
+    async def _seed_dashboard(
+        self, user_id: str, career_goal: str, target_date: date | None, content: PdpContent
+    ) -> None:
+        """Seed the caller's living-PDP dashboard from the plan — **fail-soft** (P8-04, §5.2).
+
+        Runs only after a successful generation, turning the one-shot plan into a trackable set of
+        AI-``proposed`` goal/milestones/tasks (via
+        :func:`app.services.pdp_seed.seed_dashboard_from_pdp`).
+        The user's PDF download must never depend on dashboard availability, so any failure here
+        (DB hiccup, etc.) is logged and swallowed — the PDF is still returned. Mirrors the fail-soft
+        posture used throughout the agents/tools.
+        """
+        try:
+            await seed_dashboard_from_pdp(
+                self._dashboard,
+                user_id=user_id,
+                career_goal=career_goal,
+                target_date=target_date,
+                content=content,
+            )
+        except Exception:  # noqa: BLE001 - seeding must never fail the PDP response
+            logger.exception("Failed to seed dashboard from PDP for user %s", user_id)
 
 
 def _effective_goal(career_goal: str, additional_context: str | None) -> str:

@@ -76,6 +76,17 @@ jobs:
       - name: Set up Python 3.11
         run: uv python install 3.11
 
+      # Fail fast on curated-dependency drift BEFORE the (slow) install/pytest
+      # steps: this stdlib-only guard (no third-party imports, so it runs before
+      # anything is installed) diffs backend/pyproject.toml's runtime deps against
+      # the curated `uv pip install` list below + backend/Makefile, respecting a
+      # documented ML/lazy-import allowlist. It names the exact missing package,
+      # so a future PR that adds a new light runtime dep without curating it fails
+      # here with a clear message instead of as a cryptic ModuleNotFoundError deep
+      # in pytest collection (the FIX-01/02/03/04/09/11 recurring bug class).
+      - name: Curated-dependency drift guard
+        run: python3 scripts/check_curated_deps.py
+
       # Curated install: the dev tool group + only the *light* runtime libs the
       # backend currently imports (fastapi / pydantic / celery / openai / sqlalchemy).
       # A full `uv sync` would pull the heavy ML stack (torch via sentence-transformers,

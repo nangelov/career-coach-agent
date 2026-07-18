@@ -22,6 +22,10 @@ issues and their standard fixes:
   when the result is returned as `float`. Fix: make the base a float literal —
   `x * (2.0 ** (n - 1))` — so the expression stays `float`. Seen in exponential
   backoff helpers.
+- **`AsyncSession.execute(delete(...))` → `Result[Any]` has no `rowcount`.** For a
+  Core `delete()`/`update()` where you need the affected-row count, `execute` is typed
+  as returning `Result`, not `CursorResult`. Fix: `cast("CursorResult[Any]", result).rowcount`
+  (`from sqlalchemy import CursorResult`). Used for scoped delete → bool ("did we own/remove a row").
 
 Also: `ignore_missing_imports = true` keeps un-installed third-party libs (langgraph,
 docling, etc.) as `Any` so CI need not install the heavy ML stack to type-check

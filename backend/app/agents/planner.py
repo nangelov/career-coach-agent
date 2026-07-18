@@ -153,6 +153,10 @@ PLANNER_SYSTEM_PROMPT = (
     "(often from a CV / resume).\n"
     "- cv_question: the user asks about their own CV / resume content or how to "
     "improve it.\n"
+    "- dashboard: the user asks about or wants to change their own development "
+    "plan / dashboard — view it, add goals/milestones/tasks to their plan, or log "
+    "progress (e.g. 'what's on my dashboard?', 'add these 5 tasks to my plan', 'mark "
+    "the Docker task done', 'log that I finished the SQL course today').\n"
     "- chat: a substantive career question that needs an informative answer; set "
     "needs_grounding=true when answering well requires the knowledge base.\n"
     "- smalltalk: greetings, thanks, or chit-chat with no informational need.\n"
@@ -177,6 +181,7 @@ _INTENT_WORKERS: dict[Intent, list[WorkerName]] = {
     Intent.JOB_HUNTING: [WorkerName.MARKET_INTEL],
     Intent.PDP: [WorkerName.PDP_RESUME],
     Intent.CV_QUESTION: [WorkerName.RAG],
+    Intent.DASHBOARD: [WorkerName.DASHBOARD],
     Intent.SMALLTALK: [],
     Intent.OFF_TOPIC: [],
 }
@@ -189,6 +194,7 @@ _INTENT_MAX_ITERATIONS: dict[Intent, int] = {
     Intent.OFF_TOPIC: 1,
     Intent.CHAT: 3,
     Intent.CV_QUESTION: 3,
+    Intent.DASHBOARD: 3,
     Intent.MARKET_REQUIREMENTS: 5,
     Intent.JOB_HUNTING: 5,
     Intent.PDP: 5,

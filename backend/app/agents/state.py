@@ -68,6 +68,11 @@ class Intent(StrEnum):
     #: Berlin"). **Redirected** — the responder answers with market requirements and
     #: steers back to development, never a browsable-listings search (design §7.4).
     JOB_HUNTING = "job_hunting"
+    #: The user asks about or wants to change their **living PDP dashboard** (§5.2):
+    #: "what's on my dashboard", "add these tasks to my plan", "log today's progress".
+    #: Routed to the :attr:`WorkerName.DASHBOARD` worker, whose AI writes are **proposed**
+    #: (pending approval), never silent. Guests are excluded (dashboard requires an account).
+    DASHBOARD = "dashboard"
     #: Anything outside career coaching / personal development (medical/legal advice,
     #: general chit-chat, homework). **Refused** by the graph's off-topic short-circuit
     #: (design §7.4) — no workers, no responder LLM call.
@@ -90,6 +95,11 @@ class WorkerName(StrEnum):
     #: *populates* those rows runs as a Celery job (design §7.5), never inline here.
     MARKET_INTEL = "market_intel"
     PDP_RESUME = "pdp_resume"
+    #: The Dashboard worker (§5.2): a request-path worker that reads the caller's living PDP
+    #: and **proposes** goals/milestones/tasks/progress via the P8-02 ``DashboardService``
+    #: native tools (every AI write is ``source="ai"`` → ``status="proposed"``, never silent).
+    #: Guests (``user_id is None``) never reach a write — the node fails soft to "sign in".
+    DASHBOARD = "dashboard"
 
 
 class GuardrailStage(StrEnum):

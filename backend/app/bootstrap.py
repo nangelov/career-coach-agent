@@ -65,6 +65,7 @@ from app.services.skills_gap import SkillsGapService
 from app.services.user_store import UserStore
 
 if TYPE_CHECKING:
+    from app.services.dashboard import DashboardService
     from app.services.pdp import PdpService
 
 
@@ -202,17 +203,26 @@ def build_chat_service(app: FastAPI) -> ChatService:
         else None
     )
 
+    # Dashboard worker service (§5.2 / P8-03): the same Postgres-backed ``DashboardService`` the
+    # ``/api/dashboard`` router uses (reused via ``build_dashboard_service`` — no duplicated store
+    # wiring), so a chat turn can read/propose against the living PDP. Built only when the shared
+    # Postgres pool exists (the dashboard is anchored in Postgres); absent → the graph's default
+    # dashboard node fails soft (no rogue store), matching the ``conversations`` posture above.
+    dashboard_service = build_dashboard_service(app) if pg_provider is not None else None
+
     # The compiled-once multi-agent graph (design §3): the single failover ``LLMRouter`` drives
     # both the planner (``router=``) and the responder (``responder_router=``); the in-process
     # sentence-transformers embedder (§6 item 3, lazy-loaded on first use) and the shared
     # Postgres pool back the RAG worker's pgvector retrieval; the redis-wired Tavily search tool
-    # (built above) backs the web-search worker.
+    # (built above) backs the web-search worker; the ``DashboardService`` backs the dashboard
+    # worker (the LLM router also drives its bounded tool-calling loop).
     runner = GraphTurnStreamer(
         responder_router=llm_router,
         router=llm_router,
         embedder=SentenceTransformerEmbeddingClient(),
         db=pg_provider,
         search_tool=search_tool,
+        dashboard_service=dashboard_service,
     )
     return ChatService(runner, memory, cancel, conversations=conversations)
 
@@ -384,11 +394,13 @@ def build_pdp_service(app: FastAPI) -> PdpService:
     and PDP store, the reused P6-05 :class:`~app.services.skills_gap.SkillsGapService` (profile
     store + role-profile repo over the shared Postgres pool), the failover
     :class:`~app.llm.router.LLMRouter` (redis-wired circuit breaker, same as the chat path) that
-    drives the P7-01 agent, and the shared Postgres provider handed to the agent for its
-    learning-resource lookup. The PDP is anchored in Postgres (``pdps`` FK to ``users``), so this
-    requires the shared pool (``_require_pg_provider`` fails loudly). Heavy imports (LLM router,
-    service) are deferred to keep API import light. Called once per process (cached by
-    ``app.api.pdp.get_pdp_service``).
+    drives the P7-01 agent, the shared Postgres provider handed to the agent for its
+    learning-resource lookup, and the P8-02 :class:`~app.services.dashboard.DashboardService`
+    (reused via ``build_dashboard_service`` — no duplicated store wiring, same pattern P8-03 used
+    for ``build_chat_service``) so a successful generation seeds the living-PDP dashboard (P8-04).
+    The PDP is anchored in Postgres (``pdps`` FK to ``users``), so this requires the shared pool
+    (``_require_pg_provider`` fails loudly). Heavy imports (LLM router, service) are deferred to
+    keep API import light. Called once per process (cached by ``app.api.pdp.get_pdp_service``).
     """
     from app.llm.router import LLMRouter, RedisLike
     from app.repositories.pdp_store import PostgresPdpStore
@@ -408,7 +420,25 @@ def build_pdp_service(app: FastAPI) -> PdpService:
         pdp_store=pdp_store,
         router=llm_router,
         db=provider,
+        dashboard=build_dashboard_service(app),
     )
+
+
+def build_dashboard_service(app: FastAPI) -> DashboardService:
+    """Construct the :class:`DashboardService` (living-PDP CRUD + summary, P8-02, §5.2/§8).
+
+    Wires the Postgres-backed :class:`~app.repositories.dashboard_store.PostgresDashboardStore` over
+    the shared pool the lifespan built. The dashboard is anchored in Postgres (``goals``/… FKs to
+    ``users``), so this requires the shared pool (``_require_pg_provider`` fails loudly). No Redis
+    is needed (CRUD is unrate-limited, like ``GET/PUT /api/profile``). The store adapter/service
+    imports are deferred to keep API import light. Called once per process (cached by
+    ``app.api.dashboard.get_dashboard_service``).
+    """
+    from app.repositories.dashboard_store import PostgresDashboardStore
+    from app.services.dashboard import DashboardService
+
+    provider = _require_pg_provider(app, "dashboard")
+    return DashboardService(PostgresDashboardStore.from_provider(provider))
 
 
 def build_session_authenticator(app: FastAPI) -> SessionAuthenticator:

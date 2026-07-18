@@ -80,7 +80,9 @@ if TYPE_CHECKING:
     import httpx
 
     from app.llm.embeddings import EmbeddingClient
+    from app.services.dashboard import DashboardService
 
+from app.agents.dashboard_agent import make_dashboard_node
 from app.agents.market_agent import make_market_node
 from app.agents.planner import LLMCompleter, Planner
 from app.agents.rag_agent import SessionProvider, make_rag_node
@@ -259,6 +261,11 @@ web_search_node = make_web_search_node()
 #: never crawls (mining is a Celery job, §7.5).
 market_intel_node = make_market_node()
 
+#: The default Dashboard node used by the import-time module graph: no service/router bound,
+#: so it fails soft if routed (the chat wiring injects the shared ``DashboardService`` + the LLM
+#: router via ``build_graph(dashboard_service=..., router=...)``). Guests always fail soft here.
+dashboard_node = make_dashboard_node()
+
 
 def pdp_resume_node(state: AgentState) -> NodeUpdate:
     """[STUB → P4-06] PDP / Resume worker: parse CV, skills-gap, build PDP."""
@@ -408,6 +415,7 @@ def build_graph(
     db: SessionProvider | None = None,
     search_tool: SearchRunner | None = None,
     http_client: httpx.AsyncClient | None = None,
+    dashboard_service: DashboardService | None = None,
 ) -> CompiledStateGraph[AgentState]:
     """Assemble and compile the multi-agent turn graph (design §3).
 
@@ -476,6 +484,16 @@ def build_graph(
         else market_intel_node
     )
 
+    # Dashboard worker (P8-03): reads the living PDP + proposes goals/milestones/tasks/progress
+    # (source="ai" → proposed, never silent). Bound to the shared ``DashboardService`` + the same
+    # LLM router the planner uses (chat wiring injects both; tests inject fakes). Falls back to the
+    # module default (fails soft; guests always fail soft) when no service is given.
+    resolved_dashboard = (
+        make_dashboard_node(service=dashboard_service, router=router)
+        if dashboard_service is not None
+        else dashboard_node
+    )
+
     builder: StateGraph[AgentState] = StateGraph(AgentState)
 
     builder.add_node(INPUT_GUARDRAIL, input_guardrail_node)
@@ -485,6 +503,7 @@ def build_graph(
     builder.add_node(WorkerName.WEB_SEARCH.value, resolved_web_search)
     builder.add_node(WorkerName.MARKET_INTEL.value, resolved_market)
     builder.add_node(WorkerName.PDP_RESUME.value, pdp_resume_node)
+    builder.add_node(WorkerName.DASHBOARD.value, resolved_dashboard)
     builder.add_node(RESPONDER, resolved_responder)
     builder.add_node(OUTPUT_GUARDRAIL, output_guardrail_node)
     builder.add_node(MEMORY_WRITER, memory_writer_node)
@@ -565,6 +584,7 @@ class GraphTurnStreamer:
         db: SessionProvider | None = None,
         search_tool: SearchRunner | None = None,
         http_client: httpx.AsyncClient | None = None,
+        dashboard_service: DashboardService | None = None,
     ) -> None:
         # Compile the pre-responder graph once (LLM-free deterministic responder tail — its
         # placeholder answer is discarded; the real Responder streams below).
@@ -575,6 +595,7 @@ class GraphTurnStreamer:
             db=db,
             search_tool=search_tool,
             http_client=http_client,
+            dashboard_service=dashboard_service,
         )
         self._responder = Responder(responder_router)
         self._responder_router = responder_router
@@ -624,6 +645,7 @@ async def stream_graph(
     db: SessionProvider | None = None,
     search_tool: SearchRunner | None = None,
     http_client: httpx.AsyncClient | None = None,
+    dashboard_service: DashboardService | None = None,
 ) -> AsyncIterator[StreamChunk | AgentState]:
     """Run one turn and **stream** the responder's tokens (design §3 "streams tokens").
 
@@ -655,6 +677,7 @@ async def stream_graph(
         db=db,
         search_tool=search_tool,
         http_client=http_client,
+        dashboard_service=dashboard_service,
     )
     merged = await streamer.plan(state)
 

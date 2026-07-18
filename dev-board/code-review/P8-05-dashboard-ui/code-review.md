@@ -1,0 +1,18 @@
+# Code review — P8-05-dashboard-ui · engineer revision 1
+
+## Verdict: APPROVED
+
+## Findings
+| id | severity | file:line | issue | required change |
+|----|----------|-----------|-------|-----------------|
+| C1 | minor | components/dashboard/GoalCard.tsx (whole component) | UI wires create / complete / delete / approve / reject / log-progress, but there is **no edit** of an existing row's `title` / `target_date` / `due_date`. The task's UI requirement (task.md §34) says "create/**edit**/complete a goal, milestone, task", and `lib/dashboard.ts` already exposes `updateGoal`/`updateMilestone`/`updateTask` with those fields. Only status-edits (complete/approve) are surfaced. | Add inline rename/date-edit affordances mirroring `ProfileView.tsx`'s edit-form shape, or confirm with the orchestrator that edit is deferred. Acceptance-criteria checkboxes are all met, so not gating. |
+| C2 | nit | components/Dashboard.tsx:370-371 | Dead ternary: `day streak{progress.current_streak_days === 1 ? "" : ""}` — both branches return `""`, so it does nothing (looks like an abandoned singular/plural attempt). | Drop the ternary, or implement the intended pluralization (e.g. append `"s"` when `!== 1`). |
+| C3 | nit | components/Dashboard.tsx:175-178 (`refresh`) | The post-mutation `refresh()` calls `setSummary` with no unmount guard, unlike the initial load effect (which uses a `cancelled` flag). A mutation resolving after unmount would `setState` on an unmounted component. Consistent with the existing roles/profile pattern, so latent only. | Optional: guard `refresh`/`runAction` writes, or leave as-is to match the sibling components. |
+
+## Notes
+- **Correctness / contract:** `lib/dashboard.ts` wire types, endpoint paths, and methods match `backend/app/schemas/dashboard.py` + `backend/app/api/dashboard.py` exactly (verified endpoint-by-endpoint). Approve = `PATCH` to `APPROVE_STATUS` (goal→active / milestone→pending / task→todo) and reject = `DELETE`, matching the backend `*Update` literals that exclude `proposed` and the ORM server defaults. The 403 guest gate is handled client-side (sign-in gate, no raw 403), and the lib still maps a real 403 to an account-needed message defensively.
+- **Security:** no token handling (BFF injects auth server-side, `credentials: "same-origin"`); path IDs go through `encodeURIComponent`; all backend/AI text renders as escaped React children (no `dangerouslySetInnerHTML`); no untrusted input reaches any eval/exec surface.
+- **Concurrency:** a single shared `busy` flag serializes all board mutations and re-enables only after the post-mutation refresh — this deliberately avoids the secondary-panel resubmit race class seen on the roles/profile surfaces. Concurrent clicks are silently dropped while busy, which is acceptable here.
+- **Verification run locally:** `npx tsc --noEmit` clean · `npm run lint` clean · `npx jest` → 20 suites / 191 tests all passing (24 new across `dashboard.test.ts` + `Dashboard.test.tsx`). Component tests assert approve/reject/create fire the real client calls with the correct args and trigger a re-fetch; guest gate never calls the 403-gated API; load/action errors surface the backend `detail`.
+- **Nav:** "Dashboard" link added to the only primary-nav header (`Chat.tsx`); roles/profile/pdp pages carry only a "Back to chat" link (no repeated nav bar), so the engineer's decision to not touch them is correct — the links do not "repeat" there. The dashboard page has its own "Back to chat" link.
+- No blocker/major issues; C1 is a scope note against a UI requirement not enumerated in the acceptance checkboxes, C2/C3 are cosmetic/latent. Approving with notes for the engineer to address or explicitly defer.

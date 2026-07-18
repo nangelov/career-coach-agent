@@ -13,3 +13,4 @@
 - [Concurrent DB workers in fakes](feedback-concurrent-db-workers-fakes.md) — two concurrent DB workers need FreshSessionDBProvider (fresh session per call), not a single shared FakeSession
 - [Cache-first cheap key](feedback-cache-first-cheap-key.md) — cache-first read endpoints key on a cheap request-derived value, not a DB-derived canonical, so a hit skips ALL DB work
 - [Market canonicalization needs taxonomy seed](project-market-canonicalization-needs-taxonomy-seed.md) — _resolve_baseline searches ALL curated docs; live mine→read tests must seed a taxonomy occupation doc or the read resolves to the summary title (202 loop)
+- [Worker enum fan-in tests](feedback-worker-enum-fanin-tests.md) — adding a WorkerName/Intent member breaks tests asserting `set(WorkerName)`; dispatch the new worker, exclude citation-less workers from citation asserts

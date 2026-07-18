@@ -274,6 +274,12 @@ export default function Chat() {
             {session.role === "guest" ? "Guest" : "Signed in"}
           </span>
           <Link
+            href="/dashboard"
+            className="rounded-md border border-gray-300 px-3 py-1 font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Dashboard
+          </Link>
+          <Link
             href="/roles"
             className="rounded-md border border-gray-300 px-3 py-1 font-medium text-gray-700 hover:bg-gray-50"
           >

@@ -101,3 +101,13 @@ The orchestrator's board. One row per task. See `.claude/skills/agent-handoff/SK
 | P7-04-frontend-pdp-ui | PDP generation UI (stored profile) + download | P7 | DONE | 1 | APPROVED | APPROVED |
 | P7-05-verify | P7 exit: PDP quality vs v1 + header contract | P7 | DONE | 1 | APPROVED | APPROVED |
 | P7-06-cicd-verify | P7 CI/CD verification | P7 | DONE | 1 | APPROVED | APPROVED |
+| FIX-11-backend-ci-reportlab-missing | backend-ci pytest collection fails: reportlab uncurated | cross-cutting | DONE | 1 | APPROVED | APPROVED |
+| P8-01-dashboard-schema-confirm | Confirm goals/milestones/tasks/progress_entries tables | P8 | DONE | 1 | APPROVED | APPROVED |
+| P8-02-dashboard-api | api/dashboard.py CRUD + summary endpoint | P8 | DONE | 1 | APPROVED | APPROVED |
+| P8-03-dashboard-tools | Native dashboard tools (read + propose) in chat graph | P8 | DONE | 2 | APPROVED | APPROVED |
+| FIX-10-p8-ruff-format-debt | Reformat P8-01/P8-02 files flagged by ruff format --check | cross-cutting | DONE | 1 | APPROVED | APPROVED |
+| P8-04-pdp-seed-dashboard | PDP generation seeds goals/tasks into the dashboard | P8 | DONE | 1 | APPROVED | APPROVED |
+| P8-05-dashboard-ui | Dashboard frontend UI | P8 | DONE | 1 | APPROVED | APPROVED |
+| P8-06-verify | P8 exit: edit/propose/approve/progress | P8 | DONE | 1 | APPROVED | APPROVED |
+| P8-07-cicd-verify | P8 CI/CD verification | P8 | DONE | 1 | APPROVED | APPROVED |
+| P8-08-curated-deps-guard | Guard against curated-CI-dependency drift | P8 | DONE | 1 | APPROVED | APPROVED |

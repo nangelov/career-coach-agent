@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from datetime import date
 from types import SimpleNamespace
 from typing import Any
 
@@ -22,6 +23,8 @@ from app.ingestion.profile import ProfileSchema
 from app.llm.errors import LLMAllModelsFailedError
 from app.llm.types import CompletionResult, FunctionCall, ToolCall
 from app.schemas.pdp import SECTION_HEADINGS
+from app.services.dashboard import DashboardService
+from app.services.dashboard_store import InMemoryDashboardStore
 from app.services.pdp import (
     PdpGenerated,
     PdpGenerationFailed,
@@ -117,6 +120,7 @@ def _service(
     role_session: FakeSession,
     completer: SeqCompleter | RaisingCompleter,
     pdp_store: InMemoryPdpStore,
+    dashboard: DashboardService | None = None,
 ) -> PdpService:
     profile_store = InMemoryProfileStore()
     if profile is not None:
@@ -129,6 +133,7 @@ def _service(
         pdp_store=pdp_store,
         router=completer,  # type: ignore[arg-type] - structural LLMCompleter double
         db=FakeDBProvider(FakeSession([])),  # gap is empty in these tests → no resource lookup
+        dashboard=dashboard or DashboardService(InMemoryDashboardStore()),
     )
 
 
@@ -260,3 +265,94 @@ async def test_llm_outage_fails_without_persisting_placeholder_plan() -> None:
     assert isinstance(outcome, PdpGenerationFailed)
     assert completer.calls == 2  # one initial try + one bounded retry, both raised
     assert store.saved == []  # never persist a placeholder plan
+
+
+# --------------------------------------------------------------------------- #
+# Dashboard seeding (P8-04) — a success seeds one proposed goal + parsed rows
+# --------------------------------------------------------------------------- #
+#: A full plan whose two action-item sections carry parseable bullet/numbered lists.
+_SEEDING_SECTIONS = {
+    **_FULL_SECTIONS,
+    "learning_objectives": "Milestones:\n- **Learn SQL fundamentals**\n- Build a data pipeline\n",
+    "timeline_action_steps": "Month 1:\n1. Enrol in a SQL course\n2. Ship a portfolio project\n",
+}
+
+
+async def test_successful_generation_seeds_one_proposed_goal_with_rows() -> None:
+    dashboard = DashboardService(InMemoryDashboardStore())
+    service = _service(
+        profile=_profile(),
+        role_session=_role_profile_session({"Python": {"frequency": 0.9, "weight": 1.0}}),
+        completer=SeqCompleter([_SEEDING_SECTIONS]),
+        pdp_store=InMemoryPdpStore(),
+        dashboard=dashboard,
+    )
+
+    outcome = await service.generate(user_id=_USER, career_goal=_ROLE, target_date=date(2027, 1, 1))
+
+    assert isinstance(outcome, PdpGenerated)
+    summary = await dashboard.get_summary(_USER)
+    assert len(summary.goals) == 1
+    goal = summary.goals[0]
+    assert goal.title == _ROLE
+    assert goal.target_role == _ROLE
+    assert goal.target_date == date(2027, 1, 1)
+    assert goal.source == "ai"
+    assert goal.status == "proposed"  # AI-authored → pending user approval (§5.2)
+    # learning_objectives → milestones; timeline_action_steps → tasks (markdown stripped).
+    assert {m.title for m in goal.milestones} == {"Learn SQL fundamentals", "Build a data pipeline"}
+    assert {t.title for t in goal.tasks} == {"Enrol in a SQL course", "Ship a portfolio project"}
+    assert all(m.source == "ai" and m.status == "proposed" for m in goal.milestones)
+    assert all(t.source == "ai" and t.status == "proposed" for t in goal.tasks)
+
+
+async def test_regeneration_reuses_goal_without_duplicating() -> None:
+    dashboard = DashboardService(InMemoryDashboardStore())
+    # Two generate() calls → the skills-gap service reads the role profile twice.
+    role_session = FakeSession(
+        [
+            FakeExecuteResult(
+                [SimpleNamespace(canonical_role=_ROLE, requirements={"Python": {"frequency": 0.9}})]
+            )
+            for _ in range(2)
+        ]
+    )
+    service = _service(
+        profile=_profile(),
+        role_session=role_session,
+        completer=SeqCompleter([_SEEDING_SECTIONS, _SEEDING_SECTIONS]),
+        pdp_store=InMemoryPdpStore(),
+        dashboard=dashboard,
+    )
+
+    await service.generate(user_id=_USER, career_goal=_ROLE, target_date=None)
+    # Regenerate the *same* career goal (case-insensitively) — must not create a second goal
+    # nor duplicate the already-seeded milestones/tasks, but should refresh the target date.
+    await service.generate(user_id=_USER, career_goal=_ROLE.lower(), target_date=date(2028, 6, 1))
+
+    summary = await dashboard.get_summary(_USER)
+    assert len(summary.goals) == 1  # reused, not duplicated
+    goal = summary.goals[0]
+    assert goal.target_date == date(2028, 6, 1)  # refreshed on regeneration
+    assert len(goal.milestones) == 2  # no duplicate milestone rows
+    assert len(goal.tasks) == 2  # no duplicate task rows
+
+
+async def test_seeding_failure_does_not_fail_pdp_response() -> None:
+    class RaisingDashboard(DashboardService):
+        async def list_goals(self, user_id: str) -> list:  # type: ignore[override]
+            raise RuntimeError("dashboard DB down")
+
+    service = _service(
+        profile=_profile(),
+        role_session=_role_profile_session({"Python": {"frequency": 0.9, "weight": 1.0}}),
+        completer=SeqCompleter([_SEEDING_SECTIONS]),
+        pdp_store=InMemoryPdpStore(),
+        dashboard=RaisingDashboard(InMemoryDashboardStore()),
+    )
+
+    outcome = await service.generate(user_id=_USER, career_goal=_ROLE, target_date=None)
+
+    # The dashboard write raised, but the PDF must still be returned (fail-soft, §5.2).
+    assert isinstance(outcome, PdpGenerated)
+    assert outcome.pdf.startswith(b"%PDF")

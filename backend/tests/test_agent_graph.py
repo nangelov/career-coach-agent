@@ -169,18 +169,21 @@ def test_route_after_planner_falls_back_to_responder() -> None:
 # Parallel fan-in (P4-01 reducers through a real graph run)
 # --------------------------------------------------------------------------- #
 async def test_parallel_workers_fan_in_without_clobbering() -> None:
-    """All four workers run concurrently; every slice survives the fan-in."""
+    """All five workers run concurrently; every slice survives the fan-in."""
     # RAG and MARKET_INTEL both read the DB concurrently — give each its own fresh scripted
     # session (production hands each an independent pooled session).
     db = FreshSessionDBProvider(market_and_rag_session)
     # Inject a fake web search tool + mock crawl transport so the real web_search worker
-    # (P4-05) contributes one citation like any other worker — no real network.
+    # (P4-05) contributes one citation like any other worker — no real network. The dashboard
+    # worker (P8-03) runs with its default (unconfigured) node → it fails soft for this guest
+    # turn but still owns its worker_results key, exercising the fan-in without a citation.
     compiled = build_graph(
         planner=_planner_selecting(
             WorkerName.RAG,
             WorkerName.WEB_SEARCH,
             WorkerName.MARKET_INTEL,
             WorkerName.PDP_RESUME,
+            WorkerName.DASHBOARD,
         ),
         embedder=FakeEmbeddingClient(),
         db=db,
@@ -194,9 +197,11 @@ async def test_parallel_workers_fan_in_without_clobbering() -> None:
 
     # every dispatched worker owns a distinct key — none overwrote another.
     assert set(result.worker_results) == {w.value for w in WorkerName}
-    # citations list-concatenated: one per worker (RAG's real hit included), all present.
-    assert len(result.citations) == 4
-    assert {c.worker for c in result.citations} == set(WorkerName)
+    # citations list-concatenated: one per citation-producing worker (RAG's real hit included).
+    # The dashboard worker produces no citation, so it is the one member without one.
+    citation_workers = set(WorkerName) - {WorkerName.DASHBOARD}
+    assert len(result.citations) == len(citation_workers)
+    assert {c.worker for c in result.citations} == citation_workers
 
 
 async def test_responder_merges_all_worker_outputs() -> None:
