@@ -54,3 +54,5 @@ class AppStateKeys(StrEnum):
     ACCOUNT_SERVICE = "account_service"
     #: The app-scoped :class:`~app.services.roles.RolesService` (P6-07 role requirements), cached.
     ROLES_SERVICE = "roles_service"
+    #: The app-scoped :class:`~app.services.pdp.PdpService` (P7-03 PDP generation), cached.
+    PDP_SERVICE = "pdp_service"

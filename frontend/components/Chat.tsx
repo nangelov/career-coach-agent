@@ -285,6 +285,12 @@ export default function Chat() {
           >
             Profile
           </Link>
+          <Link
+            href="/pdp"
+            className="rounded-md border border-gray-300 px-3 py-1 font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Plan
+          </Link>
           <button
             type="button"
             className="rounded-md border border-gray-300 px-3 py-1 font-medium text-gray-700 hover:bg-gray-50"

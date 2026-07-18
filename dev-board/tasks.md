@@ -190,12 +190,12 @@ users. **No job listings are ever shown.**
 
 **Exit:** PDP PDF matches/exceeds v1 quality, grounded in the user's stored profile.
 
-- [ ] **(B)** `agents/pdp_agent.py` — structured profile + RAG-grounded recommendations → structured PDP sections.
-- [ ] **(B)** Port `helpers/helper.py` reportlab builder → `pdf/`; keep section-header contract + `validate_pdp_response` gate.
-- [ ] **(B)** `POST /api/pdp` uses the **stored profile** (no re-upload); regenerate on demand.
-- [ ] **(F)** PDP generation UI (uses stored profile) + download.
-- [ ] **(T)** PDP PDF quality vs v1; section headers stay in sync with prompt + PDF builder.
-- [ ] **(T)** **CI/CD verification** — run the full backend + frontend CI command sets locally (ruff + ruff format --check + mypy + pytest; eslint + tsc + jest — the exact commands in `.github/workflows/backend-ci.yml` / `frontend-ci.yml`) and confirm both are green before closing the phase.
+- [x] **(B)** `agents/pdp_agent.py` — structured profile + RAG-grounded recommendations → structured PDP sections.
+- [x] **(B)** Port `helpers/helper.py` reportlab builder → `pdf/`; keep section-header contract + `validate_pdp_response` gate.
+- [x] **(B)** `POST /api/pdp` uses the **stored profile** (no re-upload); regenerate on demand.
+- [x] **(F)** PDP generation UI (uses stored profile) + download.
+- [x] **(T)** PDP PDF quality vs v1; section headers stay in sync with prompt + PDF builder.
+- [x] **(T)** **CI/CD verification** — run the full backend + frontend CI command sets locally (ruff + ruff format --check + mypy + pytest; eslint + tsc + jest — the exact commands in `.github/workflows/backend-ci.yml` / `frontend-ci.yml`) and confirm both are green before closing the phase.
 
 ---
 

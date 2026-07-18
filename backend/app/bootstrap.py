@@ -22,7 +22,7 @@ opened on the first chat turn.
 
 from __future__ import annotations
 
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from fastapi import FastAPI
 from redis.asyncio import Redis
@@ -63,6 +63,9 @@ from app.services.rate_limiting import RateLimitService
 from app.services.roles import RolesService
 from app.services.skills_gap import SkillsGapService
 from app.services.user_store import UserStore
+
+if TYPE_CHECKING:
+    from app.services.pdp import PdpService
 
 
 def _shared_redis_client(app: FastAPI) -> Redis:
@@ -371,6 +374,40 @@ def build_roles_service(app: FastAPI) -> RolesService:
         db=provider,
         stale_after_seconds=settings.ROLE_PROFILE_STALE_AFTER_SECONDS,
         cache_ttl_seconds=settings.ROLE_REQUIREMENTS_CACHE_TTL_SECONDS,
+    )
+
+
+def build_pdp_service(app: FastAPI) -> PdpService:
+    """Construct the :class:`PdpService` (stored profile → PDP → validated PDF, P7-03, §5.2/§8).
+
+    Wires the ports the PDP flow needs over the shared pools: the Postgres-backed profile store
+    and PDP store, the reused P6-05 :class:`~app.services.skills_gap.SkillsGapService` (profile
+    store + role-profile repo over the shared Postgres pool), the failover
+    :class:`~app.llm.router.LLMRouter` (redis-wired circuit breaker, same as the chat path) that
+    drives the P7-01 agent, and the shared Postgres provider handed to the agent for its
+    learning-resource lookup. The PDP is anchored in Postgres (``pdps`` FK to ``users``), so this
+    requires the shared pool (``_require_pg_provider`` fails loudly). Heavy imports (LLM router,
+    service) are deferred to keep API import light. Called once per process (cached by
+    ``app.api.pdp.get_pdp_service``).
+    """
+    from app.llm.router import LLMRouter, RedisLike
+    from app.repositories.pdp_store import PostgresPdpStore
+    from app.services.pdp import PdpService
+
+    provider = _require_pg_provider(app, "PDP generation")
+    redis_client = _shared_redis_client(app)
+
+    profile_store = build_profile_store(app)
+    skills_gap = SkillsGapService(profile_store, provider)
+    pdp_store = PostgresPdpStore.from_provider(provider)
+    llm_router = LLMRouter.from_settings(settings, redis_client=cast("RedisLike", redis_client))
+
+    return PdpService(
+        profile_store=profile_store,
+        skills_gap=skills_gap,
+        pdp_store=pdp_store,
+        router=llm_router,
+        db=provider,
     )
 
 

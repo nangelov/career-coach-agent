@@ -95,3 +95,9 @@ The orchestrator's board. One row per task. See `.claude/skills/agent-handoff/SK
 | P6-10-cicd-verify | P6 CI/CD verification | P6 | DONE | 1 | APPROVED | APPROVED |
 | FIX-08-frontend-ci-node-deprecation | Bump frontend-ci off deprecated Node 20 actions | cross-cutting | DONE | 1 | APPROVED | APPROVED |
 | FIX-09-taxonomy-fixture-gitignored | backend-ci fails: taxonomy_seed.json excluded by over-broad .gitignore | cross-cutting | DONE | 1 | APPROVED | APPROVED |
+| P7-01-pdp-agent | agents/pdp_agent.py structured PDP sections | P7 | DONE | 1 | APPROVED | APPROVED |
+| P7-02-pdf-builder | pdf/ reportlab builder + validation gate | P7 | DONE | 1 | APPROVED | APPROVED |
+| P7-03-pdp-endpoint | POST /api/pdp using stored profile | P7 | DONE | 2 | APPROVED | APPROVED |
+| P7-04-frontend-pdp-ui | PDP generation UI (stored profile) + download | P7 | DONE | 1 | APPROVED | APPROVED |
+| P7-05-verify | P7 exit: PDP quality vs v1 + header contract | P7 | DONE | 1 | APPROVED | APPROVED |
+| P7-06-cicd-verify | P7 CI/CD verification | P7 | DONE | 1 | APPROVED | APPROVED |

@@ -6,6 +6,12 @@ from app.agents.graph import (
     run_graph,
     stream_graph,
 )
+from app.agents.pdp_agent import (
+    PDP_TOOL_NAME,
+    PDP_TOOL_SCHEMA,
+    ResourceLookup,
+    generate_pdp,
+)
 from app.agents.planner import (
     PLANNER_TOOL_NAME,
     PLANNER_TOOL_SCHEMA,
@@ -35,6 +41,8 @@ from app.agents.web_searcher import make_web_search_node, search_and_crawl
 
 __all__ = [
     "FALLBACK_RESPONSE",
+    "PDP_TOOL_NAME",
+    "PDP_TOOL_SCHEMA",
     "PLANNER_TOOL_NAME",
     "PLANNER_TOOL_SCHEMA",
     "RESPONDER_SYSTEM_PROMPT",
@@ -48,11 +56,13 @@ __all__ = [
     "MemoryContext",
     "Planner",
     "PlannerDecision",
+    "ResourceLookup",
     "Responder",
     "SafetyVerdict",
     "WorkerName",
     "WorkerResult",
     "build_graph",
+    "generate_pdp",
     "graph",
     "make_rag_node",
     "make_web_search_node",

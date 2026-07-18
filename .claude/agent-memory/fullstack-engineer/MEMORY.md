@@ -28,3 +28,4 @@
 - [Next route handler signature](project-next-route-handler-signature.md) — Next-generated route types reject an optional first param; keep POST(request: NextRequest) required and guard the body parse
 - [Cascade-delete test completeness](project-cascade-delete-test-completeness.md) — erasure "no orphan rows" tests must assert every child+grandchild table empty (join grandchildren to parent); confirm ondelete=CASCADE vs SET NULL first
 - [Parallel worktree failures](project-parallel-worktree-failures.md) — shared tree holds other in-flight tasks' uncommitted edits; triage/fix only failures in files YOUR task touches, flag the rest as out-of-scope
+- [Fail-soft must be distinguishable](project-fail-soft-must-be-distinguishable.md) — a graceful-degradation placeholder that passes downstream validation masks real failures; give the caller an explicit status/None signal, not a renderable-but-indistinguishable default
