@@ -107,14 +107,18 @@ jobs:
       # langgraph-* / pydantic / xxhash). They're imported at module scope by app.main /
       # app.agents, so pytest executes them at collection and needs them present or the
       # suite errors out — same "light, must-curate" category as sqlalchemy/joserfc, not
-      # the deliberately-excluded ML stack (torch/sentence-transformers/docling). Keep this
+      # the deliberately-excluded ML stack (torch/sentence-transformers/docling). `reportlab`
+      # is the pure-Python PDF builder (P7-02) app/pdf/builder.py uses; it's imported at
+      # module scope by app/services/pdp.py → app/api/pdp.py → app.main, so pytest hits it at
+      # collection for nearly every test file — another light, must-curate dep (no
+      # C-extension/CUDA), not part of the excluded ML stack. Keep this
       # list in sync with the backend/Makefile `install` target (they must produce the same venv).
       - name: Install dependencies
         run: |
           uv sync --only-group dev
           uv pip install fastapi pydantic pydantic-settings "celery[redis]" openai \
             sqlalchemy asyncpg aiosqlite pgvector alembic joserfc authlib langgraph \
-            python-multipart
+            python-multipart reportlab
 
       # --no-sync: run the tool in the curated venv above WITHOUT uv re-resolving
       # and installing the full project dependency tree (which would drag in the

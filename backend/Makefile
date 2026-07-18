@@ -55,7 +55,7 @@ install:
 	uv sync --only-group dev
 	uv pip install fastapi pydantic pydantic-settings "celery[redis]" openai \
 		sqlalchemy asyncpg aiosqlite pgvector alembic joserfc authlib langgraph \
-		python-multipart
+		python-multipart reportlab
 
 lint:
 	uv run --no-sync ruff check .
