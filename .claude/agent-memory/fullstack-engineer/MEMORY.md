@@ -34,3 +34,6 @@
 - [pgvector zero-vector NaN](project-pgvector-zero-vector-nan.md) — cosine distance is NaN for a zero vector; live-DB dedup/similarity tests need a non-zero constant embedding ([0.1]*4096, not [0.0])
 - [Idempotent re-scanned signals](project-idempotent-rescanned-signal.md) — a task re-scanning a rolling signal window (recent votes) each run compounds effects; gate on updated_at > signal.created_at (strict >)
 - [rowcount + cast collision](project-rowcount-and-cast-collision.md) — reading rowcount off an async delete needs CursorResult cast; vector_search already imports sqlalchemy.cast, so alias typing.cast
+- [In-process ML classifier pattern](project-in-process-ml-classifier.md) — S8 injection classifier: ports+adapters, lazy load, injectable factory seam, fail-soft None, add dep to INTENTIONAL_EXCLUSIONS not curated install
+- [Output guardrail per-chunk constraint](project-output-guardrail-per-chunk-constraint.md) — screen_output runs per token-delta on streaming; keep ML opt-in (default None), only the buffered node passes a classifier; leakage signatures stay self-contained regexes
+- [Rate-limit dimensions](project-rate-limit-dimensions.md) — new per-IP/per-tool limits reuse RateLimiter port; per-IP via trusted-proxy allowlist (not naive XFF); per-tool degrades gracefully via structural ToolInvocationLimiter on ToolRegistry; S9 bot gate is P12

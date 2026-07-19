@@ -260,6 +260,66 @@ def test_registry_rejects_duplicate_registration() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Per-tool invocation limit (P10-05, §7.5)
+# --------------------------------------------------------------------------- #
+class _FakeToolLimiter:
+    """A ``ToolInvocationLimiter`` stand-in that allows the first ``allowed`` calls per tool."""
+
+    def __init__(self, *, allowed: int) -> None:
+        self._allowed = allowed
+        self.calls: list[str] = []
+
+    async def allow(self, tool_name: str) -> bool:
+        self.calls.append(tool_name)
+        return self.calls.count(tool_name) <= self._allowed
+
+
+async def test_registry_allows_tool_within_per_tool_limit() -> None:
+    limiter = _FakeToolLimiter(allowed=1)
+    registry = ToolRegistry(invocation_limiter=limiter)
+    registry.register(CurrentDateTimeTool())
+
+    message = await registry.execute(_tool_call("current_date_and_time", "{}"))
+
+    assert message.content is not None
+    # Within budget → the real tool ran (no rate-limit error).
+    assert json.loads(message.content)["timezone"] == "UTC"
+    assert limiter.calls == ["current_date_and_time"]
+
+
+async def test_registry_denies_tool_over_per_tool_limit_gracefully() -> None:
+    limiter = _FakeToolLimiter(allowed=1)
+    registry = ToolRegistry(invocation_limiter=limiter)
+    registry.register(CurrentDateTimeTool())
+
+    first = await registry.execute(_tool_call("current_date_and_time", "{}"))
+    second = await registry.execute(_tool_call("current_date_and_time", "{}"))
+
+    # First runs; the second is over budget → a graceful rate-limit tool message (never raises).
+    assert first.content is not None and "timezone" in first.content
+    assert second.role == "tool"
+    assert second.content is not None
+    assert "Rate limit reached for tool" in json.loads(second.content)["error"]
+
+
+async def test_registry_per_tool_limit_is_per_tool_name() -> None:
+    # Each tool name has its own budget: exhausting one must not block another.
+    limiter = _FakeToolLimiter(allowed=1)
+    registry = ToolRegistry(invocation_limiter=limiter)
+    registry.register(CurrentDateTimeTool())
+    registry.register(InternetSearchTool(pool=TavilyPool([])))
+
+    await registry.execute(_tool_call("current_date_and_time", "{}"))
+    blocked = await registry.execute(_tool_call("current_date_and_time", "{}"))
+    # A different tool still has its full budget.
+    other = await registry.execute(_tool_call("internet_search", '{"query": "x"}'))
+
+    assert "Rate limit reached" in json.loads(blocked.content or "{}")["error"]
+    # internet_search ran (empty pool → its own "not configured" graceful error, not a rate limit).
+    assert "not configured" in json.loads(other.content or "{}")["error"]
+
+
+# --------------------------------------------------------------------------- #
 # Local factory: a registry whose search tool has no configured key (empty pool)
 # so nothing can reach the network by accident in these tests.
 # --------------------------------------------------------------------------- #

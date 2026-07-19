@@ -254,6 +254,12 @@ def build_chat_service(app: FastAPI) -> ChatService:
     # dashboard node fails soft (no rogue store), matching the ``conversations`` posture above.
     dashboard_service = build_dashboard_service(app) if pg_provider is not None else None
 
+    # Per-tool rate limiter (P10-05, §7.5): the same Redis-backed ``RateLimitService`` the API
+    # layer uses, injected into the graph so the dashboard worker's bounded tool-calling loop
+    # counts each tool call per caller/window (bounds unbounded external/tool calls). Reused
+    # (not re-forked) — same limiter port over the one shared Redis pool.
+    rate_limiter = build_rate_limit_service(app)
+
     # The compiled-once multi-agent graph (design §3): the single failover ``LLMRouter`` drives
     # both the planner (``router=``) and the responder (``responder_router=``); the in-process
     # sentence-transformers embedder (§6 item 3, lazy-loaded on first use) and the shared
@@ -268,6 +274,7 @@ def build_chat_service(app: FastAPI) -> ChatService:
         search_tool=search_tool,
         dashboard_service=dashboard_service,
         guest_memory=guest_memory,
+        rate_limiter=rate_limiter,
     )
     return ChatService(
         runner,

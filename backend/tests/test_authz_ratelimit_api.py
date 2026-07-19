@@ -22,7 +22,12 @@ from app.api.chat import get_chat_service
 from app.llm.types import ChatMessage
 from app.main import app
 from app.schemas.chat import ChatEvent, DoneEvent, StartEvent, TokenEvent
-from app.security.dependencies import get_rate_limit_service, require_auth
+from app.security.client_ip import ClientIpResolver
+from app.security.dependencies import (
+    get_client_ip_resolver,
+    get_rate_limit_service,
+    require_auth,
+)
 from app.services.rate_limiting import InMemoryRateLimiter, RateLimitService
 from tests.fakes import fake_current_user
 
@@ -41,7 +46,9 @@ class _FakeService:
         yield DoneEvent(message_id="m1", finish_reason="stop")
 
 
-def _guest_rate_limit_service(*, guest_message_limit: int = 10) -> RateLimitService:
+def _guest_rate_limit_service(
+    *, guest_message_limit: int = 10, ip_request_limit: int = 10**9
+) -> RateLimitService:
     return RateLimitService(
         InMemoryRateLimiter(),
         guest_message_limit=guest_message_limit,
@@ -50,6 +57,8 @@ def _guest_rate_limit_service(*, guest_message_limit: int = 10) -> RateLimitServ
         user_message_limit=10**9,
         user_upload_limit=10**9,
         user_window_seconds=3600,
+        ip_request_limit=ip_request_limit,
+        ip_window_seconds=3600,
     )
 
 
@@ -119,3 +128,75 @@ async def test_rejected_cross_session_request_does_not_consume_budget() -> None:
         app.dependency_overrides.clear()
 
     assert ok.status_code == 200
+
+
+# --------------------------------------------------------------------------- #
+# Per-IP limit (P10-05, §7.5): trusted-proxy read + anti-spoofing
+# --------------------------------------------------------------------------- #
+async def test_per_ip_limit_keys_on_client_behind_trusted_proxy() -> None:
+    # Peer is a trusted proxy → X-Forwarded-For is honored, so each *client* IP has its own
+    # per-IP budget (a genuine proxied deployment sees real client IPs, not the proxy's).
+    fake = _FakeService()
+    service = _guest_rate_limit_service(guest_message_limit=10**9, ip_request_limit=1)
+    app.dependency_overrides[get_chat_service] = lambda: fake
+    app.dependency_overrides[require_auth] = lambda: fake_current_user("s1", role="guest")
+    app.dependency_overrides[get_rate_limit_service] = lambda: service
+    app.dependency_overrides[get_client_ip_resolver] = lambda: ClientIpResolver(["198.51.100.5"])
+    try:
+        transport = ASGITransport(app=app, client=("198.51.100.5", 5000))
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            # Client A: first request ok, second over the per-IP cap → 429.
+            a1 = await client.post(
+                "/api/chat",
+                json={"session_id": "s1", "message": "hi"},
+                headers={"X-Forwarded-For": "9.9.9.9"},
+            )
+            a2 = await client.post(
+                "/api/chat",
+                json={"session_id": "s1", "message": "hi"},
+                headers={"X-Forwarded-For": "9.9.9.9"},
+            )
+            # Client B (different real IP behind the same proxy) still has its own budget.
+            b1 = await client.post(
+                "/api/chat",
+                json={"session_id": "s1", "message": "hi"},
+                headers={"X-Forwarded-For": "8.8.8.8"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert a1.status_code == 200
+    assert a2.status_code == 429
+    assert "network" in a2.json()["detail"]
+    assert "Retry-After" in a2.headers
+    assert b1.status_code == 200
+
+
+async def test_per_ip_limit_ignores_spoofed_header_from_untrusted_peer() -> None:
+    # No trusted proxy configured → the (attacker-controlled) X-Forwarded-For is ignored and the
+    # limit keys on the real connecting peer, so rotating the header cannot evade the cap.
+    fake = _FakeService()
+    service = _guest_rate_limit_service(guest_message_limit=10**9, ip_request_limit=1)
+    app.dependency_overrides[get_chat_service] = lambda: fake
+    app.dependency_overrides[require_auth] = lambda: fake_current_user("s1", role="guest")
+    app.dependency_overrides[get_rate_limit_service] = lambda: service
+    app.dependency_overrides[get_client_ip_resolver] = lambda: ClientIpResolver([])
+    try:
+        transport = ASGITransport(app=app, client=("203.0.113.7", 5000))
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            first = await client.post(
+                "/api/chat",
+                json={"session_id": "s1", "message": "hi"},
+                headers={"X-Forwarded-For": "1.1.1.1"},
+            )
+            # A fresh spoofed header does not mint a fresh budget — same peer → 429.
+            second = await client.post(
+                "/api/chat",
+                json={"session_id": "s1", "message": "hi"},
+                headers={"X-Forwarded-For": "2.2.2.2"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert first.status_code == 200
+    assert second.status_code == 429

@@ -30,6 +30,8 @@ def _service(
     guest_upload_limit: int = 1,
     user_message_limit: int = 100,
     user_upload_limit: int = 20,
+    ip_request_limit: int = 300,
+    tool_call_limit: int = 30,
 ) -> RateLimitService:
     return RateLimitService(
         InMemoryRateLimiter(),
@@ -39,6 +41,10 @@ def _service(
         user_message_limit=user_message_limit,
         user_upload_limit=user_upload_limit,
         user_window_seconds=3600,
+        ip_request_limit=ip_request_limit,
+        ip_window_seconds=3600,
+        tool_call_limit=tool_call_limit,
+        tool_window_seconds=3600,
     )
 
 
@@ -126,6 +132,90 @@ async def test_user_budget_follows_user_across_sessions() -> None:
     assert (await service.enforce(RateLimitAction.MESSAGE, s2)).allowed
     with pytest.raises(RateLimitExceeded):
         await service.enforce(RateLimitAction.MESSAGE, s1)
+
+
+# --------------------------------------------------------------------------- #
+# Per-IP policy (P10-05, §7.5): defense-in-depth alongside session/user limits
+# --------------------------------------------------------------------------- #
+async def test_ip_limit_third_denied() -> None:
+    service = _service(ip_request_limit=2)
+
+    assert (await service.enforce_ip("203.0.113.9")).allowed
+    assert (await service.enforce_ip("203.0.113.9")).allowed
+    with pytest.raises(RateLimitExceeded) as exc:
+        await service.enforce_ip("203.0.113.9")
+    assert exc.value.action == RateLimitAction.IP
+    assert exc.value.is_guest is False
+    assert exc.value.limit == 2
+
+
+async def test_two_ips_do_not_share_a_budget() -> None:
+    service = _service(ip_request_limit=1)
+
+    assert (await service.enforce_ip("203.0.113.1")).allowed
+    # A different source IP has its own counter.
+    assert (await service.enforce_ip("203.0.113.2")).allowed
+    with pytest.raises(RateLimitExceeded):
+        await service.enforce_ip("203.0.113.1")
+
+
+async def test_ip_limit_is_independent_of_session_message_budget() -> None:
+    # The per-IP counter runs alongside — exhausting it must not touch the message budget and
+    # vice versa (separate namespaces), so a script farming sessions from one IP is still capped.
+    service = _service(guest_message_limit=10, ip_request_limit=1)
+    guest = fake_current_user("sess-guest", role="guest")
+
+    await service.enforce_ip("203.0.113.9")
+    with pytest.raises(RateLimitExceeded):
+        await service.enforce_ip("203.0.113.9")
+
+    # The guest's own per-session message budget is untouched.
+    assert (await service.enforce(RateLimitAction.MESSAGE, guest)).allowed
+
+
+# --------------------------------------------------------------------------- #
+# Per-tool policy (P10-05, §7.5): bounds a caller's tool invocations, never raises
+# --------------------------------------------------------------------------- #
+async def test_check_tool_denies_over_limit_without_raising() -> None:
+    service = _service(tool_call_limit=2)
+    user = fake_current_user("s1", role="user", user_id="u1")
+
+    assert (await service.check_tool("internet_search", user)).allowed
+    assert (await service.check_tool("internet_search", user)).allowed
+    # Over budget → a denied result (not an exception): the tool loop degrades gracefully.
+    third = await service.check_tool("internet_search", user)
+    assert third.allowed is False
+    assert third.count == 3
+
+
+async def test_check_tool_budget_is_per_tool_name() -> None:
+    service = _service(tool_call_limit=1)
+    user = fake_current_user("s1", role="user", user_id="u1")
+
+    assert (await service.check_tool("read_dashboard", user)).allowed
+    # A different tool has its own budget even after the first is exhausted.
+    assert (await service.check_tool("propose_task", user)).allowed
+    assert (await service.check_tool("read_dashboard", user)).allowed is False
+
+
+async def test_check_tool_budget_follows_user_across_sessions() -> None:
+    service = _service(tool_call_limit=2)
+    s1 = fake_current_user("sess-1", role="user", user_id="u1")
+    s2 = fake_current_user("sess-2", role="user", user_id="u1")
+
+    assert (await service.check_tool("propose_goal", s1)).allowed
+    assert (await service.check_tool("propose_goal", s2)).allowed
+    # Same user, different session → one shared per-tool counter (keyed on user_id).
+    assert (await service.check_tool("propose_goal", s1)).allowed is False
+
+
+async def test_tool_limiter_allow_delegates_to_check_tool() -> None:
+    service = _service(tool_call_limit=1)
+    user = fake_current_user("s1", role="user", user_id="u1")
+    limiter = service.tool_limiter(user)
+
+    assert await limiter.allow("propose_task") is True
+    assert await limiter.allow("propose_task") is False
 
 
 # --------------------------------------------------------------------------- #

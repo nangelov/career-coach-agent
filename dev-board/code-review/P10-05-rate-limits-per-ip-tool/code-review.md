@@ -1,0 +1,16 @@
+# Code review — P10-05-rate-limits-per-ip-tool · engineer revision 1
+
+## Verdict: APPROVED
+
+## Findings
+| id | severity | file:line | issue | required change |
+|----|----------|-----------|-------|-----------------|
+| C1 | minor | app/tools/base.py:175 | `execute` wraps `tool.run` in try/except but not the `invocation_limiter.allow(name)` call. If the limiter's Redis `hit` raises (Redis blip), the exception propagates out of `execute` instead of degrading to a rate-limit tool message — contradicting the "never raises" contract for the per-tool layer. It is caught upstream by `_run_dashboard_turn`'s fail-soft, so the graph doesn't crash, but the whole turn aborts rather than the tool degrading gracefully. Consider treating a limiter error as fail-open (allow) or as a graceful denial. | Non-blocking; may defer. |
+| C2 | nit | app/config.py:424 (TRUSTED_PROXIES) | Empty default is the correct safe posture, but on HF Spaces (behind the platform proxy) leaving it empty collapses *all* traffic into one `ip:<proxy>` bucket, turning the per-IP cap (300/window) into a global cap ≈ soft DoS. Already documented in the field description and engineer.md. | Ensure deployment config sets `TRUSTED_PROXIES` to the platform proxy subnet (deploy-time, not code). |
+
+## Notes
+- **Acceptance criteria met.** Per-tool: `RateLimitAction.TOOL` + `check_tool`/`SessionToolRateLimiter` wired into `ToolRegistry.execute` via the structural `ToolInvocationLimiter` seam; bounded and graceful (`test_registry_denies_tool_over_per_tool_limit_gracefully`, `test_per_tool_limit_bounds_repeated_tool_calls_without_crashing`). Per-IP: trusted-proxy-aware `ClientIpResolver` + `enforce_ip` on `POST /api/chat`, exercised with both trusted and untrusted/spoofed chains (`test_per_ip_limit_keys_on_client_behind_trusted_proxy`, `test_per_ip_limit_ignores_spoofed_header_from_untrusted_peer`, plus `test_client_ip.py` units). Regression: existing session/user limits untouched.
+- **Security — anti-spoof is sound.** XFF honored only when the peer is in the allowlist; otherwise the direct peer is used (`client_ip.py:73`). Right-most-non-trusted walk is the correct chain-parsing approach. Unparseable allowlist entries are dropped rather than crashing startup (fail-toward-fewer-trusted-proxies, safe).
+- **Layering respected.** Per-tool policy lives in the service; `ToolRegistry` stays config-agnostic via a structural Protocol (services never import the tools layer — no cycle). Reuses the single `RateLimiter` port / Redis adapter (no forked mechanism), per task constraint. Key namespaces are distinct (`ip:*`, `<role>:tool:<subject>:<tool>`) — no collision with message/upload counters.
+- **Correct ordering** in `chat.py`: authz (own-session) before any counter increment, then per-IP alongside per-message. Boundary with S9/P12 (Altcha/PoW/global breaker) correctly kept out of scope and documented.
+- **Verified locally:** targeted suites (`test_client_ip`, `test_rate_limiting`, `test_tools`, `test_authz_ratelimit_api`, `test_dashboard_agent`) = 60 passed. Engineer reports full suite 924 passed / mypy `app/` clean; the `test_dashboard_agent.py:282` union-attr is pre-existing and outside the mypy gate (`app/ migrations/`).

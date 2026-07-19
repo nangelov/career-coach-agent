@@ -32,6 +32,17 @@ routing decision, or lets it influence which workers run. This worker calls no t
 on* crawled text, so it cannot become an injection vector; the full injection classifier
 lands in P10 — this task's job is only to *not create* an obvious one.
 
+**PII scrub before the query leaves the process (design §7 / §7.6 — P10-02).** The search
+query is derived from the user's typed ``user_message``, which then leaves the process to a
+**third-party search API** (Tavily). Unlike the LLM-facing path — where
+:func:`~app.llm.redaction.redact_messages` scrubs outbound content at the router chokepoint
+(SEC-08) — this worker bypasses the LLM router and calls the provider directly, so it would
+otherwise forward raw contact details (an email / phone the user pasted into chat) to Tavily
+unscrubbed. Before dispatch the query is run through the **same** SEC-08 redaction primitive
+(:func:`~app.llm.redaction.redact_contact_details`) so directly-identifying contact PII never
+reaches the external API. This is best-effort, deterministic, and DRY — it reuses the egress
+scrubber rather than adding a second one.
+
 **Fail-soft (a crawl must never crash the turn).** A per-URL failure (timeout, 404, non-HTML,
 oversized body) is skipped, not fatal — the other results still produce citations. A
 whole-worker failure (search unavailable / SearXNG "not configured") returns a
@@ -57,6 +68,7 @@ import httpx
 
 from app.agents.state import AgentState, Citation, WorkerName, WorkerResult
 from app.ingestion.html_text import html_to_text
+from app.llm.redaction import redact_contact_details
 from app.net.ssrf_guard import build_guarded_client, read_capped
 from app.tools.base import ToolResult
 from app.tools.internet_search import InternetSearchTool
@@ -112,16 +124,22 @@ async def search_and_crawl(
 ) -> WorkerResult:
     """Search the web + crawl the top hits, returning grounded material + citations (design §3).
 
-    Runs ``search_tool`` with a query derived from ``state.user_message``, crawls up to
-    ``max_crawl`` of the returned URLs for richer text, and returns a :class:`WorkerResult`
-    whose ``content`` bundles the snippets/excerpts and whose ``citations`` carry one
-    title/url/snippet per result. Fails soft: search failure yields a ``WorkerResult`` with
-    ``error`` set and no citations; a per-URL crawl failure is skipped (never raises out of
-    the node). Crawled text is inert data — only surfaced in ``content`` / ``citations``.
+    Runs ``search_tool`` with a query derived from ``state.user_message`` — **PII-scrubbed**
+    (:func:`~app.llm.redaction.redact_contact_details`, design §7.6) before it reaches the
+    third-party search API — crawls up to ``max_crawl`` of the returned URLs for richer text,
+    and returns a :class:`WorkerResult` whose ``content`` bundles the snippets/excerpts and
+    whose ``citations`` carry one title/url/snippet per result. Fails soft: search failure
+    yields a ``WorkerResult`` with ``error`` set and no citations; a per-URL crawl failure is
+    skipped (never raises out of the node). Crawled text is inert data — only surfaced in
+    ``content`` / ``citations``.
     """
-    query = state.user_message.strip()
-    if not query:
+    raw_query = state.user_message.strip()
+    if not raw_query:
         return WorkerResult(worker=WorkerName.WEB_SEARCH)
+    # Scrub directly-identifying contact PII before the query leaves the process to Tavily
+    # (§7.6). This worker bypasses the LLM router, so SEC-08's egress redaction does not cover
+    # it — reuse the same primitive here (DRY) rather than forwarding raw contact details.
+    query = redact_contact_details(raw_query)
 
     tool_result = await search_tool.run({"query": query, "max_results": max_results})
     if tool_result.is_error:

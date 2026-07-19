@@ -37,12 +37,14 @@ from typing import TYPE_CHECKING, Any
 from app.agents.state import AgentState, WorkerName, WorkerResult
 from app.llm.errors import LLMError
 from app.llm.types import ChatMessage
-from app.tools.base import ToolRegistry
+from app.schemas.auth import CurrentUser
+from app.tools.base import ToolInvocationLimiter, ToolRegistry
 from app.tools.dashboard import build_dashboard_tools
 
 if TYPE_CHECKING:
     from app.agents.planner import LLMCompleter
     from app.services.dashboard import DashboardService
+    from app.services.rate_limiting import RateLimitService
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +83,7 @@ def make_dashboard_node(
     *,
     service: DashboardService | None = None,
     router: LLMCompleter | None = None,
+    rate_limiter: RateLimitService | None = None,
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
 ) -> Any:
     """Build the LangGraph ``dashboard`` node closure, binding its collaborators (worker pattern).
@@ -90,6 +93,11 @@ def make_dashboard_node(
     **no** eager defaults — they are owned by the app and injected by ``build_graph(...)``. When
     either is unbound the node fails soft (never opens a rogue store / calls a missing model), so
     the import-time module graph still compiles. Guests fail soft before any tool is built.
+
+    ``rate_limiter`` (optional, P10-05 / §7.5) binds a per-tool invocation cap into the loop: when
+    given, each tool call is counted per caller/window and a hit degrades gracefully (the model
+    gets a rate-limit tool result and wraps up). Unbound → no per-tool cap (the loop's
+    ``max_iterations`` bound still guarantees termination).
     """
 
     async def dashboard_node(state: AgentState) -> dict[str, Any]:
@@ -110,7 +118,7 @@ def make_dashboard_node(
             return _node_update(
                 WorkerResult(worker=WorkerName.DASHBOARD, error="dashboard worker not configured")
             )
-        result = await _run_dashboard_turn(state, service, router, max_iterations)
+        result = await _run_dashboard_turn(state, service, router, rate_limiter, max_iterations)
         return _node_update(result)
 
     return dashboard_node
@@ -120,6 +128,7 @@ async def _run_dashboard_turn(
     state: AgentState,
     service: DashboardService,
     router: LLMCompleter,
+    rate_limiter: RateLimitService | None,
     max_iterations: int,
 ) -> WorkerResult:
     """Drive the bounded tool-calling loop and summarise the actions (fails soft).
@@ -127,7 +136,14 @@ async def _run_dashboard_turn(
     Any error (router down, unexpected failure) yields a :class:`WorkerResult` carrying an
     ``error`` rather than raising out of the node — mirroring the RAG/market workers.
     """
-    registry = ToolRegistry()
+    # Per-tool rate limit (P10-05, §7.5): bound this caller from invoking any one dashboard tool
+    # unboundedly over the window. Built per turn, bound to the caller resolved from the turn's
+    # identity; ``None`` when no limiter is wired (unit graphs) → no per-tool cap.
+    invocation_limiter: ToolInvocationLimiter | None = None
+    if rate_limiter is not None:
+        caller = CurrentUser(session_id=state.session_id, role=state.role, user_id=state.user_id)
+        invocation_limiter = rate_limiter.tool_limiter(caller)
+    registry = ToolRegistry(invocation_limiter=invocation_limiter)
     for tool in build_dashboard_tools(state.user_id or "", service):
         registry.register(tool)
 

@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
-from typing import Any, cast
+from typing import Any, Protocol, cast, runtime_checkable
 
 from pydantic import BaseModel
 
@@ -36,7 +36,24 @@ from app.llm.types import ChatMessage, ToolCall, ToolSchema
 # ``ToolSchema`` (``dict[str, Any]``) is defined once in the SDK-free ``app.llm.types`` and
 # re-exported here so tool modules can keep importing it from ``app.tools.base`` without
 # pulling in the ``openai`` SDK that lives in ``app.llm.client``.
-__all__ = ["Tool", "ToolRegistry", "ToolResult", "ToolSchema"]
+__all__ = ["Tool", "ToolInvocationLimiter", "ToolRegistry", "ToolResult", "ToolSchema"]
+
+
+@runtime_checkable
+class ToolInvocationLimiter(Protocol):
+    """Per-tool rate-limit seam consulted by :meth:`ToolRegistry.execute` (P10-05, §7.5).
+
+    A narrow structural port so the registry can bound how many times a given tool is invoked
+    (per caller / window) **without** depending on the rate-limit service or its config: the
+    concrete policy (:class:`~app.services.rate_limiting.SessionToolRateLimiter`, bound per turn
+    to the caller) satisfies this shape, and unit tests inject a trivial fake. Returning ``False``
+    denies the call — the registry degrades gracefully to a rate-limit tool message rather than
+    crashing the loop, so the agent turn still completes (design §7.5 abuse handling).
+    """
+
+    async def allow(self, tool_name: str) -> bool:
+        """Return whether ``tool_name`` may run now (an implementation counts the invocation)."""
+        ...
 
 
 class ToolResult(BaseModel):
@@ -106,8 +123,12 @@ class ToolRegistry:
     hand the LLM layer.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, invocation_limiter: ToolInvocationLimiter | None = None) -> None:
         self._tools: dict[str, Tool] = {}
+        #: Optional per-tool rate-limit seam (P10-05, §7.5). When set, every model-requested
+        #: tool call is checked before dispatch; a denied call becomes a graceful rate-limit tool
+        #: message (never an exception), so a single turn cannot invoke a tool unboundedly.
+        self._invocation_limiter = invocation_limiter
 
     def register(self, tool: Tool) -> None:
         """Add ``tool`` to the registry (raises on a duplicate name)."""
@@ -147,6 +168,15 @@ class ToolRegistry:
             arguments = _parse_arguments(tool_call.function.arguments)
         except ValueError as exc:
             return ToolResult.error(str(exc)).to_message(tool_call_id=tool_call.id, name=name)
+
+        # Per-tool rate limit (P10-05, §7.5): bound how many times this tool runs per caller/turn.
+        # A denied call degrades gracefully — the model receives a rate-limit tool message and
+        # wraps up the turn — rather than the loop raising or the graph crashing.
+        if self._invocation_limiter is not None and not await self._invocation_limiter.allow(name):
+            return ToolResult.error(
+                f"Rate limit reached for tool {name!r}; it cannot be called again right now. "
+                "Summarize what you have and respond without calling this tool again."
+            ).to_message(tool_call_id=tool_call.id, name=name)
 
         try:
             result = await tool.run(arguments)

@@ -40,6 +40,8 @@ class AppStateKeys(StrEnum):
     GUEST_UPGRADE_SERVICE = "guest_upgrade_service"
     #: The app-scoped :class:`~app.services.rate_limiting.RateLimitService` (P3-04), cached.
     RATE_LIMIT_SERVICE = "rate_limit_service"
+    #: The app-scoped :class:`~app.security.client_ip.ClientIpResolver` (P10-05 per-IP), cached.
+    CLIENT_IP_RESOLVER = "client_ip_resolver"
     #: The app-scoped :class:`~app.services.user_store.UserStore` (admin authz, P3-05), cached.
     USER_STORE = "user_store"
     #: The app-scoped :class:`~app.services.feedback.FeedbackReader` (admin read, P3-05), cached.

@@ -123,3 +123,10 @@ The orchestrator's board. One row per task. See `.claude/skills/agent-handoff/SK
 | P9-09-frontend-feedback-memory-panel | 👍/👎 + try again + memory panel (frontend) | P9 | DONE | 1 | APPROVED | APPROVED |
 | P9-10-verify | P9 exit: cross-session adaptation; 👎 changes behavior; inspect/delete | P9 | DONE | 1 | APPROVED | APPROVED |
 | P9-11-cicd-verify | P9 CI/CD verification | P9 | DONE | 1 | APPROVED | APPROVED |
+| P10-01-injection-classifier | S8: real injection/jailbreak classifier | P10 | DONE | 2 | APPROVED | APPROVED |
+| P10-02-abuse-offtopic-pii-scrub | Abuse/off-topic filter completed + PII scrub before tools | P10 | DONE | 1 | APPROVED | APPROVED |
+| P10-03-output-guardrails | Output guardrails: system-prompt leakage + injection echo | P10 | DONE | 1 | APPROVED | APPROVED |
+| P10-04-repl-removal-confirm | Confirm v1 run_python_code REPL removed | P10 | DONE | 1 | APPROVED | APPROVED |
+| P10-05-rate-limits-per-ip-tool | Per-IP and per-tool rate limits + abuse handling | P10 | DONE | 1 | APPROVED | APPROVED |
+| P10-06-jailbreak-injection-suite | Jailbreak/injection test suite (T) | P10 | DONE | 1 | APPROVED | APPROVED |
+| P10-07-cicd-verify | P10 CI/CD verification (T) | P10 | DONE | 1 | APPROVED | APPROVED |

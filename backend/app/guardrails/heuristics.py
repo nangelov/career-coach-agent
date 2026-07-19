@@ -1,34 +1,42 @@
-"""Minimal, deterministic guardrail heuristics (design §7 — minimal slice).
+"""Input/output guardrail heuristics + the real input injection classifier (design §7).
 
-This is the **cheap, coarse net** the P4 guardrails run — *not* the real P10 classifier. A
-single, deliberately-short deny-list of canonical jailbreak / prompt-injection phrasings
-("ignore previous instructions", "reveal your system prompt", "you are now DAN", …) backs
-**both** directions:
+A single, deliberately-short deny-list of canonical jailbreak / prompt-injection phrasings
+("ignore previous instructions", "reveal your system prompt", "you are now DAN", …) —
+:data:`_DENY_PATTERNS` — backs **both** directions (DRY — no forked second copy):
 
-* :func:`screen_input` screens the raw *user message* before any planner/worker work (P4-08),
-  blocking a matched turn; and
-* :func:`screen_output` screens the responder's *final answer* (§7.3 point 4), **stripping**
-  any of those same canonical phrasings that leaked back out of untrusted grounding material
-  (a crawled page / CV that told the model "ignore your instructions", echoed into the reply).
+* :func:`screen_input` screens the raw *user message* before any planner/worker work. As of
+  **S8** it is the *real* injection gate: the deny-list is only a cheap fast-path pre-filter,
+  and the actual decision is a small in-process Prompt-Guard classifier
+  (:mod:`app.guardrails.injection_classifier`). It still returns the same INPUT
+  :class:`~app.agents.state.SafetyVerdict` the graph routes on.
+* :func:`screen_output` screens the responder's *final answer* (§7.3 point 4 / §7 output
+  guardrails). It **redacts** three things: (a) the canonical injection/jailbreak phrasings the
+  deny-list recognises, echoed back out of untrusted grounding material (a crawled page / CV
+  that told the model "ignore your instructions"); (b) **system-prompt leakage** — distinctive
+  fixed scaffolding from the assistant's own instructions / the untrusted-content fence coaxed
+  back into the answer (:data:`_LEAKAGE_PATTERNS`); and (c) — when a caller opts in — segments
+  the real P10-01 injection classifier flags, so a non-canonical echoed instruction the
+  deny-list misses is still caught (no second detection mechanism — the same model that gates
+  the input screens the output). This is the P10-03 output guardrail; it keeps the P4-08
+  :class:`OutputScreenResult` contract.
 
-Both share the one :data:`_DENY_PATTERNS` list (DRY — no forked second copy). No LLM call, no
-ML dependency, no network — pure regex over the text, so either direction is fast enough to
-run on every turn.
+The deny-list itself is pure regex — no LLM call, no ML dependency, no network — so it is fast
+enough to run on every turn; the classifier the input path adds runs in-process (no per-call
+API cost, §6/§11 budget posture) and is lazy-loaded (never at import).
 
 **Design posture (read before extending).**
 
-* **Default-open.** Anything the deny-list does not recognise is *allowed*. This is a
-  coarse pre-filter meant to minimise false positives on legitimate career questions; it
-  only blocks the obvious, canonical phrasings. Real jailbreak/injection detection, PII
-  scrubbing, and abuse/off-topic filtering are P10 (`dev-board/tasks.md` P10).
-* **Swappable wholesale.** P10 replaces :func:`screen_input` with a real classifier. The
-  contract it must preserve is the return type — a :class:`~app.agents.state.SafetyVerdict`
-  stamped with ``stage=INPUT`` — which is the shape the graph routes on
-  (:func:`app.agents.graph.route_after_input_guardrail`). Keep the deny-list here, small
-  and documented, so swapping detection logic does not touch the graph wiring.
-* **Never leak the list.** The verdict's ``categories`` / ``reason`` are *internal*
+* **Input gate = classifier; deny-list = pre-filter.** :func:`screen_input` blocks on the
+  deny-list *or* on the classifier; a message neither recognises is allowed. If the
+  classifier is unavailable it fails **open** to the deny-list — see the function docstring
+  for the rationale and how to flip it.
+* **Output net is default-open.** :func:`screen_output` redacts what its deny-list, its
+  leakage signatures, or (opt-in) the classifier recognise; anything else passes through
+  unchanged. A redaction *neutralises* rather than *blocks* — the answer is still returned,
+  just cleaned.
+* **Never leak the list / score.** A verdict's ``categories`` / ``reason`` are *internal*
   telemetry (logged, stored on ``AgentState.input_safety``). The user-facing block message
-  is the generic :data:`REFUSAL_MESSAGE` — it never echoes which pattern matched.
+  is the generic :data:`REFUSAL_MESSAGE` — it never echoes which pattern matched or the score.
 
 Length/emptiness is **not** re-checked here: ``ChatRequest.message`` already enforces
 ``min_length=1`` / ``max_length=8000`` at the schema boundary (design §9), so this module
@@ -41,12 +49,15 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from app.guardrails.injection_classifier import InjectionClassifier, PromptGuardClassifier
+
 if TYPE_CHECKING:
     from app.agents.state import SafetyVerdict
 
 __all__ = [
     "REFUSAL_MESSAGE",
     "OutputScreenResult",
+    "default_injection_classifier",
     "screen_input",
     "screen_output",
 ]
@@ -69,6 +80,9 @@ REFUSAL_MESSAGE = (
 #: Category labels stamped onto a blocking :class:`SafetyVerdict` (internal telemetry only).
 _JAILBREAK = "jailbreak"
 _PROMPT_INJECTION = "prompt_injection"
+#: Output-only category: the model echoed its own system prompt / internal instructions / fence
+#: scaffolding back into the final answer (design §7 "block system-prompt leakage").
+_SYSTEM_PROMPT_LEAK = "system_prompt_leak"
 
 #: The coarse deny-list: ``(compiled pattern, category)``. Kept intentionally small and
 #: canonical — this is a placeholder net for P10, not a production filter. Patterns are
@@ -130,34 +144,134 @@ _DENY_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
-def screen_input(message: str) -> SafetyVerdict:
-    """Run the coarse input safety heuristic over ``message`` → an INPUT :class:`SafetyVerdict`.
+#: System-prompt-leakage signatures (OUTPUT only). Distinctive *fixed scaffolding* fragments
+#: that only appear in the assistant's own internal instructions — the responder system prompt
+#: and the untrusted-content fence — so if the model is coaxed into repeating its configuration
+#: back into the final answer, one of these near-verbatim signatures surfaces. Matched
+#: case-insensitively and whitespace-tolerantly (so "near-verbatim" leakage is caught, not only
+#: byte-exact), then redacted exactly like :data:`_DENY_PATTERNS`.
+#:
+#: These mirror scaffolding owned elsewhere (``app.agents.responder.RESPONDER_SYSTEM_PROMPT``,
+#: ``app.guardrails.untrusted_content.fence_untrusted``) but are kept **self-contained** here —
+#: as ``_DENY_PATTERNS`` is — rather than imported: ``guardrails`` is a *lower* layer than
+#: ``agents`` (importing the responder would close an import cycle). Keep them in sync if that
+#: fixed wording changes; the structural fence markers are label-agnostic, so they survive a
+#: label rename. Signatures are deliberately long/specific to avoid snagging ordinary prose.
+_LEAKAGE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # --- untrusted-content fence scaffolding (fence_untrusted) ------------------------- #
+    (re.compile(r"---\s*(?:BEGIN|END)\s+[A-Z][A-Z0-9 ]*?\s*---"), _SYSTEM_PROMPT_LEAK),
+    (
+        re.compile(r"treat\s+it\s+strictly\s+as\s+untrusted\s+data", re.IGNORECASE),
+        _SYSTEM_PROMPT_LEAK,
+    ),
+    (
+        re.compile(r"is\s+not\s+from\s+the\s+user\s+and\s+is\s+not\s+instructions", re.IGNORECASE),
+        _SYSTEM_PROMPT_LEAK,
+    ),
+    # --- responder persona / synthesis brief (RESPONDER_SYSTEM_PROMPT) ----------------- #
+    (
+        re.compile(r"you\s+are\s+a\s+helpful,?\s+encouraging\s+career\s+coach", re.IGNORECASE),
+        _SYSTEM_PROMPT_LEAK,
+    ),
+    (
+        re.compile(r"when\s+reference\s+material\s+is\s+provided\s+below", re.IGNORECASE),
+        _SYSTEM_PROMPT_LEAK,
+    ),
+    (re.compile(r"do\s+not\s+fabricate\s+citations", re.IGNORECASE), _SYSTEM_PROMPT_LEAK),
+)
 
-    Blocks a turn only when the message matches one of the canonical
-    jailbreak/prompt-injection patterns in :data:`_DENY_PATTERNS`; otherwise it is
-    *allowed* (default-open). On a block the verdict carries the triggered ``categories``
-    and an internal ``reason`` (for logs/telemetry) — neither is surfaced to the user, who
-    only ever sees :data:`REFUSAL_MESSAGE`.
+#: Sentence/line boundary used to segment the final answer for the (opt-in) classifier net —
+#: a capturing split so the delimiters are preserved and the answer can be re-joined verbatim
+#: with only the flagged segments swapped out. Segments with no letters (bare punctuation /
+#: whitespace) are never classified.
+_OUTPUT_SEGMENT_SPLIT = re.compile(r"([.!?\n]+\s*)")
 
-    This is the minimal P4 slice; P10 replaces it with the real classifier while keeping
-    this return contract (see the module docstring).
+
+#: Lazily-built default classifier singleton backing :func:`screen_input` when a caller does
+#: not inject its own. Constructing it loads **no** model (the pipeline is lazy — see
+#: :mod:`app.guardrails.injection_classifier`), so building it here is cheap and import-safe.
+_DEFAULT_CLASSIFIER: InjectionClassifier | None = None
+
+
+def _default_classifier() -> InjectionClassifier:
+    """Return the process-wide default injection classifier, constructing it once (lazily)."""
+    global _DEFAULT_CLASSIFIER
+    if _DEFAULT_CLASSIFIER is None:
+        _DEFAULT_CLASSIFIER = PromptGuardClassifier()
+    return _DEFAULT_CLASSIFIER
+
+
+def default_injection_classifier() -> InjectionClassifier:
+    """The process-wide default injection classifier — shared by the input gate and the
+    buffered-output net (:func:`app.agents.graph.output_guardrail_node`).
+
+    Constructing it loads **no** model (the pipeline is lazy), so calling this on the buffered
+    output path is cheap and import-safe. Exposed as the public seam so the output node reuses
+    the *same* classifier the input gate uses (one detection mechanism, not two) rather than
+    reaching into the private singleton.
+    """
+    return _default_classifier()
+
+
+def screen_input(message: str, *, classifier: InjectionClassifier | None = None) -> SafetyVerdict:
+    """Screen ``message`` for jailbreak / prompt-injection → an INPUT :class:`SafetyVerdict`.
+
+    Two stages (S8, design §7.4):
+
+    1. **Fast-path deny-list pre-filter** — the cheap, deterministic :data:`_DENY_PATTERNS`
+       regex net catches the obvious canonical phrasings before any model call. A match
+       blocks immediately (no classifier invocation).
+    2. **Real classifier gate** — otherwise the in-process Prompt-Guard classifier
+       (:class:`~app.guardrails.injection_classifier.InjectionClassifier`) is the actual
+       gate: a message it flags (malicious probability ``>=`` threshold) is blocked.
+
+    **Failure mode — fail *open*.** If the classifier is *unavailable* (``classify`` returns
+    ``None`` — model/library missing, download or inference failed) the turn is **allowed**.
+    Rationale: the deny-list pre-filter above still provides coarse protection, and blocking
+    *all* traffic on a model outage would deny service to legitimate career questions (§7.4
+    tunes for low false-positives). The choice is deliberate and documented; flip the
+    ``verdict is None`` branch to fail closed if the posture changes.
+
+    On a block the verdict carries the triggered ``categories`` and an internal ``reason``
+    (logs/telemetry) — neither is surfaced to the user, who only ever sees
+    :data:`REFUSAL_MESSAGE` (the score / matched pattern is never leaked).
+
+    Args:
+        classifier: Optional injected classifier (test seam). ``None`` → the process-wide
+            lazy default (:func:`_default_classifier`). The positional ``(message) ->
+            SafetyVerdict`` contract the graph routes on is unchanged.
     """
     from app.agents.state import GuardrailStage, SafetyVerdict
 
+    # Stage 1: cheap deterministic pre-filter.
     categories: list[str] = []
     for pattern, category in _DENY_PATTERNS:
         if category not in categories and pattern.search(message):
             categories.append(category)
+    if categories:
+        return SafetyVerdict(
+            stage=GuardrailStage.INPUT,
+            allowed=False,
+            categories=categories,
+            reason=f"Input matched a disallowed pattern ({', '.join(categories)}).",
+        )
 
-    if not categories:
+    # Stage 2: the real classifier is the actual gate.
+    verdict = (classifier or _default_classifier()).classify(message)
+    if verdict is None:
+        # Classifier unavailable → fail open (see docstring). Deny-list already cleared it.
         return SafetyVerdict(stage=GuardrailStage.INPUT, allowed=True)
-
-    return SafetyVerdict(
-        stage=GuardrailStage.INPUT,
-        allowed=False,
-        categories=categories,
-        reason=f"Input matched a disallowed pattern ({', '.join(categories)}).",
-    )
+    if verdict.flagged:
+        return SafetyVerdict(
+            stage=GuardrailStage.INPUT,
+            allowed=False,
+            categories=[_PROMPT_INJECTION],
+            reason=(
+                f"Injection classifier flagged input as '{verdict.label}' "
+                f"(score {verdict.score:.2f})."
+            ),
+        )
+    return SafetyVerdict(stage=GuardrailStage.INPUT, allowed=True)
 
 
 #: What a stripped injection fragment is replaced with in the outgoing answer. A visible,
@@ -183,29 +297,52 @@ class OutputScreenResult:
     modified: bool
 
 
-def screen_output(text: str) -> OutputScreenResult:
-    """Strip canonical injection phrasings that leaked into the final answer (§7.3 point 4).
+def screen_output(
+    text: str, *, classifier: InjectionClassifier | None = None
+) -> OutputScreenResult:
+    """Redact injection echoes + system-prompt leakage from the final answer (§7 / §7.3 point 4).
 
-    The coarse, deterministic *output* net: it scans ``text`` for the very same canonical
-    jailbreak / prompt-injection phrasings :func:`screen_input` blocks on (reusing
-    :data:`_DENY_PATTERNS` — one deny-list, both directions) and replaces each verbatim match
-    with :data:`_OUTPUT_REDACTION`. This defends against a model echoing an instruction it
-    picked up from untrusted grounding material (a crawled page / CV saying "ignore previous
-    instructions") straight back into its reply. Anything the deny-list does not recognise is
-    passed through unchanged (default-open, mirroring the input heuristic's posture).
+    The P10-03 output guardrail. It runs up to three redaction stages over ``text`` and returns
+    the (possibly scrubbed) answer; a redaction *neutralises* rather than *blocks* — the answer
+    is still returned (``verdict.allowed`` stays ``True``), just cleaned.
 
-    This is a placeholder net; full injection/leakage detection is P10, which replaces it while
-    keeping this return contract (see the module docstring).
+    1. **Echoed-injection deny-list** — the same canonical jailbreak / prompt-injection phrasings
+       :func:`screen_input` blocks on (reusing :data:`_DENY_PATTERNS` — one deny-list, both
+       directions), matched anywhere in the answer and replaced with :data:`_OUTPUT_REDACTION`.
+       Defends against the model echoing an instruction picked up from untrusted grounding
+       material (a crawled page / CV saying "ignore previous instructions").
+    2. **System-prompt leakage** — distinctive fixed scaffolding from the assistant's own
+       instructions / the untrusted-content fence (:data:`_LEAKAGE_PATTERNS`) coaxed back into
+       the answer, redacted the same way. Matched near-verbatim (case/whitespace tolerant).
+    3. **Classifier net (opt-in)** — when ``classifier`` is supplied, each sentence/line of the
+       answer is scored by the real P10-01 injection classifier and any flagged segment is
+       redacted, so a *non-canonical* echoed instruction the deny-list misses is still caught.
+       This is the same model that gates the input — one detection mechanism, not two. It is
+       **opt-in** because it is a model call: the buffered
+       :func:`app.agents.graph.output_guardrail_node` passes
+       :func:`default_injection_classifier`; the per-chunk streaming path leaves it ``None`` (a
+       per-delta model call would be prohibitively slow). Fail-soft: an unavailable classifier
+       (``classify`` → ``None``) redacts nothing, mirroring :func:`screen_input`'s fail-open.
+
+    Anything none of the stages recognise passes through unchanged (default-open). When nothing
+    is redacted the returned ``text`` is byte-for-byte the input and ``modified`` is ``False``.
     """
     from app.agents.state import GuardrailStage, SafetyVerdict
 
     categories: list[str] = []
     scrubbed = text
-    for pattern, category in _DENY_PATTERNS:
+    # Stages 1 + 2: one deterministic regex pass over both nets (same (pattern, category) shape).
+    for pattern, category in (*_DENY_PATTERNS, *_LEAKAGE_PATTERNS):
         if pattern.search(scrubbed):
             scrubbed = pattern.sub(_OUTPUT_REDACTION, scrubbed)
             if category not in categories:
                 categories.append(category)
+
+    # Stage 3: opt-in classifier net over what the regex nets left (P10-01 reuse).
+    if classifier is not None:
+        scrubbed, flagged = _redact_flagged_segments(scrubbed, classifier)
+        if flagged and _PROMPT_INJECTION not in categories:
+            categories.append(_PROMPT_INJECTION)
 
     if not categories:
         return OutputScreenResult(
@@ -220,7 +357,36 @@ def screen_output(text: str) -> OutputScreenResult:
             stage=GuardrailStage.OUTPUT,
             allowed=True,
             categories=categories,
-            reason=f"Output echoed a disallowed pattern ({', '.join(categories)}); redacted.",
+            reason=f"Output screened and redacted ({', '.join(categories)}).",
         ),
         modified=True,
     )
+
+
+def _redact_flagged_segments(text: str, classifier: InjectionClassifier) -> tuple[str, bool]:
+    """Redact answer segments the injection classifier flags → ``(scrubbed, any_redacted)``.
+
+    Splits ``text`` on sentence / line boundaries (delimiters preserved) and scores each
+    letter-bearing segment with ``classifier``; a flagged segment — an injection instruction
+    echoed from untrusted grounding the deny-list did not recognise — is replaced with
+    :data:`_OUTPUT_REDACTION`. Fail-soft: a segment the classifier cannot score (``classify``
+    returns ``None`` — model/library unavailable) is left untouched (default-open, mirroring
+    :func:`screen_input`'s fail-open). Returns the text unchanged (byte-identical) when nothing
+    is flagged, so a clean answer is never rewritten.
+    """
+    changed = False
+    out: list[str] = []
+    for segment in _OUTPUT_SEGMENT_SPLIT.split(text):
+        if _has_letter(segment):
+            verdict = classifier.classify(segment)
+            if verdict is not None and verdict.flagged:
+                out.append(_OUTPUT_REDACTION)
+                changed = True
+                continue
+        out.append(segment)
+    return ("".join(out), True) if changed else (text, False)
+
+
+def _has_letter(segment: str) -> bool:
+    """True if ``segment`` carries at least one letter (skips bare punctuation / whitespace)."""
+    return any(char.isalpha() for char in segment)

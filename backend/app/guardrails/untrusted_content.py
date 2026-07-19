@@ -21,11 +21,10 @@ Both call :func:`fence_untrusted` rather than hand-rolling their own markers, so
 cannot drift per-agent.
 
 **Scope (read before extending).** This is the *structural* half of §7.3 — the fence that
-denies untrusted text an instruction channel. The complementary deterministic *output* net
-that strips injection phrasing echoed back out of a response lives in
-:func:`app.guardrails.heuristics.screen_output` (it reuses the same deny-list as the input
-heuristic). Neither is the full ML-based injection/PII classifier — that is P10 (design §7 /
-`dev-board/tasks.md` P10), which replaces the coarse nets while keeping these seams.
+denies untrusted text an instruction channel. The complementary *output* guardrail that redacts
+injection phrasing echoed back out of a response — plus system-prompt leakage and (opt-in) the
+P10-01 injection classifier scoring the answer — lives in
+:func:`app.guardrails.heuristics.screen_output` (P10-03). Together they cover §7.3 point 4.
 """
 
 from __future__ import annotations

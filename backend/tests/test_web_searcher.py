@@ -53,6 +53,27 @@ async def test_search_invoked_with_turn_query() -> None:
     assert tool.calls[0]["query"] == "what pays well in 2026?"
 
 
+async def test_query_is_pii_scrubbed_before_dispatch() -> None:
+    """Contact PII in the user's message is scrubbed before the query hits the search API (§7.6)."""
+    tool = FakeSearchTool([web_result()])
+
+    await search_and_crawl(
+        _state("email me at jane.doe@example.com or call 555-123-4567 about ML roles"),
+        search_tool=tool,
+        http_client=fake_crawl_client(),
+    )
+
+    assert len(tool.calls) == 1
+    dispatched = tool.calls[0]["query"]
+    # The raw email / phone never reach Tavily — replaced by the SEC-08 redaction markers.
+    assert "jane.doe@example.com" not in dispatched
+    assert "555-123-4567" not in dispatched
+    assert "[EMAIL REDACTED]" in dispatched
+    assert "[PHONE REDACTED]" in dispatched
+    # The non-PII substance of the query is preserved so search still works.
+    assert "ML roles" in dispatched
+
+
 async def test_blank_query_returns_empty_without_searching() -> None:
     tool = FakeSearchTool([web_result()])
 

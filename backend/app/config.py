@@ -93,6 +93,35 @@ class Settings(BaseSettings):
     )
 
     # -------------------------------------------------------------------------
+    # Input guardrail — jailbreak / prompt-injection classifier (S8, §7.4)
+    # -------------------------------------------------------------------------
+    INJECTION_CLASSIFIER_MODEL: str = Field(
+        default="meta-llama/Llama-Prompt-Guard-2-86M",
+        description=(
+            "HF text-classification model for the real input jailbreak/prompt-injection "
+            "guardrail (S8, §7.4). A small Prompt-Guard-family model run **in-process** via "
+            "`transformers` (same no-per-call-cost posture as the in-process embeddings, §6) — "
+            "no paid inference dependency. Lazy-loaded on first use; when the model / ML stack "
+            "is unavailable the classifier fails open to the regex deny-list pre-filter "
+            "(logged at ERROR so a misconfigured deploy is detectable). NOTE: this default is a "
+            "**gated** HF repo — the runtime needs an HF_TOKEN whose account has accepted the "
+            "model licence, else the download fails and the gate silently degrades to the "
+            "deny-list. Provision such a token, or override this with an **ungated** equivalent "
+            "(e.g. a `protectai/deberta-*-prompt-injection` model)."
+        ),
+    )
+    INJECTION_CLASSIFIER_THRESHOLD: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Malicious-probability threshold (>=) at which the injection classifier blocks a "
+            "turn. Tune for low false-positives on legitimate career questions (§7.4). The "
+            "regex deny-list still runs as a cheap fast-path pre-filter ahead of the model."
+        ),
+    )
+
+    # -------------------------------------------------------------------------
     # Datastores
     # -------------------------------------------------------------------------
     DATABASE_URL: str = Field(
@@ -389,6 +418,59 @@ class Settings(BaseSettings):
             "anchors the server-side guest session and its rate-limit state (P3-04) for "
             "the whole guest window. Kept >= the JWT lifetime so the session (and its "
             "10-message / 1-upload counters) survives a token refresh."
+        ),
+    )
+
+    # -------------------------------------------------------------------------
+    # Per-IP + per-tool rate limits (P10-05, §7 / §7.5)
+    # -------------------------------------------------------------------------
+    TRUSTED_PROXIES: list[str] = Field(
+        default=[],
+        description=(
+            "Allowlist of trusted reverse-proxy IPs / CIDR networks in front of the app "
+            "(§7.5). The client IP for per-IP rate limiting is read from ``X-Forwarded-For`` "
+            "**only** when the immediate peer is in this allowlist — otherwise the header is "
+            "ignored and the direct peer address is used, so an untrusted client cannot spoof "
+            "its source IP to evade the limit. Empty by default (safe: XFF never trusted, peer "
+            "always used). On HF Spaces set this to the platform proxy IP/subnet so the real "
+            "client IP is recovered. Accepts single IPs (``10.0.0.1``) or CIDRs (``10.0.0.0/8``)."
+        ),
+    )
+    IP_MAX_REQUESTS_PER_WINDOW: int = Field(
+        default=300,
+        description=(
+            "Per-IP request cap over IP_RATE_LIMIT_WINDOW_SECONDS (§7.5 defense-in-depth). "
+            "Runs *alongside* the per-session/per-user limits so a script farming fresh guest "
+            "sessions from one source IP is still bounded. Generous relative to a single "
+            "session's budget (a shared NAT/office egress may host many legitimate users), yet "
+            "far below what a session-farming abuser needs. NOTE: this is a general request "
+            "limit, not the S9 guest-session-creation bot gate (Altcha/PoW) — that is P12."
+        ),
+    )
+    IP_RATE_LIMIT_WINDOW_SECONDS: int = Field(
+        default=3_600,
+        description=(
+            "Fixed window (seconds, default 1h) for the per-IP request cap (§7.5). The Redis "
+            "counter is created on the first request of a window and expires after this many "
+            "seconds, so the per-IP budget resets each window."
+        ),
+    )
+    TOOL_MAX_CALLS_PER_WINDOW: int = Field(
+        default=30,
+        description=(
+            "Per-tool invocation cap over TOOL_RATE_LIMIT_WINDOW_SECONDS, keyed on the "
+            "caller (session/user) **and** the tool name (§7 / §7.5). Bounds a single "
+            "conversation from triggering unbounded external/tool calls (cost + abuse control) "
+            "independent of the message-count limit. A hit degrades gracefully — the model "
+            "receives a rate-limit tool result and wraps up the turn (it never crashes the graph)."
+        ),
+    )
+    TOOL_RATE_LIMIT_WINDOW_SECONDS: int = Field(
+        default=3_600,
+        description=(
+            "Fixed window (seconds, default 1h) for the per-tool invocation cap (§7.5). The "
+            "Redis counter is created on the first call of a window and expires after this many "
+            "seconds, so a caller's per-tool budget resets each window."
         ),
     )
 

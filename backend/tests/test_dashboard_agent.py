@@ -26,6 +26,7 @@ from app.llm.types import ChatMessage, CompletionResult, FunctionCall, ToolCall,
 from app.schemas.dashboard import GoalCreate, TaskCreate
 from app.services.dashboard import DashboardService
 from app.services.dashboard_store import InMemoryDashboardStore
+from app.services.rate_limiting import InMemoryRateLimiter, RateLimitService
 from app.tools.dashboard import PROPOSE_TASK_TOOL, READ_DASHBOARD_TOOL
 
 USER = "user-1"
@@ -144,6 +145,49 @@ async def test_node_read_turn_folds_dashboard_data_into_content() -> None:
     # not just a "a read happened" line — so the informational turn can actually be answered.
     assert "Become a data engineer" in result.content
     assert "Learn SQL" in result.content
+
+
+# --------------------------------------------------------------------------- #
+# Per-tool rate limit wired into the loop (P10-05, §7.5): bounds + degrades gracefully
+# --------------------------------------------------------------------------- #
+def _tool_limit_service(*, tool_call_limit: int) -> RateLimitService:
+    return RateLimitService(
+        InMemoryRateLimiter(),
+        guest_message_limit=10,
+        guest_upload_limit=1,
+        guest_window_seconds=86_400,
+        user_message_limit=100,
+        user_upload_limit=20,
+        user_window_seconds=3600,
+        tool_call_limit=tool_call_limit,
+        tool_window_seconds=3600,
+    )
+
+
+async def test_per_tool_limit_bounds_repeated_tool_calls_without_crashing() -> None:
+    # The model keeps trying to call the same write tool every round; the per-tool cap of 1 lets
+    # only the first through and the loop still completes normally (never crashes the graph).
+    service = _service()
+    goal = await service.create_goal(USER, GoalCreate(title="Goal"))
+    # A single queued tool call is replayed every iteration → the loop drives max_iterations rounds
+    # all invoking propose_task.
+    router = FakeCompleter(
+        [_tool_call(PROPOSE_TASK_TOOL, {"goal_id": goal.id, "title": "Learn Docker"})]
+    )
+    node = make_dashboard_node(
+        service=service, router=router, rate_limiter=_tool_limit_service(tool_call_limit=1)
+    )
+
+    update = await node(_state())
+    result = update["worker_results"][WorkerName.DASHBOARD.value]
+
+    # No crash: a normal (error-free) worker result came back.
+    assert result.error is None
+    # Only the first invocation actually wrote — the rest were rate-limited (bounded).
+    tasks = await service.list_tasks(USER, goal.id)
+    assert len(tasks) == 1
+    # The loop ran more than once (the model kept calling), proving the cap kicked in mid-loop.
+    assert router.calls > 1
 
 
 # --------------------------------------------------------------------------- #

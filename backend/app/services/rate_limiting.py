@@ -42,6 +42,14 @@ class RateLimitAction(StrEnum):
 
     MESSAGE = "message"
     UPLOAD = "upload"
+    #: A raw request keyed on the *source IP* (P10-05, §7.5) — a defense-in-depth layer that
+    #: runs alongside the per-session/per-user limits so a script farming fresh guest sessions
+    #: from one IP is still bounded. Not the S9 guest-session-creation bot gate (that is P12).
+    IP = "ip"
+    #: A single tool invocation keyed on the caller **and** the tool name (P10-05, §7 / §7.5) —
+    #: bounds one conversation from triggering unbounded external/tool calls. A hit degrades
+    #: gracefully (the model gets a rate-limit tool result), it is never surfaced as an HTTP 429.
+    TOOL = "tool"
 
 
 @dataclass(frozen=True)
@@ -139,6 +147,10 @@ class RateLimitService:
         user_message_limit: int,
         user_upload_limit: int,
         user_window_seconds: int,
+        ip_request_limit: int = 300,
+        ip_window_seconds: int = 3_600,
+        tool_call_limit: int = 30,
+        tool_window_seconds: int = 3_600,
     ) -> None:
         self._limiter = limiter
         self._guest_message_limit = guest_message_limit
@@ -147,10 +159,14 @@ class RateLimitService:
         self._user_message_limit = user_message_limit
         self._user_upload_limit = user_upload_limit
         self._user_window_seconds = user_window_seconds
+        self._ip_request_limit = ip_request_limit
+        self._ip_window_seconds = ip_window_seconds
+        self._tool_call_limit = tool_call_limit
+        self._tool_window_seconds = tool_window_seconds
 
     @classmethod
     def from_settings(cls, limiter: RateLimiter, config: Settings = settings) -> RateLimitService:
-        """Build from application config (guest caps + generous per-user window limits)."""
+        """Build from application config (guest caps + generous per-user/-IP/-tool limits)."""
         return cls(
             limiter,
             guest_message_limit=config.GUEST_MAX_MESSAGES,
@@ -159,10 +175,14 @@ class RateLimitService:
             user_message_limit=config.USER_MAX_MESSAGES_PER_WINDOW,
             user_upload_limit=config.USER_MAX_UPLOADS_PER_WINDOW,
             user_window_seconds=config.USER_RATE_LIMIT_WINDOW_SECONDS,
+            ip_request_limit=config.IP_MAX_REQUESTS_PER_WINDOW,
+            ip_window_seconds=config.IP_RATE_LIMIT_WINDOW_SECONDS,
+            tool_call_limit=config.TOOL_MAX_CALLS_PER_WINDOW,
+            tool_window_seconds=config.TOOL_RATE_LIMIT_WINDOW_SECONDS,
         )
 
-    def _policy(self, action: RateLimitAction, user: CurrentUser) -> tuple[str, int, int]:
-        """Return ``(key, limit, window_seconds)`` for ``action`` and this caller.
+    def _subject(self, user: CurrentUser) -> str:
+        """Resolve the counter subject for ``user`` (its whole identity).
 
         A guest is keyed on its ``session_id`` (its whole identity, so it cannot reset the
         budget by re-connecting); a logged-in user on its ``users.id`` (the limit follows the
@@ -171,7 +191,13 @@ class RateLimitService:
         empty subject.
         """
         if user.role == "guest":
-            subject = user.session_id
+            return user.session_id
+        return user.user_id or user.session_id
+
+    def _policy(self, action: RateLimitAction, user: CurrentUser) -> tuple[str, int, int]:
+        """Return ``(key, limit, window_seconds)`` for ``action`` and this caller."""
+        subject = self._subject(user)
+        if user.role == "guest":
             window = self._guest_window_seconds
             limit = (
                 self._guest_message_limit
@@ -179,7 +205,6 @@ class RateLimitService:
                 else self._guest_upload_limit
             )
         else:
-            subject = user.user_id or user.session_id
             window = self._user_window_seconds
             limit = (
                 self._user_message_limit
@@ -205,3 +230,77 @@ class RateLimitService:
                 retry_after_seconds=result.retry_after_seconds,
             )
         return result
+
+    async def enforce_ip(self, ip: str) -> RateLimitResult:
+        """Count one request from source ``ip`` and raise if it puts the IP over budget (§7.5).
+
+        A **defense-in-depth** layer that runs *alongside* :meth:`enforce`: a guest's budget is
+        keyed on ``session_id`` and anyone can mint a fresh guest session, so a script farming
+        sessions from one source IP would otherwise be uncapped. Keying a separate, generous
+        counter on the (safely resolved) client IP bounds that abuse. The ``ip`` must be read via
+        a trusted-proxy configuration (see :class:`~app.security.client_ip.ClientIpResolver`), or
+        the header is spoofable and the limit worthless. Raises :class:`RateLimitExceeded`
+        (``action=IP``) when over, which the API maps to a ``429``.
+
+        This is *not* the S9 guest-session-creation bot gate (Altcha/PoW + global budget breaker),
+        which is a separate P12 go-live task — this is a general per-IP request cap.
+        """
+        key = f"{RateLimitAction.IP}:{ip}"
+        result = await self._limiter.hit(
+            key, limit=self._ip_request_limit, window_seconds=self._ip_window_seconds
+        )
+        if not result.allowed:
+            raise RateLimitExceeded(
+                RateLimitAction.IP,
+                is_guest=False,
+                limit=self._ip_request_limit,
+                retry_after_seconds=result.retry_after_seconds,
+            )
+        return result
+
+    async def check_tool(self, tool_name: str, user: CurrentUser) -> RateLimitResult:
+        """Count one invocation of ``tool_name`` by ``user`` and report the budget status (§7.5).
+
+        Keyed on the caller (session/user) **and** the tool name, over a fixed window, so a single
+        conversation cannot invoke any one tool unboundedly (bounding external-call cost + abuse),
+        independent of the message-count limit. Unlike :meth:`enforce` this **never raises**: a
+        per-tool limit degrades gracefully — the caller (the tool-calling loop) turns a denied
+        result into a rate-limit tool message the model wraps up on, so the turn still completes
+        (it must not crash the graph). Returns the :class:`RateLimitResult` (``allowed`` is the
+        signal the loop acts on).
+        """
+        key = f"{RateLimitAction.TOOL}:{self._subject(user)}:{tool_name}"
+        return await self._limiter.hit(
+            key, limit=self._tool_call_limit, window_seconds=self._tool_window_seconds
+        )
+
+    def tool_limiter(self, user: CurrentUser) -> SessionToolRateLimiter:
+        """Bind a per-turn, caller-scoped tool limiter for the tool-calling loop (§7.5).
+
+        Returns a small adapter (satisfying the tool layer's ``ToolInvocationLimiter`` seam) that
+        the agent's :class:`~app.tools.base.ToolRegistry` consults before dispatching each
+        model-requested tool call — so the per-tool policy lives here (the service), while the
+        registry stays agnostic of rate-limit config.
+        """
+        return SessionToolRateLimiter(self, user)
+
+
+class SessionToolRateLimiter:
+    """Per-turn tool-invocation limiter bound to one caller (P10-05, §7.5).
+
+    Structurally satisfies the tool layer's ``ToolInvocationLimiter`` port (an ``async allow``)
+    without the services layer importing the tools layer — the agent's
+    :class:`~app.tools.base.ToolRegistry` depends only on the narrow ``allow`` shape. Delegates
+    to :meth:`RateLimitService.check_tool` (the actual Redis-backed policy), keyed on the bound
+    caller + the tool name, so every registry sharing this instance for a turn counts against the
+    same caller budget.
+    """
+
+    def __init__(self, service: RateLimitService, user: CurrentUser) -> None:
+        self._service = service
+        self._user = user
+
+    async def allow(self, tool_name: str) -> bool:
+        """Return whether ``tool_name`` may run now for the bound caller (counts one invocation)."""
+        result = await self._service.check_tool(tool_name, self._user)
+        return result.allowed

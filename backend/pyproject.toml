@@ -24,6 +24,11 @@ dependencies = [
     # LLM / embeddings
     "openai>=2.0.0",
     "sentence-transformers>=3.0.0",
+    # Input jailbreak/prompt-injection classifier (S8, §7.4): in-process HF Prompt-Guard model.
+    # Heavy ML stack (needs torch, already pulled by sentence-transformers); lazily imported by
+    # app/guardrails/injection_classifier.py, so excluded from the curated CI venv (allowlisted
+    # in scripts/check_curated_deps.py), same as sentence-transformers.
+    "transformers>=4.40.0",
     "langgraph>=0.1.0",
     "langmem>=0.0.1",
     # Background jobs

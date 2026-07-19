@@ -1,0 +1,18 @@
+# Code review — P10-03-output-guardrails · engineer revision 1
+
+## Verdict: APPROVED
+
+## Findings
+| id | severity | file:line | issue | required change |
+|----|----------|-----------|-------|-----------------|
+| C1 | minor | app/guardrails/heuristics.py:180 (`do not fabricate citations`) + :173 (persona) | A few leakage signatures are ordinary English clauses. A legitimate answer discussing citation ethics ("you should never fabricate citations") or drafting a coaching-bot persona would be silently redacted. Low risk (redaction, not block; patterns are fairly specific) but not zero. | Consider anchoring leakage matches to co-occurrence (≥2 signatures / a fence marker) before redacting prose-plausible clauses, or accept and document the FP. Non-blocking. |
+| C2 | minor | app/services/chat.py:372 vs app/agents/graph.py:201 | The headline stage-3 classifier net only runs on the **buffered** `output_guardrail_node`. The production **streaming** path calls `screen_output(chunk.content)` per token delta with no classifier, and (per prior review) never invokes the buffered node — so streamed turns get regex-only output screening and a phrase split across chunks escapes. | Out of task scope (constraint forbids re-plumbing) and correctly documented, but flag that the classifier output-net does not protect the primary streamed path. Track as a follow-up. |
+| C3 | nit | app/guardrails/heuristics.py:196-201 | `_DEFAULT_CLASSIFIER` lazy global init has no lock; two concurrent first-callers could each build a `PromptGuardClassifier` → two model loads. Race window is startup-only and pre-existing (same pattern backs `screen_input`). | Optional: guard with the module lock. Harmless in practice. |
+| C4 | nit | app/guardrails/heuristics.py:379-387 | Stage-3 scores each sentence **in isolation**; an imperative but benign coaching sentence ("Ignore the noise and focus on your goals") could be flagged and redacted by the real classifier depending on threshold. | Rely on §7.4 low-FP tuning; no change required now. |
+
+## Notes
+- Correctness is sound. `screen_output(text, *, classifier=None)` is backward-compatible (streaming caller unaffected — verified). Stages 1+2 share `_DENY_PATTERNS` with the input side (DRY); leakage signatures are self-contained regexes with the import-cycle rationale documented and are label-agnostic on the fence markers. Verified the live signatures actually match the current `RESPONDER_SYSTEM_PROMPT` ("helpful, encouraging career coach", "When REFERENCE MATERIAL is provided below", "Do not fabricate citations") and `fence_untrusted` output — not dead patterns.
+- Stage-3 reuses the **same** `default_injection_classifier()` singleton as the input gate (one detection mechanism, not two), splits on a capturing sentence/line regex so clean text re-joins byte-for-byte, skips letter-free segments, and fails soft on an unavailable/`None` classifier (mirrors `screen_input` fail-open). `modified=False` returns the input verbatim — confirmed by the clean-pass tests.
+- Security posture good: redaction neutralises rather than blocks; verdict `categories`/`reason` stay internal telemetry, never surfaced; no secrets; no new dependency (curated-dep guard clean, reuses P10-01).
+- Verified locally: `tests/test_output_guardrails.py` → 10 passed; `ruff check app/guardrails/heuristics.py` → clean. Tests cover verbatim/near-verbatim/fence leakage, clean pass-through with & without classifier, canonical echo strip, classifier segment redaction, fail-soft, combined nets, and buffered-node wiring — matching acceptance criteria.
+- The streaming limitation (C2) is a real detection gap for the primary user path, but the task explicitly scopes out re-plumbing the wiring, so it is a note, not a gate.

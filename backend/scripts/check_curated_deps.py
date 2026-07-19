@@ -56,6 +56,7 @@ INTENTIONAL_EXCLUSIONS: dict[str, str] = {
     "uvicorn": "ASGI server; only referenced in docstrings, never imported at test collection.",
     "redis": "imported at module scope but installed transitively via the curated 'celery[redis]'.",
     "sentence-transformers": "heavy ML stack (torch); lazily imported by embeddings, excluded.",
+    "transformers": "heavy ML stack (torch); lazily imported by the injection classifier (S8).",
     "docling": "heavy ML doc-intelligence stack; lazily imported (see FIX-04 import guard).",
     "langmem": "P9 teachable memory; declared but not yet imported anywhere in app/.",
     "pillow": "imaging lib; only a deferred import inside app/ingestion/ocr_parser.py.",

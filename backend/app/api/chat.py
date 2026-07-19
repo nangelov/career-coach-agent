@@ -36,6 +36,7 @@ from app.schemas.auth import CurrentUser
 from app.schemas.chat import ChatEvent, ChatRequest
 from app.security.dependencies import (
     authorize_session_access,
+    get_client_ip,
     get_rate_limit_service,
     rate_limit_exceeded_http,
     require_auth,
@@ -74,12 +75,15 @@ async def chat(
     current_user: CurrentUser = Depends(require_auth),
     service: ChatService = Depends(get_chat_service),
     rate_limiter: RateLimitService = Depends(get_rate_limit_service),
+    client_ip: str = Depends(get_client_ip),
 ) -> StreamingResponse:
     """Stream a chat turn as Server-Sent Events (authenticated, own-session, rate-limited).
 
     Requires a valid bearer token (guest or user). Before any streaming begins the router
     (1) enforces **own-data-only** access — the request's ``session_id`` must be the caller's
-    own session (else ``403``) — and (2) applies the Redis-backed **rate limit** for the
+    own session (else ``403``); (2) applies a **per-IP** cap (§7.5 defense-in-depth: bounds a
+    script farming fresh guest sessions from one source IP, read via a trusted-proxy config so
+    the header is not spoofable); and (3) applies the Redis-backed **rate limit** for the
     caller's tier (guest: 10 messages/session; user: generous per-window), returning ``429``
     with an upgrade prompt when over budget. The turn's ``user_id`` is taken from the verified
     token, never from the request body (§7 AuthZ), so a client cannot act as another user.
@@ -89,10 +93,12 @@ async def chat(
     ``error`` event. The service never raises into the response body, so the stream always
     ends cleanly (no mid-stream 500).
     """
-    # Own-data-only first (a rejected cross-session request must not consume the rate budget),
-    # then count this message against the caller's tier before opening the stream.
+    # Own-data-only first (a rejected cross-session request must not consume any rate budget),
+    # then the per-IP defense-in-depth cap (§7.5) and the per-caller message cap, before opening
+    # the stream. The per-IP counter runs alongside (not instead of) the session/user limit.
     authorize_session_access(payload.session_id, current_user)
     try:
+        await rate_limiter.enforce_ip(client_ip)
         await rate_limiter.enforce(RateLimitAction.MESSAGE, current_user)
     except RateLimitExceeded as exc:
         raise rate_limit_exceeded_http(exc) from exc

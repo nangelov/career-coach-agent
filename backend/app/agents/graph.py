@@ -86,6 +86,7 @@ if TYPE_CHECKING:
     from app.llm.embeddings import EmbeddingClient
     from app.services.dashboard import DashboardService
     from app.services.guest_memory import GuestMemory
+    from app.services.rate_limiting import RateLimitService
 
 from app.agents.dashboard_agent import make_dashboard_node
 from app.agents.market_agent import make_market_node
@@ -102,7 +103,12 @@ from app.agents.state import (
     WorkerResult,
 )
 from app.agents.web_searcher import SearchRunner, make_web_search_node
-from app.guardrails import REFUSAL_MESSAGE, screen_input, screen_output
+from app.guardrails import (
+    REFUSAL_MESSAGE,
+    default_injection_classifier,
+    screen_input,
+    screen_output,
+)
 from app.llm.types import StreamChunk
 
 #: The single, generic refusal a topic-guardrail (OFF_TOPIC) turn returns (design §7.4).
@@ -175,21 +181,25 @@ def input_guardrail_node(state: AgentState) -> NodeUpdate:
 
 
 def output_guardrail_node(state: AgentState) -> NodeUpdate:
-    """Minimal output safety net (SEC-02, design §7.3 point 4). Coarse placeholder — P10.
+    """Output guardrail over the buffered composed answer (SEC-02 / P10-03, design §7 / §7.3).
 
-    Runs the deterministic :func:`app.guardrails.screen_output` heuristic over the composed
-    ``response``, **stripping** any canonical injection phrasing the answer echoed back out of
-    untrusted grounding material (a crawled page / CV that said "ignore previous instructions").
-    Writes the OUTPUT :class:`SafetyVerdict` for telemetry and, only when a redaction happened,
-    the scrubbed ``response`` (a scrub neutralises rather than blocks — the answer still returns,
-    just cleaned). Anything the deny-list does not recognise passes through unchanged
-    (default-open). Full injection/leakage detection is P10 (same ``SafetyVerdict`` hook).
+    Runs :func:`app.guardrails.screen_output` over the composed ``response``, redacting (a)
+    canonical injection phrasing echoed back out of untrusted grounding material, (b)
+    **system-prompt leakage** (the model repeating its own instructions / fence scaffolding),
+    and (c) any segment the real P10-01 injection classifier flags — the classifier is passed
+    here (via :func:`~app.guardrails.default_injection_classifier`) because this node sees the
+    **whole buffered answer** and can afford a model call. Writes the OUTPUT
+    :class:`SafetyVerdict` for telemetry and, only when a redaction happened, the scrubbed
+    ``response`` (a redaction neutralises rather than blocks — the answer still returns, just
+    cleaned). Anything none of the nets recognise passes through unchanged (default-open).
 
     Note: this node sees the **buffered** response (:func:`run_graph`). On the streaming path
     (:class:`GraphTurnStreamer` → :class:`~app.services.chat.ChatService`) the same
-    :func:`~app.guardrails.screen_output` net is applied to the token stream as it is emitted.
+    :func:`~app.guardrails.screen_output` net runs per token delta, but **without** the
+    classifier (a per-delta model call would be prohibitively slow — see that path's docstring);
+    the deterministic deny-list + leakage nets still apply there.
     """
-    screen = screen_output(state.response or "")
+    screen = screen_output(state.response or "", classifier=default_injection_classifier())
     update: NodeUpdate = {"output_safety": screen.verdict}
     if screen.modified:
         update["response"] = screen.text
@@ -426,6 +436,7 @@ def build_graph(
     http_client: httpx.AsyncClient | None = None,
     dashboard_service: DashboardService | None = None,
     guest_memory: GuestMemory | None = None,
+    rate_limiter: RateLimitService | None = None,
 ) -> CompiledStateGraph[AgentState]:
     """Assemble and compile the multi-agent turn graph (design §3).
 
@@ -510,7 +521,7 @@ def build_graph(
     # LLM router the planner uses (chat wiring injects both; tests inject fakes). Falls back to the
     # module default (fails soft; guests always fail soft) when no service is given.
     resolved_dashboard = (
-        make_dashboard_node(service=dashboard_service, router=router)
+        make_dashboard_node(service=dashboard_service, router=router, rate_limiter=rate_limiter)
         if dashboard_service is not None
         else dashboard_node
     )
@@ -607,6 +618,7 @@ class GraphTurnStreamer:
         http_client: httpx.AsyncClient | None = None,
         dashboard_service: DashboardService | None = None,
         guest_memory: GuestMemory | None = None,
+        rate_limiter: RateLimitService | None = None,
     ) -> None:
         # Compile the pre-responder graph once (LLM-free deterministic responder tail — its
         # placeholder answer is discarded; the real Responder streams below).
@@ -619,6 +631,7 @@ class GraphTurnStreamer:
             http_client=http_client,
             dashboard_service=dashboard_service,
             guest_memory=guest_memory,
+            rate_limiter=rate_limiter,
         )
         self._responder = Responder(responder_router)
         self._responder_router = responder_router
@@ -670,6 +683,7 @@ async def stream_graph(
     http_client: httpx.AsyncClient | None = None,
     dashboard_service: DashboardService | None = None,
     guest_memory: GuestMemory | None = None,
+    rate_limiter: RateLimitService | None = None,
 ) -> AsyncIterator[StreamChunk | AgentState]:
     """Run one turn and **stream** the responder's tokens (design §3 "streams tokens").
 
@@ -703,6 +717,7 @@ async def stream_graph(
         http_client=http_client,
         dashboard_service=dashboard_service,
         guest_memory=guest_memory,
+        rate_limiter=rate_limiter,
     )
     merged = await streamer.plan(state)
 

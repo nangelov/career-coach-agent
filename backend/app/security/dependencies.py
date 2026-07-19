@@ -36,6 +36,7 @@ from app.bootstrap import (
     build_user_store,
 )
 from app.schemas.auth import CurrentUser
+from app.security.client_ip import ClientIpResolver
 from app.security.tokens import InvalidSessionToken
 from app.services.auth import SessionAuthenticator
 from app.services.rate_limiting import RateLimitAction, RateLimitExceeded, RateLimitService
@@ -180,13 +181,62 @@ def get_rate_limit_service(request: Request) -> RateLimitService:
     return service
 
 
+def get_client_ip_resolver(request: Request) -> ClientIpResolver:
+    """FastAPI dependency: the app-scoped :class:`ClientIpResolver`, built once and cached.
+
+    Built from the ``TRUSTED_PROXIES`` allowlist (§7.5) and cached on ``app.state`` so the
+    trusted-proxy config is parsed once. Tests override this to inject a resolver with a known
+    allowlist (trusted vs. untrusted proxy chains).
+    """
+    resolver: ClientIpResolver | None = getattr(
+        request.app.state, AppStateKeys.CLIENT_IP_RESOLVER, None
+    )
+    if resolver is None:
+        resolver = ClientIpResolver.from_settings()
+        setattr(request.app.state, AppStateKeys.CLIENT_IP_RESOLVER, resolver)
+    return resolver
+
+
+def get_client_ip(
+    request: Request,
+    resolver: ClientIpResolver = Depends(get_client_ip_resolver),
+) -> str:
+    """FastAPI dependency: the caller's trusted source IP for per-IP rate limiting (§7.5).
+
+    Reads the immediate peer (``request.client``) and the ``X-Forwarded-For`` header and hands
+    both to the :class:`ClientIpResolver`, which honors the trusted-proxy allowlist so the header
+    is only trusted behind a configured proxy (else the peer is used) — an untrusted client cannot
+    spoof its source IP to evade the limit.
+    """
+    peer = request.client.host if request.client is not None else None
+    forwarded_for = request.headers.get("x-forwarded-for")
+    return resolver.resolve(peer=peer, forwarded_for=forwarded_for)
+
+
 def rate_limit_exceeded_http(exc: RateLimitExceeded) -> HTTPException:
-    """Map an over-budget :class:`RateLimitExceeded` to a ``429`` HTTP error (§6.8/§7).
+    """Map an over-budget :class:`RateLimitExceeded` to a ``429`` HTTP error (§6.8/§7 / §7.5).
 
     Guests get an upgrade-prompting message (their cap is the whole point of the guest tier);
-    logged-in users get a neutral back-off message. A ``Retry-After`` header is set from the
-    counter's remaining window when known, so a well-behaved client can wait it out.
+    logged-in users get a neutral back-off message; a per-IP cap (§7.5) gets a neutral
+    per-source-IP message (never guest-flagged — the IP layer is identity-agnostic). A
+    ``Retry-After`` header is set from the counter's remaining window when known, so a
+    well-behaved client can wait it out.
     """
+    if exc.action == RateLimitAction.IP:
+        detail = (
+            f"Too many requests from your network (at most {exc.limit} per window). "
+            "Please try again shortly."
+        )
+        headers = (
+            {"Retry-After": str(exc.retry_after_seconds)}
+            if exc.retry_after_seconds is not None
+            else None
+        )
+        return HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=detail,
+            headers=headers,
+        )
     unit = "messages" if exc.action == RateLimitAction.MESSAGE else "document uploads"
     if exc.is_guest:
         detail = (

@@ -238,13 +238,13 @@ users. **No job listings are ever shown.**
 
 **Exit:** jailbreak/injection test suite passes; no secret/prompt leakage; no arbitrary code execution.
 
-- [ ] **(B)** **S8 — Real injection classifier** replacing the P4 regex deny-list (Prompt-Guard / Llama-Guard). *The regex heuristic is an honest placeholder and stops nobody.*
-- [ ] **(B)** Abuse / off-topic filter completed; **PII scrub before tools/external calls** (§7.6 — note the CV→LLM-provider disclosure decision, S10).
-- [ ] **(B)** Output guardrails: block system-prompt leakage, strip injected instructions echoed from untrusted content.
-- [ ] **(B)** Confirm v1 `run_python_code` REPL is **removed** (ACE risk); sandboxed evaluator only if math truly needed.
-- [ ] **(B)** Per-session/per-user/**per-IP**/per-tool rate-limit enforcement + abuse handling; all crawled/web/**document** content untrusted.
-- [ ] **(T)** Jailbreak/injection suite **including a CV with embedded injected instructions and a poisoned crawled page**; off-topic refused + job-hunting redirected; secret/prompt-leak checks; no arbitrary code execution.
-- [ ] **(T)** **CI/CD verification** — run the full backend + frontend CI command sets locally (ruff + ruff format --check + mypy + pytest; eslint + tsc + jest — the exact commands in `.github/workflows/backend-ci.yml` / `frontend-ci.yml`) and confirm both are green before closing the phase.
+- [x] **(B)** **S8 — Real injection classifier** replacing the P4 regex deny-list (Prompt-Guard / Llama-Guard). *The regex heuristic is an honest placeholder and stops nobody.*
+- [x] **(B)** Abuse / off-topic filter completed; **PII scrub before tools/external calls** (§7.6 — note the CV→LLM-provider disclosure decision, S10).
+- [x] **(B)** Output guardrails: block system-prompt leakage, strip injected instructions echoed from untrusted content.
+- [x] **(B)** Confirm v1 `run_python_code` REPL is **removed** (ACE risk); sandboxed evaluator only if math truly needed.
+- [x] **(B)** Per-session/per-user/**per-IP**/per-tool rate-limit enforcement + abuse handling; all crawled/web/**document** content untrusted.
+- [x] **(T)** Jailbreak/injection suite **including a CV with embedded injected instructions and a poisoned crawled page**; off-topic refused + job-hunting redirected; secret/prompt-leak checks; no arbitrary code execution.
+- [x] **(T)** **CI/CD verification** — run the full backend + frontend CI command sets locally (ruff + ruff format --check + mypy + pytest; eslint + tsc + jest — the exact commands in `.github/workflows/backend-ci.yml` / `frontend-ci.yml`) and confirm both are green before closing the phase.
 
 ---
 
