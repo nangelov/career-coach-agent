@@ -9,7 +9,9 @@ Drives :class:`~app.services.chat.ChatService` with a **fake**
 * a cancelled turn persists its partial answer for a logged-in user,
 * **restart simulation**: with Redis working memory empty, a logged-in turn rehydrates its
   context from the conversation store,
-* a persistence failure is swallowed and never breaks the SSE stream.
+* a persistence failure is swallowed and never breaks the SSE stream,
+* the post-turn teachable-memory learn job is enqueued for a successful logged-in turn only
+  (guest / cancelled / no-enqueuer → no enqueue), and an enqueue failure never breaks the stream.
 
 The Postgres adapter itself is covered against a real database in
 ``tests/test_conversation_store.py``.
@@ -17,6 +19,7 @@ The Postgres adapter itself is covered against a real database in
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, cast
 
 from app.llm.types import ChatMessage, StreamChunk
@@ -291,3 +294,169 @@ async def test_rehydration_failure_falls_back_to_empty() -> None:
     turn = router.plan_states[0]
     assert turn.history == []
     assert turn.user_message == "hi"
+
+
+# --------------------------------------------------------------------------- #
+# Post-turn teachable-memory learn enqueue (§5.4 point 3)
+# --------------------------------------------------------------------------- #
+class _RecordingEnqueuer:
+    """A :class:`~app.services.chat.LearnEnqueuer` double recording its calls (or raising)."""
+
+    def __init__(self, *, error: Exception | None = None) -> None:
+        self._error = error
+        self.calls: list[dict[str, str]] = []
+
+    def __call__(
+        self, *, user_id: str, message_id: str, user_text: str, assistant_text: str
+    ) -> str:
+        self.calls.append(
+            {
+                "user_id": user_id,
+                "message_id": message_id,
+                "user_text": user_text,
+                "assistant_text": assistant_text,
+            }
+        )
+        if self._error is not None:
+            raise self._error
+        return "task-1"
+
+
+async def test_successful_logged_in_turn_enqueues_learn() -> None:
+    router = FakeGraphRunner([[StreamChunk(content="Hello!", finish_reason="stop")]])
+    enqueuer = _RecordingEnqueuer()
+    service = _service(router, store=FakeConversationStore(), learn_enqueuer=enqueuer)
+
+    events = await _collect(service, "s1", "keep it short", user_id="user-1")
+
+    done = [e for e in events if isinstance(e, DoneEvent)]
+    assert len(done) == 1
+    assert len(enqueuer.calls) == 1
+    call = enqueuer.calls[0]
+    assert call["user_id"] == "user-1"
+    assert call["message_id"] == done[0].message_id
+    assert call["user_text"] == "keep it short"
+    assert call["assistant_text"] == "Hello!"
+
+
+async def test_guest_turn_does_not_enqueue_learn() -> None:
+    router = FakeGraphRunner([[StreamChunk(content="Hello!", finish_reason="stop")]])
+    enqueuer = _RecordingEnqueuer()
+    service = _service(router, learn_enqueuer=enqueuer)
+
+    await _collect(service, "s1", "hi", user_id=None)
+
+    assert enqueuer.calls == []  # durable learning requires an account (§5.4)
+
+
+async def test_cancelled_turn_does_not_enqueue_learn() -> None:
+    router = FakeGraphRunner([[StreamChunk(content=f"tok{i}") for i in range(20)]])
+    enqueuer = _RecordingEnqueuer()
+    service = _service(
+        router,
+        cancel=_TrippingCancel(trip_after=2),
+        cancel_check_interval=1,
+        learn_enqueuer=enqueuer,
+    )
+
+    events = await _collect(service, "s1", "hi", user_id="user-1")
+
+    assert isinstance(events[-1], CancelledEvent)
+    assert enqueuer.calls == []  # only successful, non-cancelled turns learn
+
+
+async def test_enqueue_failure_does_not_break_stream() -> None:
+    router = FakeGraphRunner([[StreamChunk(content="Hello!", finish_reason="stop")]])
+    enqueuer = _RecordingEnqueuer(error=RuntimeError("broker down"))
+    service = _service(router, learn_enqueuer=enqueuer)
+
+    events = await _collect(service, "s1", "hi", user_id="user-1")
+
+    # The enqueue raised, but the turn still completed cleanly.
+    assert isinstance(events[-1], DoneEvent)
+    assert len(enqueuer.calls) == 1
+
+
+async def test_no_enqueuer_wired_is_a_noop() -> None:
+    router = FakeGraphRunner([[StreamChunk(content="Hello!", finish_reason="stop")]])
+    service = _service(router)  # no learn_enqueuer
+
+    events = await _collect(service, "s1", "hi", user_id="user-1")
+
+    assert isinstance(events[-1], DoneEvent)
+
+
+# --------------------------------------------------------------------------- #
+# Guest personalization learn (P9-07) — the guest counterpart to the enqueuer
+# --------------------------------------------------------------------------- #
+class _RecordingGuestLearner:
+    """A :class:`~app.services.chat.GuestLearner` double recording its calls (or raising)."""
+
+    def __init__(self, *, error: Exception | None = None) -> None:
+        self._error = error
+        self.calls: list[dict[str, str]] = []
+
+    async def __call__(self, *, session_id: str, user_text: str, assistant_text: str) -> None:
+        self.calls.append(
+            {"session_id": session_id, "user_text": user_text, "assistant_text": assistant_text}
+        )
+        if self._error is not None:
+            raise self._error
+
+
+async def _drain_guest_learn(service: ChatService) -> None:
+    """Await the fire-and-forget guest-learn background tasks the turn scheduled."""
+    pending = list(service._guest_learn_tasks)  # noqa: SLF001 - test-only introspection
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+
+
+async def test_guest_turn_learns_ephemeral_personalization() -> None:
+    router = FakeGraphRunner([[StreamChunk(content="Hello!", finish_reason="stop")]])
+    learner = _RecordingGuestLearner()
+    service = _service(router, guest_learner=learner)
+
+    events = await _collect(service, "s1", "I live in Berlin", user_id=None)
+    await _drain_guest_learn(service)
+
+    assert isinstance(events[-1], DoneEvent)
+    assert learner.calls == [
+        {"session_id": "s1", "user_text": "I live in Berlin", "assistant_text": "Hello!"}
+    ]
+
+
+async def test_logged_in_turn_does_not_run_guest_learn() -> None:
+    router = FakeGraphRunner([[StreamChunk(content="Hello!", finish_reason="stop")]])
+    learner = _RecordingGuestLearner()
+    enqueuer = _RecordingEnqueuer()
+    service = _service(
+        router, store=FakeConversationStore(), learn_enqueuer=enqueuer, guest_learner=learner
+    )
+
+    await _collect(service, "s1", "hi", user_id="user-1")
+    await _drain_guest_learn(service)
+
+    assert learner.calls == []  # a logged-in turn uses the durable enqueuer, not the guest learner
+    assert len(enqueuer.calls) == 1
+
+
+async def test_guest_learn_failure_does_not_break_stream() -> None:
+    router = FakeGraphRunner([[StreamChunk(content="Hello!", finish_reason="stop")]])
+    learner = _RecordingGuestLearner(error=RuntimeError("redis down"))
+    service = _service(router, guest_learner=learner)
+
+    events = await _collect(service, "s1", "hi", user_id=None)
+    await _drain_guest_learn(service)
+
+    assert isinstance(events[-1], DoneEvent)  # the escaped error is swallowed by the done-callback
+    assert len(learner.calls) == 1
+
+
+async def test_no_guest_learner_wired_is_a_noop() -> None:
+    router = FakeGraphRunner([[StreamChunk(content="Hello!", finish_reason="stop")]])
+    service = _service(router)  # no guest_learner
+
+    events = await _collect(service, "s1", "hi", user_id=None)
+
+    assert isinstance(events[-1], DoneEvent)
+    assert service._guest_learn_tasks == set()  # noqa: SLF001 - nothing scheduled

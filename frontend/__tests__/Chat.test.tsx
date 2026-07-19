@@ -7,11 +7,17 @@ import {
   streamChat,
   type ChatStreamEvent,
 } from "@/lib/chatStream";
+import { submitMessageFeedback } from "@/lib/messageFeedback";
 
 jest.mock("@/lib/chatStream", () => ({
   __esModule: true,
   streamChat: jest.fn(),
   cancelChat: jest.fn(),
+}));
+
+jest.mock("@/lib/messageFeedback", () => ({
+  __esModule: true,
+  submitMessageFeedback: jest.fn(),
 }));
 
 // The session is hydrated from the httpOnly cookie via the BFF (SEC-04). Mock that hydration
@@ -29,6 +35,9 @@ jest.mock("@/lib/auth", () => {
 const mockStreamChat = streamChat as jest.MockedFunction<typeof streamChat>;
 const mockCancelChat = cancelChat as jest.MockedFunction<typeof cancelChat>;
 const mockFetchSession = fetchSession as jest.MockedFunction<typeof fetchSession>;
+const mockSubmitFeedback = submitMessageFeedback as jest.MockedFunction<
+  typeof submitMessageFeedback
+>;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -348,5 +357,117 @@ describe("Chat", () => {
       await screen.findByRole("button", { name: /continue as guest/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent(/expired/i);
+  });
+
+  it("shows 👍/👎 on a completed message but not while it is streaming", async () => {
+    let capturedOnEvent: ((event: ChatStreamEvent) => void) | undefined;
+    let resolveStream: (() => void) | undefined;
+    mockStreamChat.mockImplementation((_payload, onEvent) => {
+      capturedOnEvent = onEvent;
+      onEvent({ event: "start", message_id: "m1" });
+      onEvent({ event: "token", content: "partial" });
+      return new Promise<void>((resolve) => {
+        resolveStream = resolve;
+      });
+    });
+
+    render(<Chat />);
+    await send("hi");
+
+    // While streaming, no feedback controls are shown.
+    expect(await screen.findByText("partial")).toBeInTheDocument();
+    expect(screen.queryByTestId("message-feedback")).not.toBeInTheDocument();
+
+    // Once done, the thumbs appear.
+    await act(async () => {
+      capturedOnEvent?.({
+        event: "done",
+        message_id: "m1",
+        finish_reason: "stop",
+        citations: [],
+      });
+      resolveStream?.();
+    });
+
+    expect(await screen.findByTestId("message-feedback")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /good response/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("submits a thumbs-up for the completed message id", async () => {
+    mockStreamChat.mockImplementation(async (_payload, onEvent) => {
+      onEvent({ event: "start", message_id: "abc" });
+      onEvent({ event: "token", content: "Answer." });
+      onEvent({
+        event: "done",
+        message_id: "abc",
+        finish_reason: "stop",
+        citations: [],
+      });
+    });
+    mockSubmitFeedback.mockResolvedValue({
+      message_id: "abc",
+      rating: "up",
+      reason: null,
+      created_at: "2026-07-19T00:00:00Z",
+    });
+
+    render(<Chat />);
+    await send("hi");
+
+    await screen.findByTestId("message-feedback");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /good response/i }));
+    });
+
+    await waitFor(() =>
+      expect(mockSubmitFeedback).toHaveBeenCalledWith("abc", "up", undefined),
+    );
+    // Selected state reflected on the button.
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /good response/i }),
+      ).toHaveAttribute("aria-pressed", "true"),
+    );
+  });
+
+  it("a thumbs-down surfaces an inline 'Try again?' that re-sends the same user turn", async () => {
+    mockStreamChat.mockImplementation(async (_payload, onEvent) => {
+      onEvent({ event: "start", message_id: "abc" });
+      onEvent({ event: "token", content: "First answer." });
+      onEvent({
+        event: "done",
+        message_id: "abc",
+        finish_reason: "stop",
+        citations: [],
+      });
+    });
+    mockSubmitFeedback.mockResolvedValue({
+      message_id: "abc",
+      rating: "down",
+      reason: null,
+      created_at: "2026-07-19T00:00:00Z",
+    });
+
+    render(<Chat />);
+    await send("what roles fit me");
+
+    await screen.findByTestId("message-feedback");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /bad response/i }));
+    });
+
+    // The "Try again?" affordance appears after a down-vote.
+    const tryAgain = await screen.findByTestId("try-again");
+    expect(mockStreamChat).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      fireEvent.click(tryAgain);
+    });
+
+    // Re-sends the original user turn through the existing streaming path.
+    await waitFor(() => expect(mockStreamChat).toHaveBeenCalledTimes(2));
+    expect(mockStreamChat.mock.calls[1][0].message).toBe("what roles fit me");
   });
 });

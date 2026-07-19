@@ -27,6 +27,7 @@ from app.agents.state import (
     AgentState,
     Citation,
     Intent,
+    MemoryContext,
     PlannerDecision,
     WorkerName,
     WorkerResult,
@@ -147,6 +148,95 @@ async def test_citations_pass_through_the_node_unchanged() -> None:
     # responder writes no citations; the state's accumulated citations are untouched.
     assert "citations" not in update
     assert len(state.citations) == 2
+
+
+# --------------------------------------------------------------------------- #
+# Personalization (P9-06): responder adapts to recalled prefs / memories (§5.4)
+# --------------------------------------------------------------------------- #
+def _personalized_state(
+    *, preferences: dict[str, Any] | None = None, memories: list[str] | None = None
+) -> AgentState:
+    return _state(
+        "how do I get promoted?",
+        memory=MemoryContext(preferences=preferences or {}, memories=memories or []),
+    )
+
+
+async def test_no_memory_prompt_is_unchanged_from_baseline() -> None:
+    """Empty recall (guest / nothing learned) → no personalization block, no regression."""
+    router = FakeResponderRouter()
+    plain = FakeResponderRouter()
+
+    await Responder(router).synthesize(_personalized_state())
+    await Responder(plain).synthesize(_state("how do I get promoted?"))
+
+    with_default_memory = _prompt_text(router.complete_messages[0])
+    baseline = _prompt_text(plain.complete_messages[0])
+    assert with_default_memory == baseline
+    assert "explicitly set" not in with_default_memory
+    assert "previously learned" not in with_default_memory
+
+
+async def test_explicit_preferences_are_injected() -> None:
+    router = FakeResponderRouter()
+    state = _personalized_state(
+        preferences={"tone": "concise", "focus_areas": ["fintech PM roles"], "emojis": False}
+    )
+
+    await Responder(router).synthesize(state)
+
+    prompt = _prompt_text(router.complete_messages[0])
+    assert "explicitly set these preferences" in prompt
+    assert "tone=concise" in prompt
+    assert "focus_areas=fintech PM roles" in prompt
+    assert "emojis=no" in prompt
+    # no inferred-memory line when there are no memories.
+    assert "previously learned" not in prompt
+
+
+async def test_learned_memories_are_injected() -> None:
+    router = FakeResponderRouter()
+    state = _personalized_state(memories=["prefers bullet points", "based in Berlin"])
+
+    await Responder(router).synthesize(state)
+
+    prompt = _prompt_text(router.complete_messages[0])
+    assert "previously learned about the user" in prompt
+    assert "prefers bullet points" in prompt
+    assert "based in Berlin" in prompt
+    # no explicit-preference line when there are no preferences.
+    assert "explicitly set" not in prompt
+
+
+async def test_both_prefs_and_memories_with_explicit_precedence_framing() -> None:
+    """Both signals present; explicit-preference wording is distinguishable + marked to win."""
+    router = FakeResponderRouter()
+    state = _personalized_state(preferences={"tone": "concise"}, memories=["prefers bullet points"])
+
+    await Responder(router).synthesize(state)
+
+    prompt = _prompt_text(router.complete_messages[0])
+    # the explicit block is authoritative and framed to override inferred memory (§5.4 pt 4).
+    assert "explicitly set these preferences (authoritative" in prompt
+    assert "explicit preference wins" in prompt
+    # the inferred block is present and labelled lower-priority — distinguishable framing.
+    assert "inferred — lower priority" in prompt
+    # explicit wording precedes inferred wording in the assembled prompt.
+    assert prompt.index("explicitly set") < prompt.index("previously learned")
+
+
+async def test_personalization_applies_on_the_streaming_path() -> None:
+    """stream() and synthesize() share _build_messages — the block reaches streaming too."""
+    router = FakeResponderRouter(
+        chunks=[StreamChunk(content="ok"), StreamChunk(finish_reason="stop")]
+    )
+    state = _personalized_state(preferences={"tone": "concise"}, memories=["based in Berlin"])
+
+    _ = [c async for c in Responder(router).stream(state)]
+
+    prompt = _prompt_text(router.stream_messages[0])
+    assert "tone=concise" in prompt
+    assert "based in Berlin" in prompt
 
 
 # --------------------------------------------------------------------------- #

@@ -39,6 +39,7 @@ from app.repositories.redis import (
     LimiterRedis,
     RedisCancelRegistry,
     RedisConnectionProvider,
+    RedisGuestMemory,
     RedisOAuthStateStore,
     RedisRateLimiter,
     RedisRoleProfileCache,
@@ -57,6 +58,7 @@ from app.services.chat import ChatService
 from app.services.feedback import FeedbackReader
 from app.services.guest_upgrade import GuestUpgradeService
 from app.services.jobs import JobStatusService
+from app.services.message_feedback import MessageFeedbackStore
 from app.services.profile_ingest import ProfileIngestService
 from app.services.profile_store import ProfileStore
 from app.services.rate_limiting import RateLimitService
@@ -65,7 +67,9 @@ from app.services.skills_gap import SkillsGapService
 from app.services.user_store import UserStore
 
 if TYPE_CHECKING:
+    from app.memory.guest_personalization import GuestPersonalizationMigrator
     from app.services.dashboard import DashboardService
+    from app.services.memory import MemoryService
     from app.services.pdp import PdpService
 
 
@@ -122,6 +126,21 @@ def build_feedback_reader(app: FastAPI) -> FeedbackReader:
     """
     provider = _require_pg_provider(app, "feedback read")
     return PostgresFeedbackReader.from_provider(provider)
+
+
+def build_message_feedback_store(app: FastAPI) -> MessageFeedbackStore:
+    """Construct the Postgres-backed :class:`MessageFeedbackStore` (per-message 👍/👎, P9-01).
+
+    Backs ``POST /api/messages/{message_id}/feedback``. The feedback rows are anchored to the
+    ``messages`` / ``users`` tables (FKs), so this cannot degrade to Redis-only: a missing
+    Postgres provider is a wiring bug for this endpoint and ``_require_pg_provider`` fails
+    loudly. Called once per process (cached on ``app.state`` by
+    ``app.api.message_feedback.get_message_feedback_store``).
+    """
+    from app.repositories.message_feedback_store import PostgresMessageFeedbackStore
+
+    provider = _require_pg_provider(app, "message feedback")
+    return PostgresMessageFeedbackStore.from_provider(provider)
 
 
 def build_profile_store(app: FastAPI) -> ProfileStore:
@@ -181,6 +200,11 @@ def build_chat_service(app: FastAPI) -> ChatService:
     memory = RedisSessionMemory.from_settings(cast(SessionRedis, redis_client), settings)
     cancel = RedisCancelRegistry.from_settings(cast(CancelRedis, redis_client), settings)
 
+    # Guest personalization (P9-07, §5.4): the Redis-only store a guest turn recalls from and
+    # learns into — session-scoped, ephemeral, never Postgres. Wired unconditionally (Redis-only,
+    # so it does not depend on the Postgres pool, unlike durable learning below).
+    guest_memory = RedisGuestMemory.from_settings(cast(StoreRedis, redis_client), settings)
+
     # Web Searcher provider (§5.7 / §6.19): the Tavily 3-key pool needs the *same* shared
     # Redis client for its promote-to-primary + per-key circuit-breaker + result cache, so
     # build the settings-configured search tool here (redis-wired) and inject it into the
@@ -203,6 +227,26 @@ def build_chat_service(app: FastAPI) -> ChatService:
         else None
     )
 
+    # Post-turn teachable-memory learn (§5.4 point 3): the fire-and-forget enqueue port the chat
+    # service calls after a successful logged-in turn. Wired only when the shared Postgres pool
+    # exists (durable learning is anchored in Postgres); absent → no enqueue, matching the
+    # ``conversations`` / ``dashboard_service`` posture. The Celery worker builds its own DB/LLM
+    # stack, so only the light enqueue function is imported here.
+    from app.tasks.memory_learn import enqueue_learn_from_turn
+
+    learn_enqueuer = enqueue_learn_from_turn if pg_provider is not None else None
+
+    # Guest post-turn learn (P9-07): the in-process, Redis-only counterpart to the enqueuer. Reuses
+    # the same LLM-backed extractor (native tool-calling) + PII/Art. 9 gate as the durable path, but
+    # writes only to the ephemeral guest store. Wired unconditionally (Redis-only). The chat service
+    # runs it as a fire-and-forget background task so the extraction never delays the stream.
+    from app.memory.guest_personalization import GuestPersonalizationLearner
+    from app.memory.learn import LLMMemoryExtractor
+
+    guest_learner = GuestPersonalizationLearner(
+        extractor=LLMMemoryExtractor(llm_router), guest_memory=guest_memory
+    )
+
     # Dashboard worker service (§5.2 / P8-03): the same Postgres-backed ``DashboardService`` the
     # ``/api/dashboard`` router uses (reused via ``build_dashboard_service`` — no duplicated store
     # wiring), so a chat turn can read/propose against the living PDP. Built only when the shared
@@ -223,8 +267,16 @@ def build_chat_service(app: FastAPI) -> ChatService:
         db=pg_provider,
         search_tool=search_tool,
         dashboard_service=dashboard_service,
+        guest_memory=guest_memory,
     )
-    return ChatService(runner, memory, cancel, conversations=conversations)
+    return ChatService(
+        runner,
+        memory,
+        cancel,
+        conversations=conversations,
+        learn_enqueuer=learn_enqueuer,
+        guest_learner=guest_learner,
+    )
 
 
 def build_guest_auth_service(app: FastAPI) -> GuestAuthService:
@@ -282,6 +334,7 @@ def build_guest_upgrade_service(app: FastAPI) -> GuestUpgradeService:
     tickets = RedisUpgradeTicketStore.from_settings(cast(StoreRedis, redis_client), settings)
     sessions = RedisSessionStore.from_settings(cast(StoreRedis, redis_client), settings)
     memory = RedisSessionMemory.from_settings(cast(SessionRedis, redis_client), settings)
+    guest_memory = RedisGuestMemory.from_settings(cast(StoreRedis, redis_client), settings)
 
     pg_provider: PostgresConnectionProvider | None = getattr(
         app.state, AppStateKeys.PG_PROVIDER, None
@@ -291,7 +344,42 @@ def build_guest_upgrade_service(app: FastAPI) -> GuestUpgradeService:
         if pg_provider is not None
         else None
     )
-    return GuestUpgradeService.from_settings(tickets, sessions, memory, conversations, settings)
+
+    # Guest personalization migration (P9-07): on upgrade, carry the guest's ephemeral Redis
+    # preferences + memories into the durable Postgres stores (memories re-gated through the same
+    # P9-04 PII/Art. 9 filter). Requires the shared Postgres pool (the migration *targets* it);
+    # without it the upgrade still carries the session over, only the ephemeral personalization is
+    # not persisted (mirrors the conversation-backfill's optional posture).
+    personalization = _build_guest_personalization_migrator(pg_provider, guest_memory)
+    return GuestUpgradeService.from_settings(
+        tickets, sessions, memory, conversations, settings, personalization=personalization
+    )
+
+
+def _build_guest_personalization_migrator(
+    pg_provider: PostgresConnectionProvider | None,
+    guest_memory: RedisGuestMemory,
+) -> GuestPersonalizationMigrator | None:
+    """Build the guest→account personalization migrator over the shared Postgres pool (P9-07).
+
+    ``None`` when no Postgres pool is wired (the migration has nowhere durable to write). Reuses the
+    same durable seams the memory panel/learn path use — :class:`PostgresPreferenceStore` and
+    :class:`UserMemoryStore` (its embedder is lazy-loaded; the migration only ever calls the
+    embedding path via ``add_memory`` when there are memories to persist). Heavy imports are
+    deferred to keep API import light (matches the sibling builders' posture).
+    """
+    if pg_provider is None:
+        return None
+    from app.llm.embeddings import SentenceTransformerEmbeddingClient
+    from app.memory.guest_personalization import GuestPersonalizationMigrator
+    from app.memory.store import UserMemoryStore
+    from app.repositories.preference_store import PostgresPreferenceStore
+
+    return GuestPersonalizationMigrator(
+        guest_memory=guest_memory,
+        preferences=PostgresPreferenceStore.from_provider(pg_provider),
+        memories=UserMemoryStore(embedder=SentenceTransformerEmbeddingClient(), db=pg_provider),
+    )
 
 
 def build_rate_limit_service(app: FastAPI) -> RateLimitService:
@@ -439,6 +527,30 @@ def build_dashboard_service(app: FastAPI) -> DashboardService:
 
     provider = _require_pg_provider(app, "dashboard")
     return DashboardService(PostgresDashboardStore.from_provider(provider))
+
+
+def build_memory_service(app: FastAPI) -> MemoryService:
+    """Construct the :class:`MemoryService` (memory panel — prefs + learned memories, P9-05, §5.4).
+
+    Wires the Postgres-backed :class:`~app.repositories.preference_store.PostgresPreferenceStore`
+    (explicit ``preferences``) and the :class:`~app.memory.store.UserMemoryStore` (inferred
+    ``user_memories``, reusing its typed list/delete/clear methods) over the shared Postgres pool
+    the lifespan built. Both rows are anchored to a ``users`` row (FK), so this requires the
+    shared pool (``_require_pg_provider`` fails loudly). The memory store takes the in-process
+    embedder for its constructor, but the panel's list/delete/clear paths never invoke it (no
+    model load); it is lazy-loaded, matching the recall node's posture. Heavy imports are deferred
+    to keep API import light. Called once per process (cached by
+    ``app.api.memory.get_memory_service``).
+    """
+    from app.llm.embeddings import SentenceTransformerEmbeddingClient
+    from app.memory.store import UserMemoryStore
+    from app.repositories.preference_store import PostgresPreferenceStore
+    from app.services.memory import MemoryService
+
+    provider = _require_pg_provider(app, "memory panel")
+    preferences = PostgresPreferenceStore.from_provider(provider)
+    memories = UserMemoryStore(embedder=SentenceTransformerEmbeddingClient(), db=provider)
+    return MemoryService(preferences=preferences, memories=memories)
 
 
 def build_session_authenticator(app: FastAPI) -> SessionAuthenticator:

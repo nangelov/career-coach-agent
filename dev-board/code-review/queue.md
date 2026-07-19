@@ -112,3 +112,14 @@ The orchestrator's board. One row per task. See `.claude/skills/agent-handoff/SK
 | P8-06-verify | P8 exit: edit/propose/approve/progress | P8 | DONE | 1 | APPROVED | APPROVED |
 | P8-07-cicd-verify | P8 CI/CD verification | P8 | DONE | 1 | APPROVED | APPROVED |
 | P8-08-curated-deps-guard | Guard against curated-CI-dependency drift | P8 | DONE | 1 | APPROVED | APPROVED |
+| P9-01-message-feedback | message_feedback capture (👍/👎 + reason) | P9 | DONE | 1 | APPROVED | APPROVED |
+| P9-02-langmem-recall | LangMem recall wired before the planner | P9 | DONE | 1 | APPROVED | APPROVED |
+| P9-03-langmem-learn-task | Post-turn learn step (Celery, extract/dedup/confidence/demote) | P9 | DONE | 2 | APPROVED | APPROVED |
+| P9-04-memory-pii-gdpr-filter | S7: PII redaction + GDPR Art. 9 exclusion before memory writes | P9 | DONE | 1 | APPROVED | APPROVED |
+| P9-05-memory-crud-api | Memory panel API (silent-but-viewable/deletable) | P9 | DONE | 1 | APPROVED | APPROVED |
+| P9-06-responder-tone-adaptation | Responder adapts to recalled preferences/memories | P9 | DONE | 1 | APPROVED | APPROVED |
+| P9-07-guest-personalization-redis | Guest personalization session-only (Redis); upgrade persists | P9 | DONE | 1 | APPROVED | APPROVED |
+| P9-08-retention-purge | S14: periodic retention purge (30 days after last activity) | P9 | DONE | 1 | APPROVED | APPROVED |
+| P9-09-frontend-feedback-memory-panel | 👍/👎 + try again + memory panel (frontend) | P9 | DONE | 1 | APPROVED | APPROVED |
+| P9-10-verify | P9 exit: cross-session adaptation; 👎 changes behavior; inspect/delete | P9 | DONE | 1 | APPROVED | APPROVED |
+| P9-11-cicd-verify | P9 CI/CD verification | P9 | DONE | 1 | APPROVED | APPROVED |

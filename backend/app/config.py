@@ -138,6 +138,25 @@ class Settings(BaseSettings):
             "long-running session_id does not grow Redis usage unbounded (recent turns only, §4)."
         ),
     )
+    GUEST_MEMORY_TTL_SECONDS: int = Field(
+        default=86_400,
+        description=(
+            "TTL for a guest's Redis-only personalization store (P9-07, §5.4 — 'Guests: "
+            "personalization is session-only (Redis, ephemeral)'). Mirrors the guest session "
+            "lifetime (GUEST_SESSION_TTL_SECONDS default 24h) so ephemeral personalization never "
+            "outlives the guest session that produced it; refreshed on each write (sliding). On "
+            "upgrade-to-account it is migrated to the durable Postgres stores, then left to expire."
+        ),
+    )
+    GUEST_MEMORY_MAX_MEMORIES: int = Field(
+        default=50,
+        description=(
+            "Cap on learned-memory strings kept in a guest's Redis personalization store "
+            "(P9-07); the oldest are dropped first so a long guest session does not grow Redis "
+            "usage unbounded. Ephemeral and small — durable per-user memory (an account) is "
+            "unbounded by contrast (§5.4)."
+        ),
+    )
     CHAT_CANCEL_TTL_SECONDS: int = Field(
         default=60,
         description=(
@@ -405,6 +424,22 @@ class Settings(BaseSettings):
             "TTL (seconds, default 1h) for the Redis-cached serialized role-requirements "
             "response (§5.6/§5.7 'cache hot roles'). Keyed on the normalized role so a second "
             "request for the same hot role is served from Redis without re-hitting Postgres."
+        ),
+    )
+
+    # -------------------------------------------------------------------------
+    # Data retention (§6.18 / §7.6 — SSO-user retention purge, S14)
+    # -------------------------------------------------------------------------
+    RETENTION_PURGE_AFTER_DAYS: int = Field(
+        default=30,
+        description=(
+            "Retention window (days, default 30) after an SSO user's last activity before "
+            "the periodic retention-purge Celery task erases their entire footprint "
+            "(conversations / CVs / profiles / memories / PDPs / dashboard) via the same "
+            "cascading delete as DELETE /api/me (§6.18 'Retention → SSO users: 1 month'). "
+            "'Last activity' = the most recent messages.created_at across the user's "
+            "conversations, falling back to users.created_at for a user who never chatted. "
+            "Guests are Redis-only and expire with their session TTL — no purge needed."
         ),
     )
 

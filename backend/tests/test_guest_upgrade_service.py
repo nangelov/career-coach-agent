@@ -53,11 +53,25 @@ def _guest_record(session_id: str) -> SessionRecord:
     )
 
 
+class FakeMigrator:
+    """Records guest-personalization migration calls (or raises to prove fail-soft)."""
+
+    def __init__(self, *, error: Exception | None = None) -> None:
+        self._error = error
+        self.calls: list[tuple[str, str]] = []
+
+    async def migrate(self, *, guest_session_id: str, user_id: str) -> None:
+        self.calls.append((guest_session_id, user_id))
+        if self._error is not None:
+            raise self._error
+
+
 def _service(
     *,
     sessions: InMemorySessionStore | None = None,
     memory: InMemorySessionMemory | None = None,
     conversations: ConversationStore | None = None,
+    personalization: FakeMigrator | None = None,
 ) -> GuestUpgradeService:
     return GuestUpgradeService(
         InMemoryUpgradeTicketStore(),
@@ -65,6 +79,7 @@ def _service(
         memory or InMemorySessionMemory(),
         conversations,
         ticket_ttl_seconds=300,
+        personalization=personalization,
     )
 
 
@@ -150,6 +165,48 @@ async def test_upgrade_without_conversation_store_still_promotes() -> None:
     assert ok is True
     record = await sessions.get("guest-1")
     assert record is not None and record.role == "user"
+
+
+async def test_upgrade_migrates_guest_personalization() -> None:
+    sessions = InMemorySessionStore()
+    await sessions.create(_guest_record("guest-1"), ttl_seconds=3600)
+    migrator = FakeMigrator()
+    service = _service(sessions=sessions, personalization=migrator)
+
+    ok = await service.upgrade(
+        guest_session_id="guest-1", user_id="user-42", session_ttl_seconds=7200
+    )
+
+    assert ok is True
+    assert migrator.calls == [("guest-1", "user-42")]  # migrated for the promoted user
+
+
+async def test_upgrade_migration_failure_does_not_break_upgrade() -> None:
+    sessions = InMemorySessionStore()
+    await sessions.create(_guest_record("guest-1"), ttl_seconds=3600)
+    migrator = FakeMigrator(error=RuntimeError("db down"))
+    service = _service(sessions=sessions, personalization=migrator)
+
+    ok = await service.upgrade(
+        guest_session_id="guest-1", user_id="user-42", session_ttl_seconds=7200
+    )
+
+    # The migration raised, but the session still promoted cleanly (best-effort, §5.4).
+    assert ok is True
+    record = await sessions.get("guest-1")
+    assert record is not None and record.role == "user" and record.user_id == "user-42"
+
+
+async def test_upgrade_without_migrator_still_promotes() -> None:
+    sessions = InMemorySessionStore()
+    await sessions.create(_guest_record("guest-1"), ttl_seconds=3600)
+    service = _service(sessions=sessions, personalization=None)
+
+    ok = await service.upgrade(
+        guest_session_id="guest-1", user_id="user-42", session_ttl_seconds=7200
+    )
+
+    assert ok is True
 
 
 async def test_upgrade_noop_when_session_missing() -> None:

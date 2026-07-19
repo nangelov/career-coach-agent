@@ -58,3 +58,7 @@ class AppStateKeys(StrEnum):
     PDP_SERVICE = "pdp_service"
     #: The app-scoped :class:`~app.services.dashboard.DashboardService` (P8-02 CRUD), cached.
     DASHBOARD_SERVICE = "dashboard_service"
+    #: The app-scoped :class:`~app.services.message_feedback.MessageFeedbackStore` (P9-01), cached.
+    MESSAGE_FEEDBACK_STORE = "message_feedback_store"
+    #: The app-scoped :class:`~app.services.memory.MemoryService` (P9-05 memory panel), cached.
+    MEMORY_SERVICE = "memory_service"

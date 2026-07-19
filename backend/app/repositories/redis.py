@@ -27,7 +27,7 @@ implementation), and the concrete store lives in ``repositories/`` per §8.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, Protocol, runtime_checkable
 
 from redis.asyncio import ConnectionPool, Redis
@@ -36,6 +36,11 @@ from app.config import Settings, settings
 from app.llm.types import ChatMessage
 from app.schemas.auth import SessionRecord
 from app.services.cancellation import CancelRegistry
+from app.services.guest_memory import (
+    GuestMemory,
+    GuestPersonalization,
+    _merge_memories,
+)
 from app.services.oauth_state_store import OAuthStateRecord, OAuthStateStore
 from app.services.rate_limiting import RateLimiter, RateLimitResult
 from app.services.roles import RoleProfileCache
@@ -221,6 +226,79 @@ class RedisSessionMemory(SessionMemory):
         await self._redis.ltrim(key, -self._max_messages, -1)
         # Sliding TTL: refreshed on each turn so active sessions persist (§4).
         await self._redis.expire(key, self._ttl_seconds)
+
+
+class RedisGuestMemory(GuestMemory):
+    """Redis-backed guest personalization store (P9-07, design §4 / §5.4).
+
+    A guest's :class:`~app.services.guest_memory.GuestPersonalization` is stored as a single JSON
+    string at ``<prefix>:<session_id>`` with a TTL — **Redis-only**, never Postgres, until the
+    guest upgrades to an account (§5.4). This is the ephemeral counterpart to the durable
+    ``preferences`` / ``user_memories`` rows a logged-in user accumulates.
+
+    * **TTL** — every :meth:`record` refreshes the key's expiry to ``ttl_seconds`` (sliding), so
+      an active guest's personalization stays warm and an idle one lapses. Kept equal to the guest
+      session lifetime by default so personalization never outlives the session that produced it.
+    * **Bounded** — the ``memories`` list is capped to ``max_memories`` (oldest dropped first) so a
+      long guest session cannot grow Redis usage unbounded.
+
+    Uses the same narrow :class:`StoreRedis` seam (set/get) as :class:`RedisSessionStore` — no
+    extra driver surface. :meth:`record` is a read-modify-write on the single JSON blob; a single
+    guest conversation is effectively serial, so the last-write-wins race window (mirrored from
+    :class:`RedisRateLimiter`'s note) is not a practical concern for ephemeral personalization.
+    """
+
+    def __init__(
+        self,
+        client: StoreRedis,
+        *,
+        ttl_seconds: int = 86_400,
+        max_memories: int = 50,
+        key_prefix: str = "guest:mem",
+    ) -> None:
+        self._redis = client
+        self._ttl_seconds = max(1, ttl_seconds)
+        self._max_memories = max(1, max_memories)
+        self._key_prefix = key_prefix
+
+    @classmethod
+    def from_settings(cls, client: StoreRedis, config: Settings = settings) -> RedisGuestMemory:
+        """Build from application config (TTL + memory cap sourced from ``app/config.py``)."""
+        return cls(
+            client,
+            ttl_seconds=config.GUEST_MEMORY_TTL_SECONDS,
+            max_memories=config.GUEST_MEMORY_MAX_MEMORIES,
+        )
+
+    def _key(self, session_id: str) -> str:
+        return f"{self._key_prefix}:{session_id}"
+
+    async def load(self, session_id: str) -> GuestPersonalization:
+        """Return the stored personalization for ``session_id`` (empty if none / expired)."""
+        raw = await self._redis.get(self._key(session_id))
+        if raw is None:
+            return GuestPersonalization()
+        return GuestPersonalization.model_validate_json(raw)
+
+    async def record(
+        self,
+        session_id: str,
+        *,
+        memories: Sequence[str] = (),
+        preferences: Mapping[str, Any] | None = None,
+    ) -> GuestPersonalization:
+        """Merge ``preferences`` + append/dedupe/cap ``memories``, then persist with a fresh TTL."""
+        current = await self.load(session_id)
+        updated = GuestPersonalization(
+            preferences={**current.preferences, **(preferences or {})},
+            memories=_merge_memories(current.memories, memories, self._max_memories),
+        )
+        await self._redis.set(
+            self._key(session_id),
+            updated.model_dump_json(),
+            ex=self._ttl_seconds,
+        )
+        return updated
 
 
 class RedisSessionStore(SessionStore):

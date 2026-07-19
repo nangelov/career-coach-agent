@@ -405,6 +405,24 @@ def kb_chunk_row(
     )
 
 
+def user_memory_row(
+    *,
+    text: str,
+    memory_id: uuid.UUID | None = None,
+    similarity: float = 0.9,
+    memory_type: str = "fact",
+    confidence: float = 1.0,
+) -> SimpleNamespace:
+    """A row shaped like ``search_user_memories``'s cosine-search output (memory recall, P9)."""
+    return SimpleNamespace(
+        memory_id=memory_id or uuid.uuid4(),
+        text=text,
+        similarity=similarity,
+        memory_type=memory_type,
+        confidence=confidence,
+    )
+
+
 def make_search_result(
     *,
     chunk_id: uuid.UUID | None = None,

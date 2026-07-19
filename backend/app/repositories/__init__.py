@@ -11,6 +11,7 @@ from .redis import (
     CancelRedis,
     RedisCancelRegistry,
     RedisConnectionProvider,
+    RedisGuestMemory,
     RedisSessionMemory,
     SessionRedis,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "PostgresConversationStore",
     "RedisCancelRegistry",
     "RedisConnectionProvider",
+    "RedisGuestMemory",
     "RedisSessionMemory",
     "SearchResult",
     "SessionRedis",

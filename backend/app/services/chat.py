@@ -33,6 +33,7 @@ The turn, per user message:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
@@ -92,6 +93,34 @@ class GraphTurnRunner(Protocol):
         ...
 
 
+@runtime_checkable
+class LearnEnqueuer(Protocol):
+    """The narrow enqueue port for the post-turn teachable-memory learn task (§5.4 point 3).
+
+    Fire-and-forget: enqueues the async learn job for a completed logged-in turn and returns the
+    Celery task id. Structural (no hard Celery import) so production wires
+    :func:`app.tasks.memory_learn.enqueue_learn_from_turn` and tests inject a fake recorder.
+    """
+
+    def __call__(
+        self, *, user_id: str, message_id: str, user_text: str, assistant_text: str
+    ) -> str: ...
+
+
+@runtime_checkable
+class GuestLearner(Protocol):
+    """The in-process post-turn learn port for a **guest** turn (P9-07, §5.4).
+
+    The guest counterpart to :class:`LearnEnqueuer`: instead of enqueuing a durable Celery job it
+    extracts + gates personalization and writes it to the guest's **Redis-only** store (no
+    Postgres). Async (the extraction is an LLM call) and fail-soft; the chat service runs it as a
+    fire-and-forget background task so it never delays the stream. Structural so production wires
+    :class:`~app.memory.guest_personalization.GuestPersonalizationLearner` and tests inject a fake.
+    """
+
+    async def __call__(self, *, session_id: str, user_text: str, assistant_text: str) -> None: ...
+
+
 @dataclass
 class _ResponseResult:
     """Accumulated result of streaming the responder (async generators can't ``return``)."""
@@ -117,6 +146,15 @@ class ChatService:
     deployment without a Postgres provider — the service behaves as Redis working-memory only.
     When present, a logged-in user's turn (``user_id`` set on :meth:`stream_turn`) is *also*
     persisted to Postgres so the conversation survives a restart / Redis eviction (design §4).
+
+    The optional :class:`LearnEnqueuer` is the post-turn teachable-memory hook (§5.4 point 3):
+    when wired, a successful logged-in turn fire-and-forget enqueues the async LangMem-style learn
+    job (:mod:`app.tasks.memory_learn`). Absent (guest path / no Postgres) → no durable learning.
+
+    The optional :class:`GuestLearner` is its **guest** counterpart (P9-07, §5.4): when wired, a
+    successful *guest* turn learns ephemeral, Redis-only personalization in a fire-and-forget
+    background task (never durable). Logged-in turns use the enqueuer; guest turns use the learner —
+    they are mutually exclusive per turn, keyed on whether ``user_id`` is set.
     """
 
     def __init__(
@@ -126,6 +164,8 @@ class ChatService:
         cancel: CancelRegistry | None = None,
         *,
         conversations: ConversationStore | None = None,
+        learn_enqueuer: LearnEnqueuer | None = None,
+        guest_learner: GuestLearner | None = None,
         cancel_check_interval: int = DEFAULT_CANCEL_CHECK_INTERVAL,
     ) -> None:
         self._runner = runner
@@ -148,7 +188,12 @@ class ChatService:
         self._memory = memory if memory is not None else InMemorySessionMemory()
         self._cancel = cancel if cancel is not None else InMemoryCancelRegistry()
         self._conversations = conversations
+        self._learn_enqueuer = learn_enqueuer
+        self._guest_learner = guest_learner
         self._cancel_check_interval = max(1, cancel_check_interval)
+        # Strong references to in-flight guest-learn background tasks so they are not GC'd before
+        # completion (asyncio only holds a weak reference); each removes itself when done.
+        self._guest_learn_tasks: set[asyncio.Task[None]] = set()
 
     async def aclose(self) -> None:
         """Release the underlying graph runner's resources (best-effort)."""
@@ -270,6 +315,14 @@ class ChatService:
             # Durable persist happens *after* the terminal event so the DB write never delays the
             # user-visible stream; best-effort (logged, never raised — see _persist_turn).
             await self._persist_turn(user_id, session_id, user_msg, assistant)
+            # Post-turn teachable-memory learn (§5.4 point 3): enqueue the async extraction job for
+            # a successful, non-cancelled logged-in turn. Fire-and-forget — it must not delay or
+            # break the stream, so it runs only after persist and never raises (see _enqueue_learn).
+            self._enqueue_learn(user_id, message_id, user_msg, assistant)
+            # Guest counterpart (P9-07): a guest turn learns ephemeral Redis-only personalization
+            # in a fire-and-forget background task, so the in-process LLM extraction never delays
+            # the already-delivered stream (mirrors the enqueuer's non-blocking posture).
+            self._spawn_guest_learn(user_id, session_id, user_msg, assistant)
         # The terminal-error handlers below deliberately do NOT persist: an errored turn is a
         # failure (all models down / unexpected error), and the except may itself be triggered
         # by a datastore issue — attempting a DB write there would be futile and noisy. Note the
@@ -403,6 +456,71 @@ class ChatService:
             logger.warning(
                 "failed to persist turn to Postgres (session=%s)", session_id, exc_info=True
             )
+
+    def _enqueue_learn(
+        self,
+        user_id: str | None,
+        message_id: str,
+        user_message: ChatMessage,
+        assistant_message: ChatMessage,
+    ) -> None:
+        """Enqueue the post-turn learn job for a logged-in turn (best-effort, §5.4 point 3).
+
+        A no-op for guests (``user_id is None`` — durable learning requires an account), when no
+        :class:`LearnEnqueuer` is wired, or when the answer is empty (nothing to learn from). Like
+        the rest of the post-terminal-event work, an enqueue failure is logged and swallowed — it
+        must **never** break the user-visible SSE stream.
+        """
+        if not user_id or self._learn_enqueuer is None or not assistant_message.content:
+            return
+        try:
+            self._learn_enqueuer(
+                user_id=user_id,
+                message_id=message_id,
+                user_text=user_message.content or "",
+                assistant_text=assistant_message.content,
+            )
+        except Exception:  # noqa: BLE001 - enqueue must never break the stream
+            logger.warning(
+                "failed to enqueue post-turn learn (message=%s)", message_id, exc_info=True
+            )
+
+    def _spawn_guest_learn(
+        self,
+        user_id: str | None,
+        session_id: str,
+        user_message: ChatMessage,
+        assistant_message: ChatMessage,
+    ) -> None:
+        """Fire-and-forget the guest personalization learn for a completed guest turn (P9-07).
+
+        A no-op for a logged-in user (``user_id`` set — they use :meth:`_enqueue_learn`), when no
+        :class:`GuestLearner` is wired, or when the answer is empty (nothing to learn from). Runs
+        in-process (the guest store is ephemeral Redis, no Celery), but scheduled as a background
+        :class:`asyncio.Task` so the LLM extraction never delays the user-visible stream — the same
+        "must not delay or break the stream" contract the logged-in enqueue honors. The learner is
+        itself fail-soft; a done-callback drops the task reference and logs any escaped error.
+        """
+        if user_id or self._guest_learner is None or not assistant_message.content:
+            return
+        coro = self._guest_learner(
+            session_id=session_id,
+            user_text=user_message.content or "",
+            assistant_text=assistant_message.content,
+        )
+        try:
+            task = asyncio.ensure_future(coro)
+        except RuntimeError:  # no running event loop (e.g. a sync test context) — skip cleanly
+            coro.close()
+            return
+        self._guest_learn_tasks.add(task)
+        task.add_done_callback(self._on_guest_learn_done)
+
+    def _on_guest_learn_done(self, task: asyncio.Task[None]) -> None:
+        """Drop the finished guest-learn task's reference and surface any escaped error (logged)."""
+        self._guest_learn_tasks.discard(task)
+        if not task.cancelled() and task.exception() is not None:
+            logger.warning("guest personalization learn task failed", exc_info=task.exception())
 
     async def _finish_cancelled(
         self, session_id: str, produced: list[ChatMessage], message_id: str

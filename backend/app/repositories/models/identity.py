@@ -276,6 +276,11 @@ class MessageFeedback(CreatedAtMixin, Base):
             f"rating IN ({', '.join(repr(v) for v in _RATING_VALUES)})",
             name="ck_message_feedback_rating",
         ),
+        # One owner per message (one conversation → one session → one user), so a message
+        # carries at most one feedback row — enforced here so the P9-01 upsert can key its
+        # ``ON CONFLICT`` on ``message_id`` (migration 0009). This unique constraint also
+        # provides the ``message_id`` lookup index, so the column is not separately indexed.
+        UniqueConstraint("message_id", name="uq_message_feedback_message_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -283,7 +288,6 @@ class MessageFeedback(CreatedAtMixin, Base):
         String(32),
         ForeignKey("messages.message_id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

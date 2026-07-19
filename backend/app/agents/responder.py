@@ -50,7 +50,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import AsyncIterator, Iterable, Sequence
+from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
 from typing import Any, Protocol, runtime_checkable
 
 from app.agents.state import AgentState, Citation, Intent, WorkerResult
@@ -130,6 +130,15 @@ JOB_HUNTING_REDIRECT_NOTE = (
     "the reference material to tell them what the market requires for that kind of role "
     "(skills, background, the gap to close), and steer them toward developing those. Be warm "
     "and helpful about the pivot; do not refuse."
+)
+
+#: Lead-in for the personalization system turn (design §5.4). Kept short — it competes with
+#: the grounding block + history for the context budget. Frames the recalled prefs/memories as
+#: *trusted persona context* (the user set them / they passed the P9-04 GDPR-PII gate), not the
+#: untrusted, ignore-embedded-instructions grounding treatment worker/crawled content gets.
+_PERSONALIZATION_PREAMBLE = (
+    "Adapt your tone, depth, language, and advice to what you know about this user below. "
+    "Do not repeat it back to them verbatim unless it is directly relevant."
 )
 
 #: How many trailing history messages to hand the responder (bounded context window).
@@ -239,8 +248,17 @@ class Responder:
                 await aclose()
 
     def _build_messages(self, state: AgentState) -> list[ChatMessage]:
-        """Assemble the synthesis prompt: persona → grounding → history → current turn."""
+        """Assemble the synthesis prompt: persona → personalization → grounding → turn.
+
+        The personalization turn (design §5.4) is injected only when memory recall (P9-02) found
+        something — for a guest or a user with nothing learned yet the prompt is byte-for-byte the
+        pre-P9-06 persona + grounding assembly, so this adds tone adaptation without regressing the
+        walking-skeleton behaviour.
+        """
         messages: list[ChatMessage] = [ChatMessage(role="system", content=RESPONDER_SYSTEM_PROMPT)]
+        personalization = _personalization_note(state)
+        if personalization:
+            messages.append(ChatMessage(role="system", content=personalization))
         if state.plan is not None and state.plan.intent is Intent.JOB_HUNTING:
             messages.append(ChatMessage(role="system", content=JOB_HUNTING_REDIRECT_NOTE))
         grounding = _grounding_block(state)
@@ -272,6 +290,76 @@ def _grounding_block(state: AgentState) -> str | None:
         origin="was gathered by retrieval tools (knowledge base, web search, market requirements)",
         sources=citation_lines,
     )
+
+
+def _personalization_note(state: AgentState) -> str | None:
+    """Render recalled prefs + learned memories into one trusted personalization system turn.
+
+    Returns ``None`` when memory recall found nothing (guest, or a user with nothing learned yet),
+    so the prompt is unchanged from before P9-06 — no empty block, no regression. Otherwise it
+    frames both signals with an **explicit-precedence** contract (design §5.4 point 4: *"explicit
+    edits override inferred memories"*): the ``preferences`` line is labelled authoritative and the
+    ``memories`` line inferred/lower-priority, so precedence is stated at generation time, not left
+    to the model to infer. These are first-party, user-controlled, PII-gated (P9-04) data, so —
+    unlike :func:`_grounding_block` — they are **not** fenced as untrusted content.
+    """
+    preference_lines = _preference_lines(state.memory.preferences)
+    memories = [m for m in state.memory.memories if isinstance(m, str) and m.strip()]
+    if not preference_lines and not memories:
+        return None
+
+    parts = [_PERSONALIZATION_PREAMBLE]
+    if preference_lines:
+        parts.append(
+            "The user has explicitly set these preferences (authoritative — always follow them, "
+            "and if a learned fact below conflicts, the explicit preference wins): "
+            + "; ".join(preference_lines)
+            + "."
+        )
+    if memories:
+        parts.append(
+            "You have previously learned about the user (inferred — lower priority than any "
+            "explicit preference above): " + "; ".join(memories) + "."
+        )
+    return "\n".join(parts)
+
+
+def _preference_lines(preferences: Mapping[str, Any]) -> list[str]:
+    """Render the explicit ``preferences`` JSONB into ``key=value`` fragments for the prompt.
+
+    Skips empty keys / values that render to nothing so a partially-filled prefs object never
+    injects noise. Values may be scalars, lists (focus areas, do/don't), or shallow nested maps
+    (:func:`_render_pref_value`) — the JSONB shape is user-controlled, so this stays permissive.
+    """
+    lines: list[str] = []
+    for key, value in preferences.items():
+        if not isinstance(key, str) or not key.strip():
+            continue
+        rendered = _render_pref_value(value)
+        if rendered:
+            lines.append(f"{key.strip()}={rendered}")
+    return lines
+
+
+def _render_pref_value(value: Any) -> str | None:
+    """Flatten one preference value to a short string, or ``None`` if it carries nothing."""
+    if isinstance(value, str):
+        return value.strip() or None
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, (list, tuple)):
+        items = [r for r in (_render_pref_value(v) for v in value) if r]
+        return ", ".join(items) or None
+    if isinstance(value, Mapping):
+        items = [
+            f"{k}: {r}"
+            for k, v in value.items()
+            if isinstance(k, str) and (r := _render_pref_value(v))
+        ]
+        return ", ".join(items) or None
+    return None
 
 
 def _worker_texts(results: Iterable[WorkerResult]) -> list[str]:

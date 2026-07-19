@@ -2,6 +2,7 @@
 
 - [Dev-board path gotcha](project-dev-board-path.md) — dev-board/ + code-review/ + .claude/skills live at REPO ROOT, not backend/ cwd
 - [CI curated deps](feedback-ci-curated-deps.md) — CI installs only light deps; never import heavy ML stack at module import time
+- [langmem not imported](project-langmem-not-imported.md) — langmem/trustcall declared but never imported in app/ (P9 hand-rolled); keep in curated-deps exclusion allowlist
 - [CI ruff format gate](feedback-ci-ruff-format-gate.md) — backend gate runs `ruff format --check .` too; ruff version bumps drift older committed files red
 - [Redis Protocol cast](feedback-redis-protocol-cast.md) — real redis.asyncio.Redis fails strict Protocol match; cast at composition root, no ignore on from_url in redis 6.x
 - [aclosing vs AsyncIterator](feedback-aclosing-asynciterator.md) — contextlib.aclosing fails mypy on AsyncIterator-typed streams; use try/finally + getattr aclose for deterministic early-close

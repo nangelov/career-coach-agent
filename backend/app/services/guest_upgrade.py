@@ -25,6 +25,7 @@ after login the user lands back in the same conversation, not a blank one.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from app.config import Settings, settings
@@ -34,6 +35,9 @@ from app.services.conversation_store import ConversationStore
 from app.services.session_memory import SessionMemory
 from app.services.session_store import SessionStore
 from app.services.upgrade_ticket_store import UpgradeTicketStore
+
+if TYPE_CHECKING:
+    from app.memory.guest_personalization import GuestPersonalizationMigrator
 
 logger = logging.getLogger(__name__)
 
@@ -72,10 +76,10 @@ def _pair_turns(
 class GuestUpgradeService:
     """Mint upgrade tickets and carry a guest's active session into a logged-in account.
 
-    Ports (the ticket store, session store, session memory, and the optional durable
-    conversation store) plus the ticket TTL are injected at construction (via
-    :meth:`from_settings`), matching the sibling auth services — nothing reads the global
-    ``settings`` in a method body.
+    Ports (the ticket store, session store, session memory, the optional durable conversation
+    store, and the optional guest-personalization migrator) plus the ticket TTL are injected at
+    construction (via :meth:`from_settings`), matching the sibling auth services — nothing reads
+    the global ``settings`` in a method body.
     """
 
     def __init__(
@@ -86,12 +90,14 @@ class GuestUpgradeService:
         conversations: ConversationStore | None,
         *,
         ticket_ttl_seconds: int,
+        personalization: GuestPersonalizationMigrator | None = None,
     ) -> None:
         self._tickets = tickets
         self._sessions = sessions
         self._memory = memory
         self._conversations = conversations
         self._ticket_ttl_seconds = ticket_ttl_seconds
+        self._personalization = personalization
 
     @classmethod
     def from_settings(
@@ -101,6 +107,8 @@ class GuestUpgradeService:
         memory: SessionMemory,
         conversations: ConversationStore | None,
         config: Settings = settings,
+        *,
+        personalization: GuestPersonalizationMigrator | None = None,
     ) -> GuestUpgradeService:
         """Build from application config (upgrade-ticket TTL)."""
         return cls(
@@ -109,6 +117,7 @@ class GuestUpgradeService:
             memory,
             conversations,
             ticket_ttl_seconds=config.UPGRADE_TICKET_TTL_SECONDS,
+            personalization=personalization,
         )
 
     async def create_ticket(self, guest_session_id: str) -> UpgradeTicketResponse:
@@ -149,16 +158,20 @@ class GuestUpgradeService:
 
         Steps: (1) backfill the guest's prior user↔assistant transcript into Postgres so
         the conversation begins persisting like any logged-in session (best-effort — a DB
-        failure must not block the login); (2) overwrite the session record **in place** as
-        ``role="user"`` with ``user_id`` and the logged-in TTL, preserving the original
-        ``created_at``. The Redis working memory is left untouched under the same key, so the
-        live conversation continues seamlessly.
+        failure must not block the login); (2) migrate the guest's ephemeral Redis
+        personalization (preferences + learned memories) into the durable Postgres stores
+        (best-effort, PII/Art. 9 re-gated on the way in — P9-07); (3) overwrite the session
+        record **in place** as ``role="user"`` with ``user_id`` and the logged-in TTL, preserving
+        the original ``created_at``. The Redis working memory (and the now-migrated personalization)
+        is left untouched under the same key to expire naturally, so the live conversation continues
+        seamlessly.
         """
         record = await self._sessions.get(guest_session_id)
         if record is None or record.role != "guest":
             return False
 
         await self._backfill(guest_session_id, user_id)
+        await self._migrate_personalization(guest_session_id, user_id)
 
         # Re-anchor the session record to the user, keeping the same id (so the Redis
         # working memory and the client's conversation carry over) and its start time.
@@ -203,3 +216,25 @@ class GuestUpgradeService:
                     exc_info=True,
                 )
                 return
+
+    async def _migrate_personalization(self, guest_session_id: str, user_id: str) -> None:
+        """Migrate the guest's ephemeral Redis personalization to Postgres (best-effort, P9-07).
+
+        Delegates to the injected
+        :class:`~app.memory.guest_personalization.GuestPersonalizationMigrator` (preferences → the
+        user's ``preferences`` row; memories → ``user_memories`` via the same P9-04 PII/Art. 9
+        gate). A no-op when no migrator is wired (e.g. a deployment without
+        Postgres, or the guest accumulated nothing). Mirrors :meth:`_backfill`'s fail-soft posture:
+        a migration failure is logged and swallowed so it can **never** abort the upgrade/login —
+        the guest still becomes a logged-in user, only their ephemeral personalization is lost.
+        """
+        if self._personalization is None:
+            return
+        try:
+            await self._personalization.migrate(guest_session_id=guest_session_id, user_id=user_id)
+        except Exception:  # noqa: BLE001 - personalization migration must never block the upgrade
+            logger.warning(
+                "failed to migrate guest personalization to Postgres (session=%s)",
+                guest_session_id,
+                exc_info=True,
+            )

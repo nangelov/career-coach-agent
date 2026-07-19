@@ -32,6 +32,8 @@ from .api.dashboard import router as dashboard_router
 from .api.feedback import router as feedback_router
 from .api.jobs import router as jobs_router
 from .api.me import router as me_router
+from .api.memory import router as memory_router
+from .api.message_feedback import router as message_feedback_router
 from .api.pdp import router as pdp_router
 from .api.profile import router as profile_router
 from .api.roles import router as roles_router
@@ -165,6 +167,8 @@ def create_app() -> FastAPI:
     app.include_router(roles_router)
     app.include_router(pdp_router)
     app.include_router(dashboard_router)
+    app.include_router(message_feedback_router)
+    app.include_router(memory_router)
 
     return app
 

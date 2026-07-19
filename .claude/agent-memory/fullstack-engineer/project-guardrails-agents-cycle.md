@@ -17,3 +17,10 @@ guardrails module's **top level** runs `app.agents.__init__`, which eagerly load
 (runtime) + under `TYPE_CHECKING` (annotations), never at module top. Same rule for any lower
 layer needing an `agents`-package symbol. `guardrails.untrusted_content` is a pure leaf (stdlib
 only) on purpose — keep it that way.
+
+**Same cycle bit `app.memory.store`** (P9-03): it imported `from app.agents.rag_agent import
+SessionProvider` at module top → fine when `agents` loads first, but broke the moment `app.memory`
+was imported first (a task importing `app.memory.learn` runs the `app.memory` package init →
+store). `SessionProvider` was only an annotation, so moving it under `TYPE_CHECKING` broke the
+cycle. Watch this whenever a new `app.memory` / `app.tasks` module makes `app.memory` an import
+entrypoint.

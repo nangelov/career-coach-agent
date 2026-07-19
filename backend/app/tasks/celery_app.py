@@ -20,6 +20,7 @@ Broker/backend URL is sourced from settings (REDIS_URL), never hard-coded.
 from __future__ import annotations
 
 from celery import Celery
+from celery.schedules import crontab
 
 from app.config import settings
 
@@ -36,6 +37,8 @@ celery_app = Celery(
         "app.tasks.taxonomy",
         "app.tasks.market",
         "app.tasks.learning_resources",
+        "app.tasks.memory_learn",
+        "app.tasks.retention_purge",
     ],
 )
 
@@ -45,4 +48,14 @@ celery_app.conf.update(
     accept_content=["json"],
     timezone="UTC",
     enable_utc=True,
+    # Periodic (beat) schedule — the repo's first. The retention purge (S14, §6.18) runs
+    # once daily; a 30-day retention window is coarse enough that daily granularity easily
+    # satisfies it (no finer schedule needed). Fires at 03:00 UTC (off-peak). Requires a
+    # running ``celery -A app.tasks.celery_app beat`` process (the compose ``beat`` service).
+    beat_schedule={
+        "retention-purge-daily": {
+            "task": "tasks.retention_purge",
+            "schedule": crontab(hour=3, minute=0),
+        },
+    },
 )

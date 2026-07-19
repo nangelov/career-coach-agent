@@ -218,19 +218,19 @@ users. **No job listings are ever shown.**
 
 **Exit:** across two sessions assistant adapts to a stated preference; a 👎 changes future behavior; user can inspect & delete what was learned.
 
-- [ ] **(B)** `message_feedback` capture: 👍/👎 + optional reason — `POST /api/messages/{message_id}/feedback`.
-- [ ] **(B)** `memory/` on **LangMem** (in-process, over pgvector `user_memories`) — recall step (explicit prefs + top-k `user_memories` → context) wired into the graph before the planner.
-- [ ] **(B)** Learn step as a Celery task post-turn (LangMem extract/update): durable prefs, dedup/update, confidence; thumb-down demotes/removes.
-- [ ] **(B)** **S7 — PII redaction before extraction** (design §7.6): durable `user_memories` are PII-free.
-- [ ] **(B)** **S7 — GDPR Art. 9 exclusion filter** (design §7.6): health / disability / ethnicity / religion / union / sexuality are **never** made durable (usable within the turn only). A career coach *will* receive these.
-- [ ] **(B)** Learned-memory application = **silent-but-viewable/deletable (opt-out)** [DECIDED §6.10] — memory panel, no per-fact confirmation prompts.
-- [ ] **(B)** Responder adapts tone/depth to recalled preferences.
-- [ ] **(B)** `GET/PUT/DELETE /api/memory` (view/edit/delete learned memories + preferences).
-- [ ] **(B)** Guests: personalization session-only (Redis); account upgrade persists it.
-- [ ] **(B)** **S14 — Retention purge** (§6.18): periodic Celery job deleting SSO users' conversations / CVs / profiles / memories / traces **30 days after last activity**; guests expire with the session TTL.
-- [ ] **(F)** 👍/👎 on messages + inline "try again"; "What the coach knows about you" panel.
-- [ ] **(T)** Cross-session adaptation; 👎 changes behavior; inspect + delete memories.
-- [ ] **(T)** **CI/CD verification** — run the full backend + frontend CI command sets locally (ruff + ruff format --check + mypy + pytest; eslint + tsc + jest — the exact commands in `.github/workflows/backend-ci.yml` / `frontend-ci.yml`) and confirm both are green before closing the phase.
+- [x] **(B)** `message_feedback` capture: 👍/👎 + optional reason — `POST /api/messages/{message_id}/feedback`.
+- [x] **(B)** `memory/` on **LangMem** (in-process, over pgvector `user_memories`) — recall step (explicit prefs + top-k `user_memories` → context) wired into the graph before the planner.
+- [x] **(B)** Learn step as a Celery task post-turn (LangMem extract/update): durable prefs, dedup/update, confidence; thumb-down demotes/removes.
+- [x] **(B)** **S7 — PII redaction before extraction** (design §7.6): durable `user_memories` are PII-free.
+- [x] **(B)** **S7 — GDPR Art. 9 exclusion filter** (design §7.6): health / disability / ethnicity / religion / union / sexuality are **never** made durable (usable within the turn only). A career coach *will* receive these.
+- [x] **(B)** Learned-memory application = **silent-but-viewable/deletable (opt-out)** [DECIDED §6.10] — memory panel, no per-fact confirmation prompts.
+- [x] **(B)** Responder adapts tone/depth to recalled preferences.
+- [x] **(B)** `GET/PUT/DELETE /api/memory` (view/edit/delete learned memories + preferences).
+- [x] **(B)** Guests: personalization session-only (Redis); account upgrade persists it.
+- [x] **(B)** **S14 — Retention purge** (§6.18): periodic Celery job deleting SSO users' conversations / CVs / profiles / memories / traces **30 days after last activity**; guests expire with the session TTL.
+- [x] **(F)** 👍/👎 on messages + inline "try again"; "What the coach knows about you" panel.
+- [x] **(T)** Cross-session adaptation; 👎 changes behavior; inspect + delete memories.
+- [x] **(T)** **CI/CD verification** — run the full backend + frontend CI command sets locally (ruff + ruff format --check + mypy + pytest; eslint + tsc + jest — the exact commands in `.github/workflows/backend-ci.yml` / `frontend-ci.yml`) and confirm both are green before closing the phase.
 
 ---
 

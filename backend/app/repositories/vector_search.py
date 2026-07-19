@@ -48,13 +48,16 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
+from typing import cast as type_cast
 
-from sqlalchemy import Float, cast, func, select
+from sqlalchemy import Float, cast, delete, func, select
 
 from app.repositories.models.knowledge import KbChunk, UserMemory
 
 if TYPE_CHECKING:
+    from sqlalchemy import CursorResult
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from app.llm.embeddings import EmbeddingClient
@@ -91,6 +94,43 @@ class MemorySearchResult:
     similarity: float
     memory_type: str
     confidence: float
+
+
+@dataclass(frozen=True)
+class UserMemoryRecord:
+    """A plain (non-vector) projection of one ``user_memories`` row.
+
+    Returned by :func:`list_user_memories_by_source_message` so the learn step (P9-03) can
+    apply its demotion policy without loading the heavy 4096-dim embedding column.
+
+    :attr:`updated_at` is carried so the demotion pass can be **idempotent**: a memory whose
+    ``updated_at`` is at/after a down-vote's timestamp was already learned or demoted in response
+    to that vote, so a standing down-vote in the recent window is not re-applied every later pass.
+    """
+
+    memory_id: uuid.UUID
+    text: str
+    memory_type: str
+    confidence: float
+    source_message_id: str | None
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class UserMemoryListItem:
+    """A panel-facing projection of one ``user_memories`` row (P9-05 memory panel).
+
+    The columns the "what the coach knows about you" surface shows — id, text, type, confidence
+    and ``created_at`` — with the heavy 4096-dim embedding deliberately excluded (§7.6: a derived
+    artifact never crosses the wire). Distinct from :class:`UserMemoryRecord` (the learn step's
+    demotion projection, which carries ``updated_at``/``source_message_id`` instead).
+    """
+
+    memory_id: uuid.UUID
+    text: str
+    memory_type: str
+    confidence: float
+    created_at: datetime
 
 
 async def add_kb_chunk(
@@ -145,6 +185,148 @@ async def add_user_memory(
     session.add(memory)
     await session.flush()
     return memory
+
+
+async def update_user_memory(
+    session: AsyncSession,
+    *,
+    memory_id: uuid.UUID,
+    text: str | None = None,
+    embedding: Sequence[float] | None = None,
+    confidence: float | None = None,
+) -> bool:
+    """Update a ``user_memories`` row in place; return whether the row existed.
+
+    The learn step (P9-03) uses this to reinforce a near-duplicate memory (bump
+    ``confidence``, refresh ``text``/``embedding``) and to demote a memory a later thumb-down
+    disowned (lower ``confidence``). Only the provided fields are changed. Does not commit —
+    the caller owns the transaction, matching the other primitives here. ``embedding`` must be
+    re-supplied whenever ``text`` changes so the vector stays consistent with the text.
+    """
+    memory = await session.get(UserMemory, memory_id)
+    if memory is None:
+        return False
+    if text is not None:
+        memory.text = text
+    if embedding is not None:
+        memory.embedding = list(embedding)
+    if confidence is not None:
+        memory.confidence = confidence
+    await session.flush()
+    return True
+
+
+async def delete_user_memory(
+    session: AsyncSession,
+    *,
+    memory_id: uuid.UUID,
+    user_id: uuid.UUID | None = None,
+) -> bool:
+    """Delete a ``user_memories`` row; return whether a matching row existed.
+
+    Used by the learn step (P9-03) to remove a memory whose confidence a thumb-down drove to
+    the floor, and by the memory-CRUD API (P9-05). Does not commit — caller-owned txn.
+
+    ``user_id`` scopes the delete to one owner: when provided, a row that exists but belongs to
+    another user returns ``False`` (indistinguishable from "unknown id" — the router maps both to
+    ``404`` with no ownership leak, §7 AuthZ). The learn step, which already knows ownership via
+    source-message attribution, omits it and deletes by id alone.
+    """
+    memory = await session.get(UserMemory, memory_id)
+    if memory is None:
+        return False
+    if user_id is not None and memory.user_id != user_id:
+        return False
+    await session.delete(memory)
+    await session.flush()
+    return True
+
+
+async def list_user_memories(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    limit: int = 200,
+) -> list[UserMemoryListItem]:
+    """List one user's memories, newest first (embedding column excluded) — the panel read.
+
+    A plain (non-vector) ``SELECT ... WHERE user_id = :uid ORDER BY created_at DESC`` — a full
+    listing needs no query embedding (contrast :func:`search_user_memories`, which is the
+    per-turn similarity recall). ``limit`` bounds the result for a pathological account; a real
+    user's learned memories are few. Does not commit — read-only, caller-owned session.
+    """
+    stmt = (
+        select(
+            UserMemory.id.label("memory_id"),
+            UserMemory.text.label("text"),
+            UserMemory.memory_type.label("memory_type"),
+            UserMemory.confidence.label("confidence"),
+            UserMemory.created_at.label("created_at"),
+        )
+        .where(UserMemory.user_id == user_id)
+        .order_by(UserMemory.created_at.desc(), UserMemory.id)
+        .limit(limit)
+    )
+    rows = (await session.execute(stmt)).all()
+    return [
+        UserMemoryListItem(
+            memory_id=row.memory_id,
+            text=row.text,
+            memory_type=row.memory_type,
+            confidence=float(row.confidence),
+            created_at=row.created_at,
+        )
+        for row in rows
+    ]
+
+
+async def clear_user_memories(session: AsyncSession, *, user_id: uuid.UUID) -> int:
+    """Delete **all** of one user's learned memories; return how many rows were removed.
+
+    The "forget everything you've learned about me" action (P9-05) — scoped to ``user_id``, so it
+    never touches another user's rows and leaves the user's explicit ``preferences`` untouched
+    (a separate, user-authored table). Does not commit — caller-owned txn.
+    """
+    result = await session.execute(delete(UserMemory).where(UserMemory.user_id == user_id))
+    return type_cast("CursorResult[Any]", result).rowcount or 0
+
+
+async def list_user_memories_by_source_message(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    source_message_id: str,
+) -> list[UserMemoryRecord]:
+    """List one user's memories learned from ``source_message_id`` (embedding column excluded).
+
+    The attribution primitive the learn step's thumb-down pass uses: a memory whose
+    ``source_message_id`` is a turn the user later disapproved is the one to demote/remove. A
+    lightweight projection (no 4096-dim vector) because the demotion policy needs only the id
+    and current confidence.
+    """
+    stmt = select(
+        UserMemory.id.label("memory_id"),
+        UserMemory.text.label("text"),
+        UserMemory.memory_type.label("memory_type"),
+        UserMemory.confidence.label("confidence"),
+        UserMemory.source_message_id.label("source_message_id"),
+        UserMemory.updated_at.label("updated_at"),
+    ).where(
+        UserMemory.user_id == user_id,
+        UserMemory.source_message_id == source_message_id,
+    )
+    rows = (await session.execute(stmt)).all()
+    return [
+        UserMemoryRecord(
+            memory_id=row.memory_id,
+            text=row.text,
+            memory_type=row.memory_type,
+            confidence=float(row.confidence),
+            source_message_id=row.source_message_id,
+            updated_at=row.updated_at,
+        )
+        for row in rows
+    ]
 
 
 async def hybrid_search_chunks(

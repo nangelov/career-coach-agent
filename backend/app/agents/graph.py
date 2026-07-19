@@ -38,8 +38,12 @@ contract**:
                               blocked turn short-circuits to the terminal tail before any LLM
                               call. Full classifier is P10 (same ``SafetyVerdict`` hook).
 * ``output_guardrail_node``   → real safety classifier (P10; hook shape is stable)
-* ``memory_recall_node`` / ``memory_writer_node``
-                              → real LangMem recall/learn (P9; writer runs async/Celery)
+* ``memory_recall_node``      → **real** (P9-02): built by
+                              :func:`app.agents.memory_agent.make_memory_recall_node`, fetch the
+                              user's explicit prefs + top-k learned ``user_memories`` into
+                              ``AgentState.memory`` before the planner (design §5.4). Guests get
+                              an empty context; fails soft.
+* ``memory_writer_node``      → real LangMem learn step (P9-03; runs async/Celery)
 
 Each stub is annotated with the task that replaces it. A replacement task should swap
 the *body* of its node function and leave the graph topology untouched.
@@ -81,9 +85,11 @@ if TYPE_CHECKING:
 
     from app.llm.embeddings import EmbeddingClient
     from app.services.dashboard import DashboardService
+    from app.services.guest_memory import GuestMemory
 
 from app.agents.dashboard_agent import make_dashboard_node
 from app.agents.market_agent import make_market_node
+from app.agents.memory_agent import make_memory_recall_node
 from app.agents.planner import LLMCompleter, Planner
 from app.agents.rag_agent import SessionProvider, make_rag_node
 from app.agents.responder import LLMResponder, Responder
@@ -191,15 +197,18 @@ def output_guardrail_node(state: AgentState) -> NodeUpdate:
 
 
 # --------------------------------------------------------------------------- #
-# Memory stubs — real LangMem recall/learn lands in P9 (design §5.4-5.5).      #
+# Memory recall (P9-02): real LangMem-backed recall — fetch the user's explicit  #
+# preferences + top-k learned ``user_memories`` into ``AgentState.memory`` before  #
+# the planner (design §5.4). Built by app.agents.memory_agent.make_memory_recall_  #
+# node, binding the shared embedder + Postgres pool build_graph injects. The       #
+# module-default below has no provider bound, so (like the RAG default) it fails    #
+# soft to the default-empty MemoryContext if run before the chat wiring injects a    #
+# provider. The terminal memory *writer* (learn step) stays a stub — that is P9-03.   #
 # --------------------------------------------------------------------------- #
-def memory_recall_node(state: AgentState) -> NodeUpdate:
-    """[STUB → P9] Recall user prefs + learned memories into context.
-
-    No-op today: the ``memory`` slot is already default-constructed on the state, so
-    planning proceeds with empty personalization until P9 populates it here.
-    """
-    return {}
+#: Default memory-recall node used by the import-time module graph: no DB provider bound, so it
+#: is a no-op leaving the default-empty ``MemoryContext`` (the chat wiring injects the shared
+#: provider via ``build_graph(db=...)``). ``build_graph`` swaps in a provider-bound node then.
+memory_recall_node = make_memory_recall_node()
 
 
 def memory_writer_node(state: AgentState) -> NodeUpdate:
@@ -416,6 +425,7 @@ def build_graph(
     search_tool: SearchRunner | None = None,
     http_client: httpx.AsyncClient | None = None,
     dashboard_service: DashboardService | None = None,
+    guest_memory: GuestMemory | None = None,
 ) -> CompiledStateGraph[AgentState]:
     """Assemble and compile the multi-agent turn graph (design §3).
 
@@ -484,6 +494,17 @@ def build_graph(
         else market_intel_node
     )
 
+    # Memory recall (P9-02 + P9-07): fetch personalization into ``AgentState.memory`` before
+    # planning (design §5.4). A logged-in user reads the durable stores via the same shared embedder
+    # + Postgres pool the RAG worker binds (``embedder=`` / ``db=``); a **guest** reads the
+    # Redis-only ``guest_memory`` store. Resolves when either backing is bound; falls back to the
+    # module default (no-op → empty MemoryContext) only when neither is.
+    resolved_memory_recall = (
+        make_memory_recall_node(embedder=embedder, db=db, guest_memory=guest_memory)
+        if (db is not None or guest_memory is not None)
+        else memory_recall_node
+    )
+
     # Dashboard worker (P8-03): reads the living PDP + proposes goals/milestones/tasks/progress
     # (source="ai" → proposed, never silent). Bound to the shared ``DashboardService`` + the same
     # LLM router the planner uses (chat wiring injects both; tests inject fakes). Falls back to the
@@ -497,7 +518,7 @@ def build_graph(
     builder: StateGraph[AgentState] = StateGraph(AgentState)
 
     builder.add_node(INPUT_GUARDRAIL, input_guardrail_node)
-    builder.add_node(MEMORY_RECALL, memory_recall_node)
+    builder.add_node(MEMORY_RECALL, resolved_memory_recall)
     builder.add_node(PLANNER, resolved_planner)
     builder.add_node(WorkerName.RAG.value, resolved_rag)
     builder.add_node(WorkerName.WEB_SEARCH.value, resolved_web_search)
@@ -585,6 +606,7 @@ class GraphTurnStreamer:
         search_tool: SearchRunner | None = None,
         http_client: httpx.AsyncClient | None = None,
         dashboard_service: DashboardService | None = None,
+        guest_memory: GuestMemory | None = None,
     ) -> None:
         # Compile the pre-responder graph once (LLM-free deterministic responder tail — its
         # placeholder answer is discarded; the real Responder streams below).
@@ -596,6 +618,7 @@ class GraphTurnStreamer:
             search_tool=search_tool,
             http_client=http_client,
             dashboard_service=dashboard_service,
+            guest_memory=guest_memory,
         )
         self._responder = Responder(responder_router)
         self._responder_router = responder_router
@@ -646,6 +669,7 @@ async def stream_graph(
     search_tool: SearchRunner | None = None,
     http_client: httpx.AsyncClient | None = None,
     dashboard_service: DashboardService | None = None,
+    guest_memory: GuestMemory | None = None,
 ) -> AsyncIterator[StreamChunk | AgentState]:
     """Run one turn and **stream** the responder's tokens (design §3 "streams tokens").
 
@@ -678,6 +702,7 @@ async def stream_graph(
         search_tool=search_tool,
         http_client=http_client,
         dashboard_service=dashboard_service,
+        guest_memory=guest_memory,
     )
     merged = await streamer.plan(state)
 

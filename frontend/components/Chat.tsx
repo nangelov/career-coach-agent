@@ -13,6 +13,11 @@ import {
   type ChatStreamEvent,
   type SourceCitation,
 } from "@/lib/chatStream";
+import {
+  MessageFeedbackApiError,
+  submitMessageFeedback,
+  type MessageRating,
+} from "@/lib/messageFeedback";
 
 type Role = "user" | "assistant";
 type TurnStatus = "streaming" | "done" | "cancelled" | "error";
@@ -39,6 +44,12 @@ interface ChatMessageView {
   plan?: TurnPlan;
   citations: SourceCitation[];
   errorMessage?: string;
+  /**
+   * The turn's stable backend message id, stamped from the `start`/`done`/`cancelled` stream
+   * events (P9-01). Present once the backend has assigned it; the per-message 👍/👎 controls
+   * address this id (a turn that never received one shows no feedback controls).
+   */
+  messageId?: string;
 }
 
 // Friendly messages for the `?login_error=<reason>` the SSO login BFF redirects back with
@@ -169,6 +180,8 @@ export default function Chat() {
     (event: ChatStreamEvent) => {
       switch (event.event) {
         case "start":
+          // Stamp the turn's stable message id as early as it's known (also on done/cancelled).
+          updateAssistant((m) => ({ ...m, messageId: event.message_id }));
           break;
         case "plan":
           updateAssistant((m) => ({
@@ -207,10 +220,15 @@ export default function Chat() {
             ...m,
             status: "done",
             citations: event.citations,
+            messageId: event.message_id,
           }));
           break;
         case "cancelled":
-          updateAssistant((m) => ({ ...m, status: "cancelled" }));
+          updateAssistant((m) => ({
+            ...m,
+            status: "cancelled",
+            messageId: event.message_id,
+          }));
           break;
         case "error":
           updateAssistant((m) => ({
@@ -236,40 +254,53 @@ export default function Chat() {
     [dropPendingAssistant, updateAssistant],
   );
 
+  // Send one turn through the streaming path. Shared by the composer (`handleSend`) and the
+  // down-vote "Try again?" affordance (§5.5) — a regenerate is just re-sending the same user text.
+  const sendMessage = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || isStreaming || !session) {
+        return;
+      }
+      setRateLimit(null);
+      const userMessage: ChatMessageView = {
+        key: randomId(),
+        role: "user",
+        content: trimmed,
+        status: "done",
+        toolSteps: [],
+        citations: [],
+      };
+      const assistantMessage: ChatMessageView = {
+        key: randomId(),
+        role: "assistant",
+        content: "",
+        status: "streaming",
+        toolSteps: [],
+        citations: [],
+      };
+      setMessages((prev) => [...prev, userMessage, assistantMessage]);
+      setIsStreaming(true);
+      try {
+        await streamChat(
+          { session_id: session.sessionId, message: trimmed },
+          handleEvent,
+        );
+      } finally {
+        setIsStreaming(false);
+      }
+    },
+    [handleEvent, isStreaming, session],
+  );
+
   const handleSend = useCallback(async () => {
     const text = input.trim();
-    if (!text || isStreaming || !session) {
+    if (!text) {
       return;
     }
-    setRateLimit(null);
-    const userMessage: ChatMessageView = {
-      key: randomId(),
-      role: "user",
-      content: text,
-      status: "done",
-      toolSteps: [],
-      citations: [],
-    };
-    const assistantMessage: ChatMessageView = {
-      key: randomId(),
-      role: "assistant",
-      content: "",
-      status: "streaming",
-      toolSteps: [],
-      citations: [],
-    };
-    setMessages((prev) => [...prev, userMessage, assistantMessage]);
     setInput("");
-    setIsStreaming(true);
-    try {
-      await streamChat(
-        { session_id: session.sessionId, message: text },
-        handleEvent,
-      );
-    } finally {
-      setIsStreaming(false);
-    }
-  }, [handleEvent, input, isStreaming, session]);
+    await sendMessage(text);
+  }, [input, sendMessage]);
 
   const handleStop = useCallback(async () => {
     if (!session || !isStreaming) {
@@ -330,6 +361,12 @@ export default function Chat() {
           >
             Plan
           </Link>
+          <Link
+            href="/memory"
+            className="rounded-md border border-gray-300 px-3 py-1 font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Memory
+          </Link>
           <button
             type="button"
             className="rounded-md border border-gray-300 px-3 py-1 font-medium text-gray-700 hover:bg-gray-50"
@@ -348,11 +385,20 @@ export default function Chat() {
         {messages.length === 0 ? (
           <p className="text-gray-400">Ask anything about your career.</p>
         ) : null}
-        {messages.map((message) =>
+        {messages.map((message, index) =>
           message.role === "user" ? (
             <UserBubble key={message.key} content={message.content} />
           ) : (
-            <AssistantBubble key={message.key} message={message} />
+            <AssistantBubble
+              key={message.key}
+              message={message}
+              onTryAgain={() => {
+                const prior = messages[index - 1];
+                if (prior && prior.role === "user") {
+                  void sendMessage(prior.content);
+                }
+              }}
+            />
           ),
         )}
         <div ref={scrollAnchorRef} />
@@ -417,7 +463,13 @@ function UserBubble({ content }: { content: string }) {
   );
 }
 
-function AssistantBubble({ message }: { message: ChatMessageView }) {
+function AssistantBubble({
+  message,
+  onTryAgain,
+}: {
+  message: ChatMessageView;
+  onTryAgain?: () => void;
+}) {
   return (
     <div className="flex justify-start" data-testid="assistant-message">
       <div className="max-w-[80%] space-y-2">
@@ -457,7 +509,141 @@ function AssistantBubble({ message }: { message: ChatMessageView }) {
             {message.errorMessage ?? "Something went wrong."}
           </div>
         ) : null}
+        {/* Per-message 👍/👎 (+ inline "Try again?") — only on a completed, id-stamped turn (§5.5). */}
+        {message.status === "done" && message.messageId ? (
+          <MessageFeedbackControls
+            messageId={message.messageId}
+            onTryAgain={onTryAgain}
+          />
+        ) : null}
       </div>
+    </div>
+  );
+}
+
+// Per-message feedback widget (§5.5): 👍/👎 on a completed assistant turn. A thumbs-down submits
+// immediately, then reveals an optional one-line "why" input and an inline "Try again?" affordance
+// that re-runs the same user turn. Submissions are idempotent upserts (backend P9-01) — toggling
+// or resubmitting updates the stored row, so we simply reflect the last confirmed rating.
+function MessageFeedbackControls({
+  messageId,
+  onTryAgain,
+}: {
+  messageId: string;
+  onTryAgain?: () => void;
+}) {
+  const [rating, setRating] = useState<MessageRating | null>(null);
+  const [reason, setReason] = useState("");
+  const [showReason, setShowReason] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = useCallback(
+    async (next: MessageRating, reasonText?: string) => {
+      setPending(true);
+      setError(null);
+      try {
+        const stored = await submitMessageFeedback(messageId, next, reasonText);
+        setRating(stored.rating);
+      } catch (err) {
+        setError(
+          err instanceof MessageFeedbackApiError
+            ? err.message
+            : "Couldn't save your feedback. Please try again.",
+        );
+      } finally {
+        setPending(false);
+      }
+    },
+    [messageId],
+  );
+
+  const handleUp = useCallback(() => {
+    setShowReason(false);
+    void submit("up");
+  }, [submit]);
+
+  const handleDown = useCallback(() => {
+    setShowReason(true);
+    void submit("down");
+  }, [submit]);
+
+  return (
+    <div
+      className="flex flex-col gap-1.5 text-sm text-gray-500"
+      data-testid="message-feedback"
+    >
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          aria-label="Good response"
+          aria-pressed={rating === "up"}
+          disabled={pending}
+          className={`rounded-md border px-2 py-1 hover:bg-gray-50 disabled:opacity-50 ${
+            rating === "up"
+              ? "border-green-400 bg-green-50 text-green-700"
+              : "border-gray-300"
+          }`}
+          onClick={handleUp}
+        >
+          👍
+        </button>
+        <button
+          type="button"
+          aria-label="Bad response"
+          aria-pressed={rating === "down"}
+          disabled={pending}
+          className={`rounded-md border px-2 py-1 hover:bg-gray-50 disabled:opacity-50 ${
+            rating === "down"
+              ? "border-red-400 bg-red-50 text-red-700"
+              : "border-gray-300"
+          }`}
+          onClick={handleDown}
+        >
+          👎
+        </button>
+        {rating === "down" && onTryAgain ? (
+          <button
+            type="button"
+            className="rounded-md border border-blue-300 px-2 py-1 font-medium text-blue-700 hover:bg-blue-50"
+            data-testid="try-again"
+            onClick={onTryAgain}
+          >
+            Try again?
+          </button>
+        ) : null}
+      </div>
+
+      {showReason ? (
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            className="flex-1 rounded-md border border-gray-300 p-1.5 text-sm"
+            placeholder="What was wrong? (optional)"
+            aria-label="Why was this response unhelpful?"
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+          />
+          <button
+            type="button"
+            className="rounded-md border border-gray-300 px-2 py-1 hover:bg-gray-50 disabled:opacity-50"
+            disabled={pending || !reason.trim()}
+            onClick={() => void submit("down", reason)}
+          >
+            Send
+          </button>
+        </div>
+      ) : null}
+
+      {error ? (
+        <p
+          className="text-xs text-red-600"
+          role="alert"
+          data-testid="feedback-error"
+        >
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

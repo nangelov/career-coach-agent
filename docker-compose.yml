@@ -97,6 +97,26 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  beat:
+    # Same image as the backend; runs the Celery beat scheduler that fires the
+    # periodic retention-purge task (S14, §6.18) — the daily beat_schedule entry in
+    # app/tasks/celery_app.py. Beat only *enqueues* on schedule; the ``worker`` above
+    # executes the enqueued task, so both services are needed for the sweep to run.
+    build:
+      context: ./backend
+    command: ["celery", "-A", "app.tasks.celery_app", "beat", "--loglevel=info"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend

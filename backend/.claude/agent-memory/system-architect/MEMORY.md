@@ -16,3 +16,5 @@
 - [Market cache-key raw-param ruling](ruling-market-cache-key-raw-param.md) — Roles response cache keys on cheap raw-param norm, not taxonomy canonical (canonicalize reads DB); deliberate, don't flag
 - [Market-query rate-limit action ruling](ruling-market-query-rate-limit-action.md) — /api/roles requirements reuses RateLimitAction.MESSAGE; dedicated MARKET_QUERY is a live follow-up, not a blocker
 - [Dashboard worker write-path ruling](ruling-dashboard-worker-write-path.md) — First write-capable worker (P8-03); safe via source=ai→proposed in service, guest fail-soft in node, per-turn user_id closure; template for P9 write paths
+- [Verify live-PG composition ruling](ruling-verify-live-pg-composition.md) — Phase-exit verify tasks may use live Postgres (not offline P8-06 style) when proving separate paths hit the SAME durable rows; fake only external edges, skip clean w/o DB
+- [langmem hand-rolled exclusion ruling](ruling-langmem-handrolled-exclusion.md) — P9 hand-rolled memory on langgraph BaseStore, imports no langmem/trustcall; correctly excluded from curated CI list — don't flag as gap
