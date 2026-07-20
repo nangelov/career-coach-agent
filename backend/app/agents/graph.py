@@ -72,8 +72,8 @@ is a later task.
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any, TypeAlias
+from collections.abc import AsyncIterator, Callable
+from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph._node import StateNode
@@ -110,6 +110,7 @@ from app.guardrails import (
     screen_output,
 )
 from app.llm.types import StreamChunk
+from app.observability import get_tracer, trace_async_iter, traced_node
 
 #: The single, generic refusal a topic-guardrail (OFF_TOPIC) turn returns (design §7.4).
 #: Deliberately content-free like the input-guardrail :data:`~app.guardrails.REFUSAL_MESSAGE`
@@ -528,17 +529,25 @@ def build_graph(
 
     builder: StateGraph[AgentState] = StateGraph(AgentState)
 
-    builder.add_node(INPUT_GUARDRAIL, input_guardrail_node)
-    builder.add_node(MEMORY_RECALL, resolved_memory_recall)
-    builder.add_node(PLANNER, resolved_planner)
-    builder.add_node(WorkerName.RAG.value, resolved_rag)
-    builder.add_node(WorkerName.WEB_SEARCH.value, resolved_web_search)
-    builder.add_node(WorkerName.MARKET_INTEL.value, resolved_market)
-    builder.add_node(WorkerName.PDP_RESUME.value, pdp_resume_node)
-    builder.add_node(WorkerName.DASHBOARD.value, resolved_dashboard)
-    builder.add_node(RESPONDER, resolved_responder)
-    builder.add_node(OUTPUT_GUARDRAIL, output_guardrail_node)
-    builder.add_node(MEMORY_WRITER, memory_writer_node)
+    # Single generic node-wrapping seam (P11 observability, §7.8): every node added here is
+    # wrapped in an OTel span named after its node constant, so a new worker automatically gets
+    # a child span without editing this call site again. ``traced_node`` is transparent (returns
+    # exactly what the node returns, preserves sync/async) and a no-op when tracing is disabled.
+    def _add(name: str, node: StateNode[AgentState, Any], *, is_worker: bool = False) -> None:
+        wrapped = traced_node(name, cast("Callable[[AgentState], Any]", node), is_worker=is_worker)
+        builder.add_node(name, cast("StateNode[AgentState, Any]", wrapped))
+
+    _add(INPUT_GUARDRAIL, input_guardrail_node)
+    _add(MEMORY_RECALL, resolved_memory_recall)
+    _add(PLANNER, resolved_planner)
+    _add(WorkerName.RAG.value, resolved_rag, is_worker=True)
+    _add(WorkerName.WEB_SEARCH.value, resolved_web_search, is_worker=True)
+    _add(WorkerName.MARKET_INTEL.value, resolved_market, is_worker=True)
+    _add(WorkerName.PDP_RESUME.value, pdp_resume_node, is_worker=True)
+    _add(WorkerName.DASHBOARD.value, resolved_dashboard, is_worker=True)
+    _add(RESPONDER, resolved_responder)
+    _add(OUTPUT_GUARDRAIL, output_guardrail_node)
+    _add(MEMORY_WRITER, memory_writer_node)
 
     # Pre-planner chain: input safety → recall → planner — but the input guardrail may
     # short-circuit a blocked turn straight to the terminal tail (output guardrail → memory
@@ -582,7 +591,8 @@ async def run_graph(state: AgentState) -> AgentState:
     validated :class:`AgentState` (LangGraph hands back the schema object; we re-validate
     to normalise it into a first-party model regardless of the runtime's internal form).
     """
-    result = await graph.ainvoke(state)
+    with get_tracer().start_as_current_span("graph.run"):
+        result = await graph.ainvoke(state)
     return AgentState.model_validate(result)
 
 
@@ -638,7 +648,8 @@ class GraphTurnStreamer:
 
     async def plan(self, state: AgentState) -> AgentState:
         """Run the pre-responder pipeline and return the merged turn state."""
-        return AgentState.model_validate(await self._pre_graph.ainvoke(state))
+        with get_tracer().start_as_current_span("graph.plan"):
+            return AgentState.model_validate(await self._pre_graph.ainvoke(state))
 
     def stream_response(self, state: AgentState) -> AsyncIterator[StreamChunk]:
         """Stream the responder's token deltas over the merged ``state`` (fails soft).
@@ -653,9 +664,12 @@ class GraphTurnStreamer:
         * the **topic guardrail** classified it ``OFF_TOPIC`` (design §7.4 →
           :data:`OFF_TOPIC_REFUSAL`, stamped by :func:`_topic_guarded`).
         """
+        # Time the responder's token streaming as a span (the responder span on the streaming
+        # production path — the buffered path gets it as a graph node instead). ``trace_async_iter``
+        # preserves the caller's aclose/cancel semantics; it is a cheap no-op when tracing is off.
         if _is_short_circuited(state):
-            return self._stream_refusal(state)
-        return self._responder.stream(state)
+            return trace_async_iter("graph.responder_stream", self._stream_refusal(state))
+        return trace_async_iter("graph.responder_stream", self._responder.stream(state))
 
     async def _stream_refusal(self, state: AgentState) -> AsyncIterator[StreamChunk]:
         """Emit the guardrail's canned refusal as one terminal chunk (no LLM call)."""
@@ -719,24 +733,27 @@ async def stream_graph(
         guest_memory=guest_memory,
         rate_limiter=rate_limiter,
     )
-    merged = await streamer.plan(state)
+    # One span roots the whole one-shot turn (plan + responder streaming become its children);
+    # a no-op when tracing is disabled.
+    with get_tracer().start_as_current_span("graph.stream"):
+        merged = await streamer.plan(state)
 
-    parts: list[str] = []
-    finish_reason = "stop"
-    # Manage the stream by hand + close best-effort in ``finally`` (the responder's ``stream``
-    # is typed ``AsyncIterator`` → ``contextlib.aclosing`` would not type-check).
-    responder_stream = streamer.stream_response(merged)
-    try:
-        async for chunk in responder_stream:
-            if chunk.content:
-                parts.append(chunk.content)
-            if chunk.finish_reason:
-                finish_reason = chunk.finish_reason
-            yield chunk
-    finally:
-        aclose = getattr(responder_stream, "aclose", None)
-        if aclose is not None:
-            await aclose()
+        parts: list[str] = []
+        finish_reason = "stop"
+        # Manage the stream by hand + close best-effort in ``finally`` (the responder's ``stream``
+        # is typed ``AsyncIterator`` → ``contextlib.aclosing`` would not type-check).
+        responder_stream = streamer.stream_response(merged)
+        try:
+            async for chunk in responder_stream:
+                if chunk.content:
+                    parts.append(chunk.content)
+                if chunk.finish_reason:
+                    finish_reason = chunk.finish_reason
+                yield chunk
+        finally:
+            aclose = getattr(responder_stream, "aclose", None)
+            if aclose is not None:
+                await aclose()
 
     yield merged.model_copy(
         update={

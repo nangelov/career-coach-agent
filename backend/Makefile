@@ -55,7 +55,7 @@ install:
 	uv sync --only-group dev
 	uv pip install fastapi pydantic pydantic-settings "celery[redis]" openai \
 		sqlalchemy asyncpg aiosqlite pgvector alembic joserfc authlib langgraph \
-		python-multipart reportlab
+		python-multipart reportlab opentelemetry-api opentelemetry-sdk sentry-sdk
 
 # Guard against curated-dependency drift: fails (naming the package) if a runtime
 # dep in pyproject.toml is missing from this file's `install` list / backend CI.

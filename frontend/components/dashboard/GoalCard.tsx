@@ -9,6 +9,10 @@ import {
   type Task,
 } from "@/lib/dashboard";
 import type { DashboardActions } from "@/components/Dashboard";
+import { trackEvent } from "@/lib/analytics";
+
+/** The board item a proposal/create acts on — a non-PII enum forwarded as an event parameter. */
+type ItemType = "goal" | "milestone" | "task";
 
 /**
  * One goal on the living-PDP board (design §5.2): its % to target date + task completion bars, its
@@ -79,13 +83,19 @@ function ProgressBar({
   );
 }
 
-/** Approve / reject controls for a proposed row (goal, milestone, or task). */
+/**
+ * Approve / reject controls for a proposed row (goal, milestone, or task). Emits the §6.27
+ * engagement event (with the item type only — never the row's title/content) before running the
+ * mutation.
+ */
 function ProposalControls({
   busy,
+  itemType,
   onApprove,
   onReject,
 }: {
   busy: boolean;
+  itemType: ItemType;
   onApprove: () => void;
   onReject: () => void;
 }) {
@@ -95,7 +105,10 @@ function ProposalControls({
         type="button"
         className="rounded-md bg-green-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
         disabled={busy}
-        onClick={onApprove}
+        onClick={() => {
+          trackEvent("dashboard_proposal_approve", { item_type: itemType });
+          onApprove();
+        }}
       >
         Approve
       </button>
@@ -103,7 +116,10 @@ function ProposalControls({
         type="button"
         className="rounded-md border border-red-300 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
         disabled={busy}
-        onClick={onReject}
+        onClick={() => {
+          trackEvent("dashboard_proposal_reject", { item_type: itemType });
+          onReject();
+        }}
       >
         Reject
       </button>
@@ -134,6 +150,7 @@ function MilestoneRow({
       {proposed ? (
         <ProposalControls
           busy={busy}
+          itemType="milestone"
           onApprove={() =>
             void actions.updateMilestone(milestone.id, { status: APPROVE_STATUS.milestone })
           }
@@ -190,6 +207,7 @@ function TaskRow({
       {proposed ? (
         <ProposalControls
           busy={busy}
+          itemType="task"
           onApprove={() => void actions.updateTask(task.id, { status: APPROVE_STATUS.task })}
           onReject={() => void actions.deleteTask(task.id)}
         />
@@ -224,12 +242,14 @@ function AddRowForm({
   label,
   placeholder,
   busy,
+  itemType,
   onAdd,
   testId,
 }: {
   label: string;
   placeholder: string;
   busy: boolean;
+  itemType: Exclude<ItemType, "goal">;
   onAdd: (title: string) => void;
   testId: string;
 }) {
@@ -239,6 +259,8 @@ function AddRowForm({
     if (!trimmed || busy) {
       return;
     }
+    // Engagement event (§6.27): the item type only — never the entered title.
+    trackEvent("dashboard_item_create", { item_type: itemType });
     onAdd(trimmed);
     setTitle("");
   };
@@ -296,6 +318,7 @@ export default function GoalCard({ goal, busy, actions }: GoalCardProps) {
         {proposed ? (
           <ProposalControls
             busy={busy}
+            itemType="goal"
             onApprove={() => void actions.updateGoal(goal.id, { status: APPROVE_STATUS.goal })}
             onReject={() => void actions.deleteGoal(goal.id)}
           />
@@ -360,6 +383,7 @@ export default function GoalCard({ goal, busy, actions }: GoalCardProps) {
           label={`Add a milestone to ${goal.title}`}
           placeholder="New milestone…"
           busy={busy}
+          itemType="milestone"
           testId="add-milestone-form"
           onAdd={(title) => void actions.createMilestone(goal.id, { title })}
         />
@@ -381,6 +405,7 @@ export default function GoalCard({ goal, busy, actions }: GoalCardProps) {
           label={`Add a task to ${goal.title}`}
           placeholder="New task…"
           busy={busy}
+          itemType="task"
           testId="add-task-form"
           onAdd={(title) => void actions.createTask({ goal_id: goal.id, title })}
         />

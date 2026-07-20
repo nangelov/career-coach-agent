@@ -122,14 +122,19 @@ jobs:
       # is the pure-Python PDF builder (P7-02) app/pdf/builder.py uses; it's imported at
       # module scope by app/services/pdp.py → app/api/pdp.py → app.main, so pytest hits it at
       # collection for nearly every test file — another light, must-curate dep (no
-      # C-extension/CUDA), not part of the excluded ML stack. Keep this
-      # list in sync with the backend/Makefile `install` target (they must produce the same venv).
+      # C-extension/CUDA), not part of the excluded ML stack. `opentelemetry-api` +
+      # `opentelemetry-sdk` are the light pure-Python OTel core (P11, §7.8) imported at module
+      # scope by app/observability/tracing.py → app/agents/graph.py → app.main, so pytest hits
+      # them at collection; the (heavier) FastAPI/Celery instrumentation + OTLP exporter are
+      # lazily imported only when OTEL_ENABLED, so they stay on the check_curated_deps allowlist,
+      # not here. Keep this list in sync with the backend/Makefile `install` target (they must
+      # produce the same venv).
       - name: Install dependencies
         run: |
           uv sync --only-group dev
           uv pip install fastapi pydantic pydantic-settings "celery[redis]" openai \
             sqlalchemy asyncpg aiosqlite pgvector alembic joserfc authlib langgraph \
-            python-multipart reportlab
+            python-multipart reportlab opentelemetry-api opentelemetry-sdk sentry-sdk
 
       # --no-sync: run the tool in the curated venv above WITHOUT uv re-resolving
       # and installing the full project dependency tree (which would drag in the

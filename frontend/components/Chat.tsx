@@ -18,6 +18,7 @@ import {
   submitMessageFeedback,
   type MessageRating,
 } from "@/lib/messageFeedback";
+import { trackEvent } from "@/lib/analytics";
 
 type Role = "user" | "assistant";
 type TurnStatus = "streaming" | "done" | "cancelled" | "error";
@@ -281,6 +282,8 @@ export default function Chat() {
       };
       setMessages((prev) => [...prev, userMessage, assistantMessage]);
       setIsStreaming(true);
+      // Engagement event (§6.27) — metadata only, never the message text.
+      trackEvent("send_message", { role: session.role });
       try {
         await streamChat(
           { session_id: session.sessionId, message: trimmed },
@@ -306,6 +309,7 @@ export default function Chat() {
     if (!session || !isStreaming) {
       return;
     }
+    trackEvent("stop_generation");
     // The backend sets a cancel flag and returns 202; the active stream then
     // emits a terminal `cancelled` event and closes on its own.
     await cancelChat(session.sessionId);
@@ -545,6 +549,11 @@ function MessageFeedbackControls({
       try {
         const stored = await submitMessageFeedback(messageId, next, reasonText);
         setRating(stored.rating);
+        // Engagement event (§6.27): the rating + whether a reason was given, never its text.
+        trackEvent("message_feedback", {
+          rating: stored.rating,
+          has_reason: Boolean(reasonText && reasonText.trim()),
+        });
       } catch (err) {
         setError(
           err instanceof MessageFeedbackApiError

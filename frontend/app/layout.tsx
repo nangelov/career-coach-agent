@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+import Analytics from "@/components/Analytics";
+
 export const metadata: Metadata = {
   title: "Career Coach v2",
   description: "AI career-coaching assistant — v2 rebuild.",
@@ -13,7 +15,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {/* GA4 loader (§6.27) — self-gates on a present session + configured Measurement ID. */}
+        <Analytics />
+        {children}
+      </body>
     </html>
   );
 }

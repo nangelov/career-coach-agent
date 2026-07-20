@@ -254,14 +254,14 @@ users. **No job listings are ever shown.**
 forced error reaches Sentry; GA4 real-time shows a pageview + ≥1 custom event; traces/logs/GA payloads contain
 no CV or message content.
 
-- [ ] **(B)** OpenTelemetry instrumentation: FastAPI auto-instrumentation (requests) + manual spans for the LangGraph node graph (planner → workers → responder) + Celery task spans.
-- [ ] **(B) S11 — PII redaction + retention limit** on traces/logs (§7.6) — traces would otherwise contain full CV text and every message; redact at the source.
-- [ ] **(I)** OTLP exporter, env-configured endpoint/API key, targeting a free-tier hosted backend (owner's choice — Grafana Cloud free / Honeycomb free / similar). OTel is vendor-neutral, so this stays swappable; **no bespoke in-app telemetry dashboard** (YAGNI — use the backend's own UI).
-- [ ] **(I) S15 — Sentry free tier** error notification, **PII scrubbing on**, low-noise alert rule (§6.24 / §7.7).
-- [ ] **(D)** **Admin-access ruling:** access to the telemetry backend's dashboard is the provider's own login (recommend enabling Google sign-in there). **No new username/password admin surface is added to this app** — in-app admin actions keep using the existing `is_admin`-flagged SSO account (P3-05); the SSO-only decision (§6.2) is not reopened.
-- [ ] **(F)** Reintroduce **Google Analytics 4** (`gtag.js`) in the Next.js frontend: pageviews + button-click engagement events (send-message, stop, upload-cv, generate-pdp, submit-feedback, thumbs up/down, dashboard actions) — mirrors the v1 `ChatBot.tsx` / `PDPDialog.tsx` pattern. Measurement ID via env; loads only after the consent gate (§6.22); **event payloads never carry message content, CV text, or PII.**
-- [ ] **(T)** Verify a full chat turn traces end-to-end in the OTel backend; force an error and confirm it reaches Sentry; confirm GA4 real-time events; grep exported traces/logs/GA payloads for CV/message content — none found.
-- [ ] **(T)** **CI/CD verification** — run the full backend + frontend CI command sets locally (ruff + ruff format --check + mypy + pytest; eslint + tsc + jest — the exact commands in `.github/workflows/backend-ci.yml` / `frontend-ci.yml`) and confirm both are green before closing the phase.
+- [x] **(B)** OpenTelemetry instrumentation: FastAPI auto-instrumentation (requests) + manual spans for the LangGraph node graph (planner → workers → responder) + Celery task spans.
+- [x] **(B) S11 — PII redaction + retention limit** on traces/logs (§7.6) — traces would otherwise contain full CV text and every message; redact at the source.
+- [x] **(I)** OTLP exporter, env-configured endpoint/API key, targeting a free-tier hosted backend (owner's choice — Grafana Cloud free / Honeycomb free / similar). OTel is vendor-neutral, so this stays swappable; **no bespoke in-app telemetry dashboard** (YAGNI — use the backend's own UI).
+- [x] **(I) S15 — Sentry free tier** error notification, **PII scrubbing on**, low-noise alert rule (§6.24 / §7.7).
+- [x] **(D)** **Admin-access ruling** [DECIDED]: access to the telemetry backend's dashboard is the provider's own login (recommend enabling Google sign-in there). **No new username/password admin surface is added to this app** — in-app admin actions keep using the existing `is_admin`-flagged SSO account (P3-05); the SSO-only decision (§6.2) is not reopened.
+- [x] **(F)** Reintroduce **Google Analytics 4** (`gtag.js`) in the Next.js frontend: pageviews + button-click engagement events (send-message, stop, upload-cv, generate-pdp, submit-feedback, thumbs up/down, dashboard actions) — mirrors the v1 `ChatBot.tsx` / `PDPDialog.tsx` pattern. Measurement ID via env; loads only after the consent gate (§6.22); **event payloads never carry message content, CV text, or PII.**
+- [x] **(T)** Verify a full chat turn traces end-to-end in the OTel backend; force an error and confirm it reaches Sentry; confirm GA4 real-time events; grep exported traces/logs/GA payloads for CV/message content — none found.
+- [x] **(T)** **CI/CD verification** — run the full backend + frontend CI command sets locally (ruff + ruff format --check + mypy + pytest; eslint + tsc + jest — the exact commands in `.github/workflows/backend-ci.yml` / `frontend-ci.yml`) and confirm both are green before closing the phase.
 
 ---
 

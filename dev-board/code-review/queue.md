@@ -130,3 +130,8 @@ The orchestrator's board. One row per task. See `.claude/skills/agent-handoff/SK
 | P10-05-rate-limits-per-ip-tool | Per-IP and per-tool rate limits + abuse handling | P10 | DONE | 1 | APPROVED | APPROVED |
 | P10-06-jailbreak-injection-suite | Jailbreak/injection test suite (T) | P10 | DONE | 1 | APPROVED | APPROVED |
 | P10-07-cicd-verify | P10 CI/CD verification (T) | P10 | DONE | 1 | APPROVED | APPROVED |
+| P11-01-otel-tracing | OTel instrumentation + OTLP export + S11 PII redaction | P11 | DONE | 2 | APPROVED | APPROVED |
+| P11-02-sentry-error-tracking | S15 Sentry free tier + PII scrubbing + alert rule | P11 | DONE | 2 | APPROVED | APPROVED |
+| P11-03-ga4-analytics | Reintroduce GA4 (pageviews + engagement events, consent-gated) | P11 | DONE | 1 | APPROVED | APPROVED |
+| P11-04-observability-verify | P11 exit: OTel/Sentry/GA4 end-to-end verification | P11 | DONE | 1 | APPROVED | APPROVED |
+| P11-05-cicd-verify | P11 CI/CD verification | P11 | DONE | 1 | APPROVED | APPROVED |

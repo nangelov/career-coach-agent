@@ -63,6 +63,18 @@ INTENTIONAL_EXCLUSIONS: dict[str, str] = {
     "pytesseract": "OCR fallback; lazily imported, needs the system 'tesseract' binary.",
     "ocrmypdf": "OCR fallback; lazily imported, needs Ghostscript + qpdf.",
     "google-search-results": "serpapi client; not yet imported at module scope in app/.",
+    "opentelemetry-instrumentation-fastapi": (
+        "P11 OTel FastAPI instrumentation; lazily imported in app/observability/tracing.py "
+        "only when OTEL_ENABLED, never at test collection."
+    ),
+    "opentelemetry-instrumentation-celery": (
+        "P11 OTel Celery instrumentation; lazily imported (worker init / app factory) only "
+        "when OTEL_ENABLED, never at test collection."
+    ),
+    "opentelemetry-exporter-otlp-proto-http": (
+        "P11 OTLP/HTTP span exporter (pulls protobuf/requests); lazily imported only when an "
+        "OTEL_EXPORTER_OTLP_ENDPOINT is configured, never at test collection."
+    ),
 }
 
 

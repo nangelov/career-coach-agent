@@ -1,0 +1,55 @@
+# Opt-in local OpenTelemetry stack (P11, §7.8) — layer ON TOP of docker-compose.yml.
+#
+# Adds a local OTel Collector and turns tracing ON for the backend + Celery worker/beat,
+# pointing them at the Collector over the internal Docker network. This does NOT change the
+# default `docker compose up` (which leaves OTEL_ENABLED unset → no-op tracer). Opt in with:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.otel.yml up
+#
+# Then drive a chat turn and watch spans appear in the collector's logs:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.otel.yml logs -f otel-collector
+#
+# The Collector dumps spans to its own log (the `debug` exporter — see
+# otel-collector-config.yaml), so no external/paid backend is required to verify tracing.
+# To ship to a real free-tier backend instead, set OTEL_EXPORTER_OTLP_ENDPOINT /
+# OTEL_EXPORTER_OTLP_HEADERS on the services below (or swap the Collector's exporter).
+
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    # No host port published (internal Docker network only, consistent with §7.2). The app
+    # reaches it by service name; view spans via `docker compose logs otel-collector`.
+    restart: unless-stopped
+
+  backend:
+    environment:
+      OTEL_ENABLED: "true"
+      OTEL_SERVICE_NAME: career-coach-backend
+      # OTLP/HTTP exporter → the Collector's http receiver (4318). `/v1/traces` is appended
+      # by the app if absent. Vendor-neutral OTLP — no vendor SDK.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  worker:
+    environment:
+      OTEL_ENABLED: "true"
+      OTEL_SERVICE_NAME: career-coach-worker
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  beat:
+    environment:
+      OTEL_ENABLED: "true"
+      OTEL_SERVICE_NAME: career-coach-beat
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    depends_on:
+      otel-collector:
+        condition: service_started

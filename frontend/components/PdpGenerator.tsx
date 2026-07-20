@@ -15,6 +15,7 @@ import {
   triggerDownload,
   type PdpDeliveryStatus,
 } from "@/lib/pdp";
+import { trackEvent } from "@/lib/analytics";
 
 /**
  * PDP generation surface (design §5.2 / §9; backend P7-03). A logged-in user enters a career goal
@@ -145,6 +146,11 @@ function PdpForm() {
     setPhase("loading");
     setError(null);
     setDeliveryStatus(null);
+    // Engagement event (§6.27): booleans for which optional fields were used — never their text.
+    trackEvent("generate_pdp", {
+      has_target_date: Boolean(targetDate),
+      has_context: Boolean(additionalContext.trim()),
+    });
     try {
       const result = await generatePdp({
         careerGoal: goal,

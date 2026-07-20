@@ -10,6 +10,7 @@ import {
   uploadCv,
   type JobStatus,
 } from "@/lib/profile";
+import { trackEvent } from "@/lib/analytics";
 
 /**
  * CV upload + async-parse progress (design §5.1 / §5.3; backend P5-04/06).
@@ -80,6 +81,8 @@ export default function CvUpload({ session, onParsed }: CvUploadProps) {
     setError(null);
     setProgress(null);
     setPhase("uploading");
+    // Engagement event (§6.27): mime type + role only — never the file's contents/name.
+    trackEvent("upload_cv", { role: session.role, file_type: file.type || "unknown" });
     try {
       const { taskId } = await uploadCv(file);
       setPhase("processing");
@@ -107,7 +110,7 @@ export default function CvUpload({ session, onParsed }: CvUploadProps) {
           : "Something went wrong uploading your CV. Please try again.",
       );
     }
-  }, [busy, file, onParsed]);
+  }, [busy, file, onParsed, session.role]);
 
   return (
     <section

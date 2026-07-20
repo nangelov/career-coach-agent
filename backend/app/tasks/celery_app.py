@@ -19,8 +19,11 @@ Broker/backend URL is sourced from settings (REDIS_URL), never hard-coded.
 
 from __future__ import annotations
 
+from typing import Any
+
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import worker_process_init
 
 from app.config import settings
 
@@ -41,6 +44,26 @@ celery_app = Celery(
         "app.tasks.retention_purge",
     ],
 )
+
+
+@worker_process_init.connect(weak=False)
+def _init_worker_observability(**_: Any) -> None:
+    """Install OTel tracing + Sentry error tracking in each worker process (P11).
+
+    Runs **after fork** (``worker_process_init``) so any background threads (the OTel exporter,
+    the Sentry transport) belong to the worker process, not the pre-fork parent. Sets the global
+    tracer provider + instruments Celery (each task body emits a span, child of the enqueuing
+    request's trace when the producer propagated context, §6.26 / §7.8), and initialises Sentry
+    so an unhandled task exception is reported (§6.24 / §7.7). Both are a no-op unless configured
+    (``OTEL_ENABLED`` / ``SENTRY_DSN``); OTel exporters are PII-redacted and Sentry events are
+    PII-scrubbed (§7.6). Imported lazily to keep task-module import light.
+    """
+    from app.observability import configure_sentry, configure_tracing, instrument_celery
+
+    configure_tracing(settings)
+    instrument_celery(settings)
+    configure_sentry(settings)
+
 
 celery_app.conf.update(
     task_serializer="json",

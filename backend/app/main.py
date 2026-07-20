@@ -29,6 +29,7 @@ from starlette.responses import Response
 from .api.auth import router as auth_router
 from .api.chat import router as chat_router
 from .api.dashboard import router as dashboard_router
+from .api.debug import router as debug_router
 from .api.feedback import router as feedback_router
 from .api.jobs import router as jobs_router
 from .api.me import router as me_router
@@ -39,6 +40,12 @@ from .api.profile import router as profile_router
 from .api.roles import router as roles_router
 from .app_state import AppStateKeys
 from .config import settings
+from .observability import (
+    configure_sentry,
+    configure_tracing,
+    instrument_celery,
+    instrument_fastapi,
+)
 from .repositories.postgres import PostgresConnectionProvider
 
 logger = logging.getLogger(__name__)
@@ -138,6 +145,20 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Observability (§6.26 / §7.8, P11): install the global OTel tracer provider and
+    # auto-instrument FastAPI (HTTP request spans) + Celery (producer-side trace-context
+    # propagation into enqueued jobs). All three are no-ops unless OTEL_ENABLED, so CI/tests
+    # and local dev are untouched; every exporter is PII-redacted (§7.6).
+    configure_tracing(settings)
+    instrument_fastapi(app, settings)
+    instrument_celery(settings)
+
+    # Sentry error tracking (§6.24 / §7.7, S15): free-tier unhandled-exception alerting with
+    # PII scrubbing on (send_default_pii=False + a redacting before_send). A complete no-op
+    # unless SENTRY_DSN is configured, so CI/tests/local dev are untouched. This is the error
+    # channel only; distributed tracing/APM stays with OTel above (design's §6.26 split).
+    configure_sentry(settings)
+
     # CORS — origins sourced from settings (never hard-coded), so the allowed
     # Next.js frontend origins are environment-configurable.
     app.add_middleware(
@@ -169,6 +190,7 @@ def create_app() -> FastAPI:
     app.include_router(dashboard_router)
     app.include_router(message_feedback_router)
     app.include_router(memory_router)
+    app.include_router(debug_router)
 
     return app
 

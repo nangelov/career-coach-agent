@@ -33,6 +33,7 @@ import {
   type TaskUpdate,
 } from "@/lib/dashboard";
 import GoalCard from "@/components/dashboard/GoalCard";
+import { trackEvent } from "@/lib/analytics";
 
 /**
  * The living-PDP dashboard (design §5.2): the goals/milestones/tasks board, a progress/streak
@@ -413,6 +414,8 @@ function CreateGoalForm({
     if (!trimmed || busy) {
       return;
     }
+    // Engagement event (§6.27): a create action, no titles/free text.
+    trackEvent("dashboard_goal_create");
     onCreate({
       title: trimmed,
       target_role: targetRole.trim() || null,

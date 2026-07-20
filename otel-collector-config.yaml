@@ -1,0 +1,29 @@
+# Local OpenTelemetry Collector config (P11, §7.8) — verification-only.
+#
+# Receives OTLP spans from the backend/worker over the internal Docker network and dumps
+# them to the Collector's own logs via the `debug` exporter, so a developer can see traces
+# end-to-end WITHOUT any paid/free-tier account. This is what P11-05-verify exercises.
+# It is vendor-neutral OTLP in, OTLP-agnostic out — swap the `debug` exporter for a real
+# `otlphttp`/vendor exporter to forward to Grafana Cloud / Honeycomb instead.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]

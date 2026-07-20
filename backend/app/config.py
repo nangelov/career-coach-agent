@@ -510,6 +510,83 @@ class Settings(BaseSettings):
     )
 
     # -------------------------------------------------------------------------
+    # Observability — OpenTelemetry tracing (§6.26 / §7.8, P11)
+    # -------------------------------------------------------------------------
+    OTEL_ENABLED: bool = Field(
+        default=False,
+        description=(
+            "Master switch for OpenTelemetry tracing (§7.8). Default OFF so local dev, CI and "
+            "unit tests run with a no-op tracer (nothing exported, ~zero overhead). Set true in "
+            "a deployed Space to emit traces across FastAPI, the LangGraph node graph and Celery "
+            "tasks. When on but no OTLP endpoint is set, spans are dropped (or console-dumped "
+            "via OTEL_CONSOLE_EXPORT) — enabling never requires a live backend."
+        ),
+    )
+    OTEL_SERVICE_NAME: str = Field(
+        default="career-coach-agent",
+        description="OTel resource service.name attached to every exported span (§7.8).",
+    )
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = Field(
+        default="",
+        description=(
+            "OTLP/HTTP traces endpoint (§7.8) — a free-tier hosted backend (Grafana Cloud / "
+            "Honeycomb) or the local Collector (http://otel-collector:4318). Vendor-neutral OTLP; "
+            "no vendor SDK. ``/v1/traces`` is appended if absent. Empty → no export (drop/console)."
+        ),
+    )
+    OTEL_EXPORTER_OTLP_HEADERS: str = Field(
+        default="",
+        description=(
+            "Comma-separated OTLP export headers (the standard ``k1=v1,k2=v2`` form), e.g. the "
+            "backend's API key: ``api-key=...`` / ``authorization=Bearer ...``. Set via env / HF "
+            "Space Secret — never hard-coded. Empty when the endpoint needs no auth (Collector)."
+        ),
+    )
+    OTEL_CONSOLE_EXPORT: bool = Field(
+        default=False,
+        description=(
+            "When OTEL_ENABLED and no OTLP endpoint is set, dump spans to the console (§7.8). A "
+            "local-only verification aid so tracing can be seen end-to-end without any backend; "
+            "off by default. Ignored when OTEL_EXPORTER_OTLP_ENDPOINT is set (OTLP wins)."
+        ),
+    )
+
+    # -------------------------------------------------------------------------
+    # Observability — Sentry error tracking (§6.24 / §7.7, S15)
+    # -------------------------------------------------------------------------
+    SENTRY_DSN: str = Field(
+        default="",
+        description=(
+            "Sentry project DSN (§6.24 / §7.7). **Empty by default = Sentry is a complete "
+            "no-op** — this is the default-off gate (mirroring OTEL's disabled posture): local "
+            "dev, CI and unit tests never talk to Sentry and need no DSN. Set to the project DSN "
+            "created in the Sentry dashboard (via env / HF Space Secret — never hard-coded) to "
+            "enable unhandled-exception alerting across FastAPI and Celery. PII scrubbing is "
+            "always on when enabled (send_default_pii=False + a redacting before_send)."
+        ),
+    )
+    SENTRY_ENVIRONMENT: str = Field(
+        default="",
+        description=(
+            "Sentry ``environment`` tag attached to every event (e.g. ``production`` / "
+            "``staging``) so issues can be filtered per deploy. Empty → the SDK's default. "
+            "Only used when SENTRY_DSN is set."
+        ),
+    )
+    SENTRY_TRACES_SAMPLE_RATE: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Sentry performance-tracing sample rate (§6.24). Default **0** — Sentry is the "
+            "*error* channel; distributed tracing / APM is OTel's job (§7.8), so we do not "
+            "double-pay for Sentry transaction spans. Raise only if Sentry-side performance "
+            "monitoring is ever wanted; sampled transactions are PII-scrubbed too "
+            "(before_send_transaction)."
+        ),
+    )
+
+    # -------------------------------------------------------------------------
     # Data retention (§6.18 / §7.6 — SSO-user retention purge, S14)
     # -------------------------------------------------------------------------
     RETENTION_PURGE_AFTER_DAYS: int = Field(

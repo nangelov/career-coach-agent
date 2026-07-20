@@ -47,6 +47,21 @@ dependencies = [
     "reportlab>=4.0.0",
     # Web / search
     "google-search-results>=2.4.0",
+    # Observability — OpenTelemetry tracing (P11, §7.8). api + sdk are light pure-Python and
+    # imported at module scope (app/observability/tracing.py), so they are in the curated CI
+    # install. The FastAPI/Celery instrumentation and the OTLP/HTTP exporter are imported
+    # lazily (only when OTEL_ENABLED / an endpoint is set), so they are on the
+    # INTENTIONAL_EXCLUSIONS allowlist in scripts/check_curated_deps.py rather than curated.
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-instrumentation-fastapi>=0.40b0",
+    "opentelemetry-instrumentation-celery>=0.40b0",
+    "opentelemetry-exporter-otlp-proto-http>=1.20.0",
+    # Error tracking — Sentry free tier (P11, §6.24 / §7.7). Light pure-Python SDK (urllib3 +
+    # certifi only; the FastAPI/Celery integrations ship inside it, no extra package). Imported
+    # (guarded) at module scope in app/observability/sentry.py, so it is in the curated CI
+    # install (a no-op unless SENTRY_DSN is configured).
+    "sentry-sdk>=2.0.0",
 ]
 
 [dependency-groups]
